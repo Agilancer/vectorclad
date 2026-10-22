@@ -7,6 +7,7 @@ import { Mech } from './mech.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
+import { titleDone } from './title/title.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -100,6 +101,8 @@ function buildEnvironment() {
 // ---------------------------------------------------------------------------
 
 const sound = new Sound();
+// The title screen fires this inside the tap/click/key that dismisses it, so audio can unlock.
+window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
 let world, fx, mech, weapons, hud, hangar, mats;
@@ -225,9 +228,12 @@ async function init() {
   // Warm up shaders so the first shots don't hitch
   renderer.compile(scene, camera);
 
+  // Keep the GPU free for the title screen until the player taps through it.
+  await titleDone;
   $('#loading').hidden = true;
   $('#intro').hidden = false;
   mode = 'intro';
+  if (!isTouch) $('#btn-launch').focus({ preventScroll: true });
   requestAnimationFrame(frame);
 }
 
