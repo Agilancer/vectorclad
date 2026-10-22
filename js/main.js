@@ -7,6 +7,7 @@ import { Mech } from './mech.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
+import { SpiderSwarm } from './spiders.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -19,6 +20,15 @@ const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Mat
 // startup from the mech's measured height so that it stands 40 ft tall.
 const MECH_HEIGHT_M = 40 * 0.3048;
 let METERS = 1.7;
+
+// Armor points. Spider hits are scaled by HIT_SCALE; armor starts regenerating
+// REGEN_DELAY seconds after the last hit. A raised shield turns away hits from
+// within SHIELD_ARC of the way the mech faces.
+const AP_MAX = 1000;
+const HIT_SCALE = 1.5;
+const REGEN_DELAY = 4;
+const REGEN_RATE = 26;
+const SHIELD_ARC = 1.2;
 
 // Saves live under vectorclad.* keys. Builds before the move to this repo saved under
 // fs07.*: read those when no vectorclad.* save exists yet; the next save writes the new key.
@@ -102,7 +112,7 @@ function buildEnvironment() {
 const sound = new Sound();
 const input = new Input(canvas);
 input.touchMode = isTouch;
-let world, fx, mech, weapons, hud, hangar, mats;
+let world, fx, mech, weapons, hud, hangar, mats, spiders;
 
 const DEFAULT = PRESETS[0];
 // Bumped storage key: loadouts saved for the earlier frame start fresh on this one.
@@ -124,10 +134,13 @@ const P = {
   phase: 0, gaitDir: 1, legYaw: 0,
   dashing: false, ascending: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
+  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0,
+  chest: new V3(),
 };
 const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
-let mode = 'loading'; // loading | intro | play | hangar
+let mode = 'loading'; // loading | intro | play | hangar | over
 let time = 0;
+let deployed = false;
 
 function shake(pos, amount) {
   const d = pos ? pos.distanceTo(P.pos) : 0;
@@ -170,8 +183,21 @@ async function init() {
   await new Promise((r) => setTimeout(r, 30));
   world = new World(scene, mats, fx, sound, { M: 1 / METERS, cityTex: tex.city }, {
     onHit: () => hud.hit(false),
-    onKill: () => { hud.hit(true); hud.addKill(); },
   });
+  spiders = new SpiderSwarm({
+    scene, world, fx, sound, tex, glowTex: fx.glowTex,
+    cb: {
+      onWave: (n) => { hud.toast(`WAVE ${n}`, 2.4); sound.warning(); },
+      onWaveClear: (n) => {
+        P.ap = Math.min(AP_MAX, P.ap + AP_MAX * 0.3);
+        hud.toast(`WAVE ${n} CLEARED · ARMOR PATCHED`, 2.8);
+      },
+      onKill: () => { hud.hit(true); hud.addKill(); },
+      onPlayerHit: hurt,
+    },
+  });
+  world.spiders = spiders;
+  spiders.camPos = camera.position;
   P.pos.copy(world.spawn);
   mech.root.position.copy(P.pos);
   mech.resetFeet();
@@ -213,6 +239,8 @@ async function init() {
   $('#btn-intro-hangar').addEventListener('click', () => { sound.unlock(); $('#intro').hidden = true; openHangar(); });
   $('#btn-close-hangar').addEventListener('click', () => { sound.unlock(); startPlay(); });
   $('#btn-hangar').addEventListener('click', () => openHangar());
+  $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); startPlay(); });
+  $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); redeploy(); openHangar(); });
   $('#t-menu').addEventListener('click', () => openHangar());
   canvas.addEventListener('click', () => {
     sound.unlock();
@@ -232,12 +260,72 @@ async function init() {
 }
 
 function startPlay() {
+  if (!deployed || !P.alive) redeploy();
   $('#intro').hidden = true;
   $('#hangar').hidden = true;
   $('#hud').hidden = false;
   if (isTouch) $('#touch').hidden = false;
   mode = 'play';
   input.requestLock();
+}
+
+/** Fresh frame on the starting plaza, fresh waves */
+function redeploy() {
+  deployed = true;
+  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, boost: 100, overheat: false, grounded: true, jumpT: 0, landT: 0 });
+  P.pos.copy(world.spawn);
+  P.vel.set(0, 0, 0);
+  if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
+  P.pitch = 0.05;
+  mech.root.position.copy(P.pos);
+  mech.resetFeet();
+  weapons.equip(loadout);
+  setHardLock(null);
+  spiders.start();
+  hud.resetKills();
+  $('#gameover').hidden = true;
+}
+
+/** A spider hit the mech. from: where the shot came from. */
+function hurt(amount, from, kind) {
+  if (!P.alive || mode !== 'play') return;
+  _t.subVectors(from, P.pos);
+  const bearing = Math.atan2(_t.x, _t.z);
+  const blocked = weapons.shieldUp && Math.abs(wrap(bearing - P.bodyYaw)) < SHIELD_ARC;
+  const dmg = amount * HIT_SCALE * (blocked ? 0.12 : 1);
+  P.ap -= dmg;
+  P.hurtT = 0;
+  // Screen angle of the shooter: 0 straight ahead, clockwise
+  hud.damage(dmg / AP_MAX, -wrap(bearing - P.yaw), blocked);
+  if (blocked) {
+    _t.normalize();
+    _t2.set(P.pos.x + Math.sin(P.bodyYaw) * 2.2, P.pos.y + 4.6, P.pos.z + Math.cos(P.bodyYaw) * 2.2);
+    fx.sparksBurst(_t2, _t, 10, 0x9fffd0, 22);
+    sound.shieldBlock();
+    shake(null, 0.06);
+  } else {
+    sound.playerHit(kind === 'laser' ? 1.3 : 0.8);
+    shake(null, kind === 'laser' ? 0.4 : 0.14);
+  }
+  if (P.ap <= 0) die();
+}
+
+function die() {
+  P.alive = false;
+  P.ap = 0;
+  P.deadT = 0;
+  mode = 'over';
+  setHardLock(null);
+  input.exitLock();
+  $('#touch').hidden = true;
+  fx.explosion(P.chest, 2.2);
+  sound.explosion(P.chest, 2);
+  shake(null, 1.2);
+  cam.orbit = P.yaw + Math.PI;
+  const t = Math.floor(P.runT);
+  $('#over-wave').textContent = String(Math.max(1, spiders.wave));
+  $('#over-kills').textContent = String(spiders.kills);
+  $('#over-time').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
 function openHangar() {
@@ -464,7 +552,19 @@ function lockCandidates() {
     const r = Math.hypot(_ndc.x * camera.aspect, _ndc.y);
     if (r < 1.25) out.push({ t, r });
   }
-  return out.sort((a, b) => a.r - b.r);
+  // Targets in clear view come first, nearest the crosshair first
+  out.sort((a, b) => a.r - b.r);
+  const seen = [], hidden = [];
+  for (const c of out) (seen.length < 6 && inView(c.t) ? seen : hidden).push(c);
+  return seen.concat(hidden);
+}
+
+const _los = new V3();
+function inView(t) {
+  _los.subVectors(t.pos, camera.position);
+  const d = _los.length();
+  const hit = world.raycast(camera.position, _los.divideScalar(d), d, { targets: false });
+  return !hit || hit.dist > d - t.radius - 1;
 }
 
 function setHardLock(t) {
@@ -585,6 +685,8 @@ function updateCamera(dt, speed) {
 
 let last = performance.now();
 const feetA = new V3(), feetB = new V3();
+const UPV = new V3(0, 1, 0);
+const spiderCtx = { player: P, camera };
 const shoulder = new V3();
 
 function frame(now) {
@@ -601,6 +703,28 @@ function frame(now) {
 
   const { speed, gait } = updatePlayer(dt, c);
   updateCamera(dt, speed);
+  P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
+
+  // Armor regenerates out of contact; the swarm runs while playing and over the wreck
+  if (mode === 'play' && P.alive) {
+    P.runT += dt;
+    P.hurtT += dt;
+    if (P.hurtT > REGEN_DELAY) P.ap = Math.min(AP_MAX, P.ap + REGEN_RATE * dt);
+  }
+  if (mode === 'play' || mode === 'over') spiders.update(dt, spiderCtx);
+  if (mode === 'over') {
+    P.deadT += dt;
+    if (P.deadT > 1.8 && $('#gameover').hidden) $('#gameover').hidden = false;
+    // The wreck burns
+    const k = Math.max(0.3, 1 - P.deadT / 12);
+    if (Math.random() < dt * 30 * k) {
+      const g = 0.12 + Math.random() * 0.08;
+      fx.smoke.emit(P.chest.x + (Math.random() - 0.5) * 2, P.chest.y, P.chest.z + (Math.random() - 0.5) * 2, Math.random() - 0.5, 3 + Math.random() * 2, Math.random() - 0.5,
+        3.5, 1.5, 7, g, g, g, 0.7, g + 0.2, g + 0.2, g + 0.2, 0, 0.6, 0.4);
+    }
+    if (Math.random() < dt * 14 * k) fx.fire.emit(P.chest.x, P.chest.y - 0.5, P.chest.z, Math.random() - 0.5, 2, Math.random() - 0.5, 0.4, 1.4, 0.4, 3, 1.4, 0.4, 1, 1, 0.2, 0.05, 0, 1);
+    if (Math.random() < dt * 1.5 * k) fx.sparksBurst(_t.copy(P.chest).add(_t2.set(Math.random() - 0.5, Math.random() * 2 - 1, Math.random() - 0.5)), UPV, 12, 0xffc070, 18);
+  }
 
   // Aim angles from the shoulders toward the aim point
   shoulder.set(P.pos.x, P.pos.y + 6.2, P.pos.z);
@@ -621,7 +745,7 @@ function frame(now) {
   const res = mech.animate(dt, {
     gait, air: P.grounded ? 0 : 1, dash: P.dashing ? 1 : 0,
     vel: P.vel, bodyYaw: P.bodyYaw, ground: P.pos.y,
-    crouch: P.jumpT > 0 ? 1 : P.landT > 0 ? Math.min(1, P.landT * 3) : 0,
+    crouch: !P.alive ? 1 : P.jumpT > 0 ? 1 : P.landT > 0 ? Math.min(1, P.landT * 3) : 0,
     legYaw: P.legYaw, aimYaw, aimPitch,
     aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload],
     shield: weapons.shieldUp, hasShield: !!(weapons.slots.leftHand && weapons.slots.leftHand.def.kind === 'shield'),
@@ -639,8 +763,9 @@ function frame(now) {
   world.update(dt, P.pos, { grounded: P.grounded, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)] });
   fx.update(dt);
 
-  if (mode === 'play' || mode === 'hangar') {
+  if (mode === 'play' || mode === 'hangar' || mode === 'over') {
     hud.update(dt, {
+      ap: P.ap, apMax: AP_MAX, wave: spiders.wave, hostiles: spiders.hostiles,
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
@@ -658,7 +783,7 @@ init().catch((err) => {
 
 // Debug/test hook
 window.__mech = {
-  P, cam, input, startPlay, openHangar,
+  P, cam, input, startPlay, openHangar, redeploy, hurt, AP_MAX, get spiders() { return spiders; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
   renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get mech() { return mech; }, get mode() { return mode; },
 };

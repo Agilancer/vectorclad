@@ -193,6 +193,81 @@ export class Sound {
     this.tone({ type: 'sine', freq: 60, freqEnd: 120, peak: 0.3, decay: 0.3 });
   }
 
+  // Spiders. A swarm can trigger dozens of these at once, so each kind is
+  // limited to one play per short gap, and faint ones are skipped.
+  gate(key, gap, pos, min = 0.08) {
+    if (!this.ok || this.att(pos) < min) return false;
+    const now = this.ctx.currentTime;
+    this.last = this.last || {};
+    if (now - (this.last[key] || 0) < gap) return false;
+    this.last[key] = now;
+    return true;
+  }
+  spiderScreech(pos) {
+    if (!this.gate('screech', 0.35, pos, 0.05)) return;
+    const f = 1 + Math.random() * 0.3;
+    this.tone({ type: 'sawtooth', freq: 2300 * f, freqEnd: 620 * f, peak: 0.12, attack: 0.04, decay: 0.55, pos });
+    this.tone({ type: 'sawtooth', freq: 2410 * f, freqEnd: 700 * f, peak: 0.1, attack: 0.05, decay: 0.5, pos });
+    this.tone({ type: 'square', freq: 1500 * f, freqEnd: 380 * f, peak: 0.05, attack: 0.02, decay: 0.45, pos });
+    this.noiseHit({ type: 'bandpass', freq: 3400, freqEnd: 1300, q: 5, peak: 0.3, attack: 0.03, decay: 0.5, pos });
+  }
+  spiderLeap(pos) {
+    if (!this.gate('leap', 0.12, pos)) return;
+    this.noiseHit({ type: 'highpass', freq: 1800, freqEnd: 4200, peak: 0.16, attack: 0.01, decay: 0.2, pos });
+    this.tone({ type: 'square', freq: 240, freqEnd: 520, peak: 0.05, attack: 0.02, decay: 0.12, pos });
+  }
+  spiderLand(pos) {
+    if (!this.gate('land', 0.1, pos)) return;
+    this.noiseHit({ type: 'lowpass', freq: 1600, freqEnd: 200, peak: 0.3, decay: 0.2, pos });
+    this.tone({ type: 'triangle', freq: 900, freqEnd: 420, peak: 0.06, decay: 0.16, pos });
+    this.tone({ type: 'sine', freq: 120, freqEnd: 50, peak: 0.25, decay: 0.18, pos });
+  }
+  spiderStep(pos) {
+    if (!this.gate('step' + (Math.random() * 3 | 0), 0.05, pos, 0.25)) return;
+    const f = 1 + Math.random() * 0.4;
+    this.tone({ type: 'triangle', freq: 2900 * f, freqEnd: 1700 * f, peak: 0.035, decay: 0.035, pos });
+    this.noiseHit({ type: 'highpass', freq: 4500, peak: 0.05, decay: 0.03, pos });
+  }
+  spiderDie(pos) {
+    if (!this.gate('die', 0.06, pos)) return;
+    this.tone({ type: 'sawtooth', freq: 1900, freqEnd: 160, peak: 0.12, attack: 0.01, decay: 0.45, pos });
+    this.tone({ type: 'square', freq: 1300, freqEnd: 90, peak: 0.06, attack: 0.01, decay: 0.4, pos });
+    this.noiseHit({ type: 'bandpass', freq: 2600, q: 2, peak: 0.25, decay: 0.25, pos });
+  }
+  plasmaShot(pos) {
+    if (!this.gate('plasma', 0.045, pos)) return;
+    this.tone({ type: 'sine', freq: 1100, freqEnd: 180, peak: 0.16, decay: 0.2, pos });
+    this.tone({ type: 'square', freq: 540, freqEnd: 120, peak: 0.05, decay: 0.16, pos });
+    this.noiseHit({ type: 'bandpass', freq: 1800, q: 2, peak: 0.12, decay: 0.12, pos });
+  }
+  laserCharge(pos, dur) {
+    if (!this.gate('lcharge', 0.15, pos)) return;
+    this.tone({ type: 'sawtooth', freq: 300, freqEnd: 3200, peak: 0.07, attack: dur * 0.95, decay: 0.05, pos });
+    this.tone({ type: 'sine', freq: 610, freqEnd: 4100, peak: 0.08, attack: dur * 0.95, decay: 0.05, pos });
+  }
+  laserFire(pos) {
+    if (!this.gate('lfire', 0.06, pos)) return;
+    this.tone({ type: 'sawtooth', freq: 3000, freqEnd: 140, peak: 0.16, decay: 0.4, pos });
+    this.tone({ type: 'square', freq: 1500, freqEnd: 80, peak: 0.08, decay: 0.45, pos });
+    this.noiseHit({ type: 'highpass', freq: 2200, peak: 0.25, decay: 0.3, pos });
+  }
+  playerHit(heavy = 1) {
+    if (!this.gate('phit', 0.05)) return;
+    this.noiseHit({ type: 'bandpass', freq: 1300, q: 1.5, peak: 0.35 * heavy, decay: 0.2 });
+    this.tone({ type: 'triangle', freq: 520, freqEnd: 300, peak: 0.12 * heavy, decay: 0.3 });
+    this.tone({ type: 'sine', freq: 110, freqEnd: 45, peak: 0.35 * heavy, decay: 0.25 });
+  }
+  shieldBlock() {
+    if (!this.gate('block', 0.05)) return;
+    this.tone({ type: 'triangle', freq: 1650, freqEnd: 1500, peak: 0.12, decay: 0.45 });
+    this.tone({ type: 'sine', freq: 2470, freqEnd: 2300, peak: 0.06, decay: 0.35 });
+    this.noiseHit({ type: 'highpass', freq: 3000, peak: 0.15, decay: 0.08 });
+  }
+  warning() {
+    this.tone({ type: 'square', freq: 440, peak: 0.07, decay: 0.18 });
+    this.tone({ type: 'square', freq: 440, peak: 0.07, decay: 0.18, delay: 0.25 });
+  }
+
   // Continuous layers -------------------------------------------------------
   setThrust(level, dt) {
     if (!this.ctx) return;

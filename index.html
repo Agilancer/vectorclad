@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>VECTORCLAD</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="VECTORCLAD tech demo: pilot a 40-foot mech through Lower Manhattan with beams, cannons and missile salvos. Built with three.js.">
+<meta name="description" content="VECTORCLAD tech demo: pilot a 40-foot mech through Lower Manhattan against swarms of wall-climbing spider-frames, with beams, cannons and missile salvos. Built with three.js.">
 <meta name="theme-color" content="#0d0f12">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,13 +24,17 @@
   </div>
 </div>
 
+<div id="dmg-vignette"></div>
 <div id="hud" hidden>
   <div class="hud-top">
     <div class="unit">
       <span class="unit-code">FS-07A</span>
       <span class="unit-name">VANGUARD</span>
     </div>
-    <div class="score"><span class="label">TARGETS DOWN</span><b id="score" class="mono">0</b></div>
+    <div class="tally">
+      <div class="score"><span class="label">KILLS</span><b id="score" class="mono">0</b></div>
+      <div class="score wave"><span class="label">WAVE</span><b id="wave" class="mono">–</b><small id="hostiles" class="mono"></small></div>
+    </div>
     <button id="btn-hangar" class="chip-btn" type="button">Hangar <kbd>Tab</kbd></button>
   </div>
 
@@ -40,11 +44,16 @@
     <div id="hitmark"></div>
   </div>
   <div id="locks"></div>
+  <div id="dmg-dirs"></div>
   <div id="hardlock" hidden><i class="hp"><b></b></i><span class="mono"></span></div>
   <div id="lock-arrow" hidden></div>
 
   <div class="hud-left">
-    <div class="gauge">
+    <div class="gauge armor">
+      <div class="gauge-head"><span class="label">ARMOR</span><span id="ap-txt" class="mono">1000</span></div>
+      <div class="gauge-bar"><i id="ap-bar"></i></div>
+    </div>
+    <div class="gauge boost">
       <div class="gauge-head"><span class="label">BOOST</span><span id="boost-txt" class="mono">100</span></div>
       <div class="gauge-bar"><i id="boost-bar"></i></div>
       <div id="overheat">OVERHEAT</div>
@@ -84,7 +93,7 @@
     <div class="stripe"></div>
     <div class="eyebrow">LOWER MANHATTAN · FIELD TRIAL</div>
     <h1>VECTOR<span>CLAD</span></h1>
-    <p class="lede">Pilot the FS-07A Vanguard, a 40-foot prototype loose in the Financial District. Hunt drones between the towers, hit target boards on plazas and rooftops, and try not to flatten every cab on the block.</p>
+    <p class="lede">Pilot the FS-07A Vanguard, a 40-foot prototype, through a Financial District overrun by spider-frames: six-legged machines that crawl the towers, leap from roof to roof and burn you with plasma and lasers. One burst drops each of them. There are always more.</p>
     <div class="controls">
       <div class="ctl-group">
         <h3>Move</h3>
@@ -107,6 +116,23 @@
     <div class="intro-actions">
       <button id="btn-launch" class="btn primary" type="button">Launch</button>
       <button id="btn-intro-hangar" class="btn" type="button">Configure loadout</button>
+    </div>
+  </div>
+</section>
+
+<section id="gameover" hidden>
+  <div class="over-card">
+    <div class="stripe"></div>
+    <div class="eyebrow">SIGNAL LOST</div>
+    <h2>Frame destroyed</h2>
+    <div class="over-stats mono">
+      <div><span class="label">WAVE</span><b id="over-wave">1</b></div>
+      <div><span class="label">KILLS</span><b id="over-kills">0</b></div>
+      <div><span class="label">TIME</span><b id="over-time">0:00</b></div>
+    </div>
+    <div class="intro-actions">
+      <button id="btn-redeploy" class="btn primary" type="button">Redeploy</button>
+      <button id="btn-over-hangar" class="btn" type="button">Hangar</button>
     </div>
   </div>
 </section>

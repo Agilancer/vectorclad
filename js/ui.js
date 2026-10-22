@@ -8,7 +8,9 @@ const _v = new THREE.Vector3();
 export class HUD {
   constructor() {
     this.el = {
-      score: $('#score'), boostBar: $('#boost-bar'), boostTxt: $('#boost-txt'), gauge: $('.gauge'),
+      score: $('#score'), boostBar: $('#boost-bar'), boostTxt: $('#boost-txt'), gauge: $('.gauge.boost'),
+      armor: $('.gauge.armor'), apBar: $('#ap-bar'), apTxt: $('#ap-txt'), wave: $('#wave'), hostiles: $('#hostiles'),
+      vignette: $('#dmg-vignette'), dirs: $('#dmg-dirs'),
       spd: $('#spd'), alt: $('#alt'), lockct: $('#lockct'), mslct: $('#mslct'),
       weapons: $('#weapons'), toast: $('#toast'), hit: $('#hitmark'), locks: $('#locks'), zone: $('#lock-zone'),
       hint: $('#help-hint'), hard: $('#hardlock'), hardInfo: $('#hardlock span'), hardHp: $('#hardlock .hp b'), arrow: $('#lock-arrow'),
@@ -19,6 +21,9 @@ export class HUD {
     this.toastT = 0;
     this.hitT = 0;
     this.score = 0;
+    this.pain = 0;
+    this.struckT = 0;
+    this.dirEls = [];
     setTimeout(() => { if (this.el.hint) this.el.hint.style.opacity = '0'; }, 14000);
   }
 
@@ -44,6 +49,33 @@ export class HUD {
   addKill() {
     this.score++;
     this.el.score.textContent = this.score;
+  }
+
+  resetKills() {
+    this.score = 0;
+    this.el.score.textContent = '0';
+  }
+
+  /** A hit on the player: amount as a fraction of full armor, angle of the shooter (0 = dead ahead, clockwise) */
+  damage(frac, angle, blocked) {
+    this.pain = Math.min(1, this.pain + (blocked ? 0.05 : 0.25 + frac * 6));
+    if (!blocked) { this.struckT = 0.12; this.el.armor.classList.add('struck'); }
+    let d = this.dirEls.find((x) => x.t <= 0);
+    if (!d) {
+      if (this.dirEls.length >= 8) d = this.dirEls.reduce((a, b) => (a.t < b.t ? a : b));
+      else {
+        const el = document.createElement('div');
+        el.className = 'dmg-dir';
+        el.innerHTML = '<i></i>';
+        this.el.dirs.appendChild(el);
+        d = { el, t: 0 };
+        this.dirEls.push(d);
+      }
+    }
+    d.t = 1.1;
+    d.el.classList.toggle('blocked', !!blocked);
+    d.el.style.transform = `rotate(${angle}rad)`;
+    d.el.style.opacity = '1';
   }
 
   buildWeapons(status) {
@@ -72,6 +104,24 @@ export class HUD {
     this.set('msl', e.mslct, `/${d.missiles} MSL`);
     e.zone.classList.toggle('active', d.missileCap > 0);
     e.zone.style.display = d.missileCap > 0 ? '' : 'none';
+
+    // Armor, wave, damage
+    const ap = Math.max(0, d.ap);
+    this.set('ap', e.apTxt, String(Math.ceil(ap)));
+    e.apBar.style.width = `${(ap / d.apMax) * 100}%`;
+    e.armor.classList.toggle('low', ap < d.apMax * 0.25);
+    this.set('wave', e.wave, d.wave ? String(d.wave) : '–');
+    this.set('hostiles', e.hostiles, d.wave ? `${d.hostiles} HOSTILE${d.hostiles === 1 ? '' : 'S'}` : '');
+    if (this.struckT > 0 && (this.struckT -= dt) <= 0) e.armor.classList.remove('struck');
+    const low = ap > 0 && ap < d.apMax * 0.25 ? 0.22 + 0.1 * Math.sin(performance.now() / 160) : 0;
+    this.pain = Math.max(0, this.pain - dt * 1.6);
+    const v = Math.min(1, Math.max(this.pain, low));
+    if (Math.abs(v - (this.lastPain || 0)) > 0.01) { this.lastPain = v; e.vignette.style.opacity = v.toFixed(2); }
+    for (const x of this.dirEls) {
+      if (x.t <= 0) continue;
+      x.t -= dt;
+      x.el.style.opacity = Math.max(0, Math.min(1, x.t * 1.4)).toFixed(2);
+    }
 
     // Weapons
     if (this.rows.length !== d.weapons.length) this.buildWeapons(d.weapons);

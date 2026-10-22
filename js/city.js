@@ -192,8 +192,6 @@ export class City {
     this.sound = sound;
     this.r = mulberry(1916);
     this.colliders = [];
-    this.spots = [];     // places to stand a target board: { pos, kind }
-    this.lanes = [];     // open street corridors for drones: { a, b }
     this.steam = [];
     this.cars = [];
     this.pending = [];
@@ -578,7 +576,6 @@ export class City {
         roof: { tile: pick(r, G.roof), waterTower: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
         cornice: r() < 0.8,
       });
-      this.spots.push({ pos: new V3((x0 + x1) / 2, top, (z0 + z1) / 2), kind: 'roof' });
     } else if (style === 'prewar') {
       const tile = pick(r, r() < 0.8 ? G.prewar : G.officeStone);
       const [, th] = tileMeters(tile);
@@ -888,9 +885,6 @@ export class City {
       this.collide(cx - rr, yb + (yt - yb) * f0, cz - rr, cx + rr, yb + (yt - yb) * f1, cz + rr, { building: true });
     }
     this.landmark = new V3(cx, yt, cz);
-    for (const [x, z] of [[B.x0 + m(8), B.z0 + m(8)], [B.x1 - m(8), B.z1 - m(8)], [B.x0 + m(8), B.z1 - m(8)], [B.x1 - m(8), B.z0 + m(8)]]) {
-      this.spots.push({ pos: new V3(x, y0, z), kind: 'plaza' });
-    }
   }
 
   plazaBlock(B) {
@@ -914,9 +908,6 @@ export class City {
     this.collide(cx - s * 0.6, 0, cz - s * 0.6, cx + s * 0.6, y0 + s * 1.6, cz + s * 0.6, { building: true });
     this.spawn = new V3((B.x0 + B.x1) / 2 - m(14), y0, cz);
     this.spawnBlock = B;
-    for (const [fx, fz] of [[0.2, 0.3], [0.2, 0.7], [0.62, 0.3], [0.62, 0.7]]) {
-      this.spots.push({ pos: new V3(B.x0 + (B.x1 - B.x0) * fx, y0, B.z0 + (B.z1 - B.z0) * fz), kind: 'plaza' });
-    }
   }
 
   planter(x, z, s) {
@@ -958,9 +949,6 @@ export class City {
       this.prop('cyl', cx, y0 + m(0.92), cz, R * 0.9, m(0.08), R * 0.9, [0.22, 0.38, 0.45]);
       this.prop('cyl', cx, y0 + m(2), cz, m(1.5), m(3), m(1.5), [0.72, 0.7, 0.66]);
       this.fountain = new V3(cx, y0 + m(3.4), cz);
-    }
-    for (const [fx, fz] of [[0.2, 0.25], [0.8, 0.75], [0.3, 0.75], [0.7, 0.25]]) {
-      this.spots.push({ pos: new V3(B.x0 + (B.x1 - B.x0) * fx, y0, B.z0 + (B.z1 - B.z0) * fz), kind: 'park' });
     }
   }
 
@@ -1223,17 +1211,6 @@ export class City {
       this.meshes.push(mesh);
     }
     this.bufs.clear();
-    // Drone corridors over the open streets
-    const L = this.L, m = (x) => this.m(x);
-    for (let i = 1; i < L.aves.length - 1; i++) {
-      const a = L.aves[i], x = (a.r0 + a.r1) / 2;
-      this.lanes.push({ a: new V3(x, 0, L.z0 + m(30)), b: new V3(x, 0, L.z1 - m(10)) });
-    }
-    for (const s of L.sts) {
-      if (s.k < 1) continue;
-      const z = (s.r0 + s.r1) / 2;
-      this.lanes.push({ a: new V3(L.x0 + m(20), 0, z), b: new V3(L.x1 - m(20), 0, z) });
-    }
   }
 
   // ---- cars ------------------------------------------------------------------
