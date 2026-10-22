@@ -20,8 +20,16 @@ const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Mat
 const MECH_HEIGHT_M = 40 * 0.3048;
 let METERS = 1.7;
 
+// Saves live under vectorclad.* keys. Builds before the move to this repo saved under
+// fs07.*: read those when no vectorclad.* save exists yet; the next save writes the new key.
+const LEGACY_KEYS = { 'vectorclad.settings': 'fs07.settings', 'vectorclad.loadout': 'fs07.loadout.ac' };
 const store = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } },
+  get(k, d) {
+    try {
+      const v = localStorage.getItem(k) ?? (LEGACY_KEYS[k] && localStorage.getItem(LEGACY_KEYS[k]));
+      return v ? JSON.parse(v) : d;
+    } catch (_) { return d; }
+  },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage blocked */ } },
 };
 
@@ -42,7 +50,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.6, 9000);
 
-const settings = Object.assign({ sound: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('fs07.settings', {}));
+const settings = Object.assign({ sound: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('vectorclad.settings', {}));
 
 function applySettings() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.hires ? 2 : 1.25));
@@ -53,7 +61,7 @@ function applySettings() {
   sound.setEnabled(settings.sound);
   if (weapons) weapons.outlines = settings.outlines;
   scene.traverse((o) => { if (o.userData.isOutline) o.visible = settings.outlines; });
-  store.set('fs07.settings', settings);
+  store.set('vectorclad.settings', settings);
 }
 
 function resize() {
@@ -98,7 +106,7 @@ let world, fx, mech, weapons, hud, hangar, mats;
 
 const DEFAULT = PRESETS[0];
 // Bumped storage key: loadouts saved for the earlier frame start fresh on this one.
-const loadout = store.get('fs07.loadout.ac', null) || { paint: DEFAULT.paint, slots: JSON.parse(JSON.stringify(DEFAULT.slots)) };
+const loadout = store.get('vectorclad.loadout', null) || { paint: DEFAULT.paint, slots: JSON.parse(JSON.stringify(DEFAULT.slots)) };
 if (!PAINTS.some((p) => p.id === loadout.paint)) loadout.paint = PAINTS[0].id;
 
 // Additive glow on the ground under the thrusters
@@ -187,7 +195,7 @@ async function init() {
     onChange: () => {
       applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
       weapons.equip(loadout);
-      store.set('fs07.loadout.ac', loadout);
+      store.set('vectorclad.loadout', loadout);
     },
     onSettings: applySettings,
   });

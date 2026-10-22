@@ -238,8 +238,8 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 }
 .intro-card { width: min(640px, 100%); justify-self: start; margin-left: max(0px, 6vw); display: grid; gap: 16px; padding-block: 24px; }
 .intro-card .stripe { width: 120px; }
-.intro-card h1 { margin: 0; font-size: clamp(38px, 7vw, 72px); line-height: 0.95; letter-spacing: 0.02em; text-wrap: balance; }
-.intro-card h1 span { display: block; color: var(--signal); }
+.intro-card h1 { margin: 0; font-size: clamp(38px, 7vw, 72px); line-height: 0.95; letter-spacing: 0.04em; text-wrap: balance; }
+.intro-card h1 span { color: var(--signal); }
 .lede { margin: 0; font-size: 16px; line-height: 1.5; color: #d6d2c8; max-width: 52ch; }
 .controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .ctl-group { background: var(--panel); padding: 12px 14px; border-top: 2px solid var(--hud); }
@@ -383,7 +383,6 @@ body.touch .score { padding: 3px 10px; }
   .hud-left .readouts { display: none; }
   .intro-card { gap: 10px; padding-block: 16px; }
   .intro-card h1 { font-size: 40px; }
-  .intro-card h1 span { display: inline; }
   .lede { font-size: 14px; }
   .hh-row { padding: 8px 16px; }
   .hh-row h2 { font-size: 20px; }

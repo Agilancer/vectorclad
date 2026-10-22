@@ -17,6 +17,12 @@ npx http-server -p 8080 .
 
 three.js 0.170.0 loads from jsDelivr, so the first load needs a network connection.
 
+## Deploy
+
+`.github/workflows/pages.yml` publishes the game to GitHub Pages on every push to `main`.
+To turn it on, go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
+The game is then served at `https://agilancer.github.io/vectorclad/`.
+
 ## Controls
 
 | Action | Keyboard / mouse | Touch |
@@ -46,8 +52,9 @@ across every lock; with nothing locked they fly to the crosshair.
 
 The hangar sets the loadout for six hardpoints (both hands, both shoulders, both
 legs), a frame paint scheme, and one of eight colorways per weapon. It has five
-presets and settings for sound, shadows, look sensitivity, inverted look and
-render resolution. The loadout and settings are saved in `localStorage`.
+presets and settings for sound, shadows, ink outlines, look sensitivity, inverted
+look and render resolution. The loadout and settings are saved in `localStorage`
+under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 
 Weapons, from the weapon sheet:
 
