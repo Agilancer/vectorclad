@@ -23,6 +23,23 @@ three.js 0.170.0 loads from jsDelivr, so the first load needs a network connecti
 To turn it on, go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
 The game is then served at `https://agilancer.github.io/vectorclad/`.
 
+## Title screen
+
+The game opens on a title screen with the live 3D VECTORCLAD logo (from the
+`vectorclad-brand` kit) while textures and the city load behind it. A tap, click or any
+key fades it out and hands over to the loading screen or, once loading is done, the
+intro card. The game doesn't start rendering until the title is gone, so the two never
+compete for the GPU.
+
+On phones held upright, a "Rotate your phone" overlay covers the screen until the phone
+is turned sideways. Tapping start on a phone also asks for fullscreen and a landscape
+lock, which Android browsers honor and iOS ignores.
+
+The logo files live in `js/title/`. `logo.js` and `wordmark-data.js` are copied from the
+brand kit; regenerate them there rather than editing them here. The title's three.js
+add-ons (bloom, post-processing) load through the import map in `index.html`, which
+points `three` at the same 0.170.0 build as `js/three.js`; keep the two versions in sync.
+
 ## Controls
 
 | Action | Keyboard / mouse | Touch |
@@ -155,6 +172,9 @@ in the hangar settings.
 | `js/input.js` | Keyboard, pointer lock and touch controls |
 | `js/ui.js` | HUD and hangar menu |
 | `js/main.js` | Renderer, world scale, player physics, camera, game loop |
+| `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
+| `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
+| `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
