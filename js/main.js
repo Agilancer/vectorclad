@@ -783,7 +783,7 @@ init().catch((err) => {
 
 // Debug/test hook
 window.__mech = {
-  P, cam, input, startPlay, openHangar, redeploy, hurt, AP_MAX, get spiders() { return spiders; },
+  P, cam, input, startPlay, openHangar, redeploy, hurt, AP_MAX, get spiders() { return spiders; }, scene, camera,
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
   renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get mech() { return mech; }, get mode() { return mode; },
 };

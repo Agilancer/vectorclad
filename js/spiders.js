@@ -786,7 +786,6 @@ export class SpiderSwarm {
       if (hit && hit.point.distanceTo(perch.point) > 3.5) return false;
       prev = cur;
     }
-    // Leaving from the ground must not start inside the leap direction's wall
     s.goal = perch;
     s.flight = { vel: v, target: perch, from: from.clone() };
     s.state = 'crouch';

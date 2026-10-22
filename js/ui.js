@@ -108,7 +108,7 @@ export class HUD {
     // Armor, wave, damage
     const ap = Math.max(0, d.ap);
     this.set('ap', e.apTxt, String(Math.ceil(ap)));
-    e.apBar.style.width = `${(ap / d.apMax) * 100}%`;
+    e.apBar.style.width = `${Math.min(1, ap / d.apMax) * 100}%`;
     e.armor.classList.toggle('low', ap < d.apMax * 0.25);
     this.set('wave', e.wave, d.wave ? String(d.wave) : '–');
     this.set('hostiles', e.hostiles, d.wave ? `${d.hostiles} HOSTILE${d.hostiles === 1 ? '' : 'S'}` : '');
