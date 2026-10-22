@@ -123,7 +123,10 @@ it with a 2D DDA.
 The suit follows Armored Core's style:
 - **Silhouette:** tall, hunched frame, narrow waist, long arms with heavy forearms.
 - **Armor:** sharp, faceted plates that sweep backward.
-- **Head:** a humanoid helm set low between raised collar plates: angled visor eyes under a pointed brow, a faceplate with a nose ridge and chin, cheek guards, ear sensors, swept antennas and a gold crest.
+- **Head:** a beast head thrust forward between raised collar plates, on red hydraulic neck rams:
+  - A pointed prow leans out over an open maw lit red behind its fangs, above a lower jaw that ends in a hanging chin.
+  - Armor scales layer up and back from the prow into a crest of swept fins.
+  - Each eye is a slanted red slit with an orange core, set under a heavy brow with a glowing seam. The eyes glow red in every paint; only the glint at their core takes the paint's eye color.
 - **Legs:** blade knees, thin shins and talon feet with heel spurs.
 - **Back:** a booster pack with swept stabilizer fins. Missile pods and cannons mount on top of it.
 - **Paint:** dark armor over a gold-trimmed frame. The default is Lynx Navy; Unsung Black, Shrieker Steel, Glint White, Desert Ops and Crimson are in the hangar.

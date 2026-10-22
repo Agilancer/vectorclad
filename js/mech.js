@@ -1,5 +1,5 @@
 import * as THREE from './three.js';
-import { B, BODY_SHEET, frontPrism, sidePrism, topPrism, chamferBox, cylZ, cylX, loft, mesh, place, canvasTexture, pieceGeo, addOutline } from './atlas.js';
+import { B, BODY_SHEET, frontPrism, sidePrism, chamferBox, cylZ, cylX, loft, mesh, place, canvasTexture, pieceGeo, addOutline } from './atlas.js';
 
 const V3 = THREE.Vector3;
 const P = (geo, mat, faces, opts) => mesh(geo, mat, BODY_SHEET, faces, opts);
@@ -365,13 +365,18 @@ function blade(pts, width, zs = [1, 1], ys = [1, 1], bevel = 0.02) {
   });
 }
 
+/** loft() run along Z: sections { z, w, h, c?, x?, y? }, w wide and h tall, centered on x/y. */
+function loftZ(secs) {
+  return loft(secs.map((s) => ({ y: s.z, w: s.w, d: s.h, c: s.c, x: s.x, z: -(s.y || 0) }))).rotateX(Math.PI / 2);
+}
+
 // ---------------------------------------------------------------------------
 // Hydraulic piston between two parts that move relative to each other
 // ---------------------------------------------------------------------------
 
 let pistonGeo, pistonMats;
 class Piston {
-  constructor(parentA, posA, parentB, posB, r, mats) {
+  constructor(parentA, posA, parentB, posB, r, mats, barrel) {
     if (!pistonGeo) {
       pistonGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
       pistonMats = {
@@ -384,7 +389,7 @@ class Piston {
     this.b = new THREE.Object3D();
     this.b.position.copy(posB);
     parentB.add(this.b);
-    this.barrel = new THREE.Mesh(pistonGeo, pistonMats.barrel);
+    this.barrel = new THREE.Mesh(pistonGeo, barrel || pistonMats.barrel);
     this.rod = new THREE.Mesh(pistonGeo, pistonMats.rod);
     this.barrel.castShadow = this.rod.castShadow = true;
     this.barrel.userData.noOutline = this.rod.userData.noOutline = true;
@@ -409,7 +414,7 @@ class Piston {
 
 // ---------------------------------------------------------------------------
 // Mech model, after Armored Core: a tall, hunched frame under sharp, swept
-// plate armor. Low arrowhead sensor head between raised collar plates, long
+// plate armor. A beast head thrust forward between raised collar plates, long
 // arms with heavy forearms, blade knees, thin shins and talon feet, and a
 // booster pack with swept stabilizer fins.
 // ---------------------------------------------------------------------------
@@ -626,46 +631,93 @@ export class Mech {
   buildHead() {
     const M = this.mats;
     const head = (this.head = new THREE.Group());
-    head.position.set(0, 1.36, 0.34);
+    head.position.set(0, 1.36, 0.56);
     head.scale.setScalar(1.15);
     head.rotation.order = 'YXZ';
     this.chest.add(head);
-    place(head, P(new THREE.CylinderGeometry(0.12, 0.16, 0.3, 10), M.joint), 0, -0.02, -0.06);
-    // Helmet: a cranium that tapers to a narrower jaw, so it reads as a head
-    place(head, P(loft([
-      { y: 0.66, w: 0.36, d: 0.48, c: 0.12, z: -0.06 },
-      { y: 0.46, w: 0.56, d: 0.64, c: 0.16, z: -0.02 },
-      { y: 0.26, w: 0.52, d: 0.6, c: 0.15, z: -0.02 },
-      { y: 0.06, w: 0.36, d: 0.46, c: 0.11, z: 0.0 },
-    ]), M.armor, { all: B.plainA }));
-    // Pointed brow that overhangs the eyes and slopes down to the front
-    place(head, P(warp(topPrism([[-0.3, -0.12], [0.3, -0.12], [0.31, 0.18], [0.1, 0.36], [0, 0.42], [-0.1, 0.36], [-0.31, 0.18]], 0.1, 0.02),
-      (v, n) => { v.y -= n.z * 0.06; }), M.armor, { all: B.plainA }), 0, 0.5, 0.02);
-    // Dark face recess with two angled eyes under the brow
-    place(head, P(frontPrism([[-0.25, 0.2], [0.25, 0.2], [0.24, 0.46], [-0.24, 0.46]], 0.06, 0.01), M.joint), 0, 0, 0.3);
+    // An armor plate given as a [z, y] side profile, turned about its pivot so the
+    // pair hugs the skull: yaw draws the fronts together, roll leans the tops in.
+    const plate = (parent, sd, pts, [pz, py], x, yaw, roll, w = 0.07, mat = M.armor) =>
+      place(parent, P(blade(pts.map(([z, y]) => [z - pz, y - py]), w, [1, 0.5], [1, 0.6]), mat, { all: B.plainA }),
+        sd * x, py, pz, 0, -sd * yaw, sd * roll);
+    const throat = new THREE.MeshBasicMaterial({ color: 0x5c0d14, toneMapped: false });
+    const iris = new THREE.MeshBasicMaterial({ color: 0xffa04a, toneMapped: false });
+
+    place(head, P(new THREE.CylinderGeometry(0.14, 0.18, 0.36, 10), M.joint), 0, 0.02, -0.16);
+    // Skull: a dark wedge leaning forward to a prow over the mouth. The armor
+    // plates layer over it, and the gaps between them show through dark.
+    place(head, P(loftZ([
+      { z: -0.16, w: 0.38, h: 0.56, y: 0.3, c: 0.12 },
+      { z: 0.2, w: 0.38, h: 0.52, y: 0.28, c: 0.12 },
+      { z: 0.5, w: 0.2, h: 0.3, y: 0.24, c: 0.07 },
+      { z: 0.64, w: 0.04, h: 0.06, y: 0.27, c: 0.015 },
+    ]), M.joint));
+    // Ridge over the prow and back across the crown
+    place(head, P(blade([[0.67, 0.28], [0.5, 0.52], [0.3, 0.68], [0.0, 0.78], [-0.3, 0.82], [-0.14, 0.6], [0.2, 0.48], [0.44, 0.26]], 0.2, [1, 0.45]),
+      M.armor, { all: B.plainA }));
+    // Maw: a dim red throat behind the teeth, with a hot seam at its core
+    place(head, P(sidePrism([[0.46, 0.05], [-0.02, 0.05], [-0.02, -0.08], [0.36, -0.1]], 0.12, 0.01), throat));
+    place(head, new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.014, 0.34), M.sensor), 0, -0.01, 0.18);
     for (const sd of [-1, 1]) {
-      const eye = place(head, new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.035, 0.02), M.eye), sd * 0.12, 0.385, 0.34);
-      eye.rotation.set(0, sd * 0.3, sd * 0.24);
-      eye.userData.noOutline = true;
+      // Prow: an arrowhead plate forming the front of the face
+      const prow = plate(head, sd, [[0.66, 0.28], [0.52, 0.48], [0.36, 0.62], [0.14, 0.68], [0.08, 0.5], [0.2, 0.3], [0.3, 0.1], [0.46, 0.02]], [0.36, 0.34], 0.1, 0.3, 0.5, 0.09);
+      place(prow, new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, 0.012), M.sensor), sd * 0.04, -0.02, 0.06);
+      // Crest: plates layered up and back over the skull, ending in swept fins,
+      // over a temple plate that fills in behind the prow
+      const crest = plate(head, sd, [[0.44, 0.46], [0.28, 0.64], [0.06, 0.8], [-0.32, 0.92], [-0.14, 0.66], [0.02, 0.56], [0.2, 0.5]], [0.1, 0.64], 0.13, 0.3, 0.4, 0.09);
+      place(crest, new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.014, 0.07), M.sensor), sd * 0.04, -0.05, 0.08, -0.6, 0, 0);
+      plate(head, sd, [[0.38, 0.32], [0.18, 0.5], [-0.08, 0.62], [-0.44, 0.66], [-0.26, 0.48], [-0.12, 0.38], [0.12, 0.32]], [0.02, 0.46], 0.2, 0.34, 0.3, 0.09);
+      plate(head, sd, [[0.52, 0.28], [0.4, 0.44], [0.2, 0.56], [-0.02, 0.58], [0.06, 0.42], [0.2, 0.32], [0.36, 0.26]], [0.24, 0.42], 0.17, 0.25, 0.3, 0.08);
+      // Brow overhanging the eye, with a hot seam along its lower edge
+      const brow = plate(head, sd, [[0.48, 0.2], [0.3, 0.3], [0.0, 0.36], [-0.26, 0.4], [-0.1, 0.28], [0.2, 0.2]], [0.1, 0.28], 0.24, 0.25, 0.2);
+      place(brow, new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.012, 0.3), M.sensor), sd * 0.035, -0.075, 0.18, 0.18, 0, 0);
+      // Cheek guard behind the eye, over the jaw hinge
+      plate(head, sd, [[0.2, 0.1], [0.06, 0.18], [-0.1, 0.3], [-0.36, 0.36], [-0.26, 0.12], [-0.12, -0.04], [0.12, -0.02]], [0.0, 0.14], 0.25, 0.18, -0.1, 0.09);
+      // Nape: plates closing over the back of the skull in a V
+      place(head, P(frontPrism(mirror([[0, 0.02], [0.24, 0.08], [0.26, 0.4], [0.12, 0.62], [0, 0.6]], sd), 0.07, 0.02), M.armor, { all: B.plainA }),
+        0, 0, -0.17, -0.1, sd * 0.5, 0);
+      // Fangs along the upper jaw
+      for (const z of [0.22, 0.32, 0.42]) {
+        place(head, P(new THREE.ConeGeometry(0.024, 0.08, 4), M.frame, { all: B.mechA }), sd * (0.15 - (z - 0.2) * 0.3), 0.02, z, Math.PI, 0, 0);
+      }
+      // Eye: a slanted slit burning red deep under the brow, with a glint at its core
+      const eye = new THREE.Group();
+      eye.position.set(sd * 0.235, 0.14, 0.36);
+      eye.rotation.y = -sd * 0.3;
+      eye.scale.setScalar(1.15);
+      head.add(eye);
+      place(eye, P(sidePrism([[0.2, -0.05], [0.0, 0.03], [-0.16, 0.08], [-0.08, 0.0], [0.06, -0.055]], 0.04, 0.01), M.joint));
+      place(eye, P(sidePrism([[0.16, -0.04], [-0.02, 0.025], [-0.14, 0.065], [-0.07, 0.0], [0.05, -0.045]], 0.03, 0.004), M.sensor), sd * 0.01, 0, 0);
+      place(eye, P(sidePrism([[0.07, -0.018], [-0.02, 0.016], [-0.07, 0.03], [-0.03, -0.004]], 0.03, 0.004), iris), sd * 0.016, 0, 0);
+      place(eye, new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.012, 0.03), M.eye), sd * 0.03, 0.006, -0.012, 0.45, 0, 0);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.glowTex, color: 0xff3a30, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.7,
+      }));
+      glow.scale.setScalar(0.42);
+      glow.renderOrder = 6;
+      place(eye, glow, sd * 0.03, 0, 0.02);
     }
-    // Faceplate: a nose ridge over mouth vents and a pointed chin
-    place(head, P(frontPrism([[-0.2, 0.3], [0.2, 0.3], [0.22, 0.16], [0.1, -0.02], [0, -0.08], [-0.1, -0.02], [-0.22, 0.16]], 0.1, 0.02),
-      M.armor, { all: B.plainB }), 0, 0, 0.3);
-    place(head, P(blade([[0.0, 0.32], [0.05, 0.3], [0.04, 0.14], [0.0, 0.12]], 0.05), M.second, { all: B.plainA }), 0, 0, 0.36);
-    for (const [y, w] of [[0.1, 0.22], [0.05, 0.16]]) place(head, new THREE.Mesh(new THREE.BoxGeometry(w, 0.016, 0.02), M.joint), 0, y, 0.36);
+
+    // Lower jaw, hinged under the cheeks and hanging open
+    const jaw = new THREE.Group();
+    jaw.position.set(0, 0.0, -0.02);
+    jaw.rotation.x = 0.18;
+    head.add(jaw);
+    place(jaw, P(loftZ([
+      { z: -0.06, w: 0.34, h: 0.12, y: -0.06, c: 0.04 },
+      { z: 0.42, w: 0.1, h: 0.06, y: -0.04, c: 0.02 },
+    ]), M.joint));
     for (const sd of [-1, 1]) {
-      // Cheek guards wrapping forward along the jaw
-      place(head, P(blade([[-0.22, 0.34], [0.22, 0.3], [0.32, 0.08], [0.18, -0.04], [-0.2, 0.0]], 0.05, [1, 0.6]), M.second, { all: B.plainA }),
-        sd * 0.27, 0, 0).rotation.y = -sd * 0.22;
-      // Ear sensors and swept rear antennas
-      place(head, P(cylX(0.08, 0.12, 12), M.frame, { all: B.mechA }), sd * 0.31, 0.36, -0.08);
-      place(head, new THREE.Mesh(new THREE.CircleGeometry(0.05, 12), M.lens), sd * 0.372, 0.36, -0.08, 0, sd * Math.PI / 2, 0);
-      const ant = place(head, P(blade([[0.04, 0.0], [-0.62, 0.16], [-0.64, 0.12], [0.04, -0.04]], 0.03, [0.4, 1]), M.second,
-        { all: B.plainA }), sd * 0.22, 0.46, -0.24);
-      ant.rotation.y = sd * 0.22;
+      plate(jaw, sd, [[0.46, -0.02], [0.2, 0.0], [-0.06, 0.0], [-0.1, -0.1], [0.1, -0.16], [0.3, -0.1]], [0.17, -0.06], 0.13, 0.25, -0.1);
+      for (const z of [0.2, 0.3, 0.4]) place(jaw, P(new THREE.ConeGeometry(0.02, 0.06, 4), M.frame, { all: B.mechA }), sd * (0.13 - (z - 0.17) * 0.25), 0.01, z);
     }
-    // Gold crest along the crown
-    place(head, P(blade([[0.4, 0.0], [0.08, 0.1], [-0.32, 0.12], [-0.36, 0.0]], 0.05, [1, 0.5]), M.trim), 0, 0.64, -0.04);
+    // Pointed chin hanging under the jaw
+    place(jaw, P(blade([[0.44, -0.04], [0.3, -0.1], [0.22, -0.34], [0.1, -0.2], [-0.02, -0.1]], 0.12, [1, 0.4]), M.armor, { all: B.plainA }));
+
+    // Red hydraulic rams brace the head against the collar plates
+    for (const sd of [-1, 1]) {
+      this.pistons.push(new Piston(this.chest, new V3(sd * 0.5, 1.3, 0.0), head, new V3(sd * 0.19, 0.12, -0.1), 0.05, M, M.red));
+    }
   }
 
   buildArm(s) {
