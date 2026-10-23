@@ -1,5 +1,5 @@
 import * as THREE from './three.js';
-import { ATLASES, TILES, PANELS, KITS } from './cityTiles.js';
+import { ATLASES, TILES, PANELS, KITS, GROUND } from './cityTiles.js';
 import { canvasTexture } from './atlas.js';
 
 // ---------------------------------------------------------------------------
@@ -11,10 +11,11 @@ import { canvasTexture } from './atlas.js';
 // so the mech stands 40 ft tall.
 //
 // Geometry is merged per material and per chunk. Every surface samples one of
-// four texture atlases through a shader that tiles inside an atlas cell, so
+// five texture atlases through a shader that tiles inside an atlas cell, so
 // the whole city draws in a few dozen calls. Many facades are composed from
 // panel kits: piers, runs of window bays and louvered vent floors cut from one
-// family of materials.
+// family of materials. Streets and sidewalks draw on ground kits picked by how
+// worn the pavement is in each part of town.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -98,6 +99,13 @@ const KIT_STYLE = {
   deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone'],
   far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine'],
 };
+
+// Ground kits for clean, worn and broken pavement
+const GROUND_WEAR = [
+  ['crisp', 'fresh', 'buslane', 'tactile', 'redcurb'],
+  ['faded', 'grime', 'cobble', 'hazard', 'tactile', 'redcurb'],
+  ['ruin', 'grime', 'hazard', 'faded'],
+];
 
 // World size of one repeat of a tile, in meters: [width, height]
 function tileMeters(name) {
@@ -212,6 +220,7 @@ export class City {
     this.fx = fx;
     this.sound = sound;
     this.r = mulberry(1916);
+    this.rg = mulberry(1958); // ground textures, apart from the layout so neither shifts the other
     this.colliders = [];
     this.steam = [];
     this.cars = [];
@@ -226,8 +235,14 @@ export class City {
       decal: atlasMaterial(tex.ground, { roughness: 0.6, decal: true }),
       props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.15 }),
     };
-    // One material per page of the panel atlas
-    for (const k of Object.keys(ATLASES)) if (k.startsWith('panels')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.75, glass: true });
+    // One material per page of the panel atlas, and a surface and a decal material per page of the road atlas
+    for (const k of Object.keys(ATLASES)) {
+      if (k.startsWith('panels')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.75, glass: true });
+      if (k.startsWith('roads')) {
+        this.mats[k] = atlasMaterial(tex[k], { roughness: 0.92 });
+        this.mats[`${k}Decal`] = atlasMaterial(tex[k], { roughness: 0.6, decal: true });
+      }
+    }
     this.layout();
     this.buildGround();
     this.buildBlocks();
@@ -285,6 +300,25 @@ export class City {
 
   /** The current chunk's buffer for the atlas a wall tile lives in */
   bufFor(tile) { return this.buf(cell(tile).atlas, this.cur); }
+
+  /** The surface (or decal) buffer for the atlas a ground tile lives in */
+  groundBuf(tile, decal = false, chunk = 'all') {
+    const a = cell(tile).atlas;
+    if (a === 'ground') return this.buf(decal ? 'decal' : 'ground', chunk);
+    return this.buf(decal ? `${a}Decal` : a, chunk);
+  }
+
+  /**
+   * A ground tile for a role ('asphalt', 'walk', 'lane', ...) at x, z, from a kit suited to
+   * how worn the pavement is there. old: the original tiles, mixed into clean streets.
+   */
+  groundTile(role, x, z, old) {
+    const rg = this.rg, w = this.wear(x, z), band = w < 0.4 ? 0 : w < 0.7 ? 1 : 2;
+    if (old && band === 0 && rg() < 0.35) return pick(rg, old);
+    const kits = GROUND_WEAR[band].filter((k) => GROUND[k][role].length);
+    if (!kits.length) return old ? pick(rg, old) : null;
+    return pick(rg, GROUND[pick(rg, kits)][role]);
+  }
 
   chunkOf(x, z) {
     const C = this.m(280);
@@ -391,18 +425,36 @@ export class City {
   // ---- ground ----------------------------------------------------------------
 
   buildGround() {
-    const L = this.L, r = this.r, m = (x) => this.m(x);
-    const g = this.buf('ground'), d = this.buf('decal');
-    const asphaltM = m(5);
-    const patch = (x0, z0, x1, z1, rot) => {
-      const t = pick(r, G.asphalt), ox = r() * 7;
-      this.flat(g, t, x0, z0, x1, z1, 0, (x, z) => (rot ? [z / asphaltM + ox, x / asphaltM] : [x / asphaltM + ox, -z / asphaltM]));
+    const L = this.L, rg = this.rg, m = (x) => this.m(x);
+    // Wear: broad patches of worn and broken pavement, so streets weather by neighborhood
+    const spots = Array.from({ length: 9 }, () => [L.x0 + rg() * (L.x1 - L.x0), L.zN + rg() * (L.z1 - L.zN), m(100 + rg() * 180), 0.3 + rg() * 0.45]);
+    this.wear = (x, z) => clamp(0.12 + spots.reduce((w, [sx, sz, R, k]) => w + k * Math.exp(-((x - sx) ** 2 + (z - sz) ** 2) / (R * R)), 0), 0, 1);
+    const patch = (x0, z0, x1, z1, rot, holes = true) => {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      const t = this.groundTile('asphalt', cx, cz, G.asphalt), ox = rg() * 7;
+      // Kit asphalt repeats at 1.6 times its painted size, coarser but less repetitive; the original tiles every 5 m
+      const [tw, th] = PANELS[t] ? tileMeters(t).map((v) => m(v * 1.6)) : [m(5), m(5)];
+      this.flat(this.groundBuf(t), t, x0, z0, x1, z1, 0, (x, z) => (rot ? [z / tw + ox, x / th] : [x / tw + ox, -z / th]));
+      // Cracked patches and potholes where the street is worn, clear of the crossings: the
+      // tiled asphalt stays even, and the damage lies over it in soft-edged rounds
+      const w = this.wear(cx, cz);
+      if (!holes || w < 0.4) return;
+      const n = Math.round(((x1 - x0) * (z1 - z0)) / m(9) ** 2 * (w - 0.4) * 2);
+      for (let i = 0; i < n; i++) {
+        const h = this.groundTile('hole', cx, cz);
+        if (!h) break;
+        const s = m(2.2 + rg() * 2.6);
+        const [ex, ez] = rot ? [s, m(8)] : [m(8), s];
+        if (x1 - x0 < 2 * ex || z1 - z0 < 2 * ez) break;
+        const x = x0 + ex + rg() * (x1 - x0 - 2 * ex), z = z0 + ez + rg() * (z1 - z0 - 2 * ez);
+        this.flat(this.groundBuf(h, true), h, x - s / 2, z - s / 2, x + s / 2, z + s / 2, m(0.01), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s], 2);
+      }
     };
     // Avenue segments between cross streets, cross-street segments between avenues, and intersection squares
     for (const a of L.aves) {
       for (let i = 0; i < L.sts.length; i++) {
         const s = L.sts[i], n = L.sts[i + 1];
-        patch(a.x0, s.z0, a.x1, s.z1, false);
+        patch(a.x0, s.z0, a.x1, s.z1, false, false);
         if (n) patch(a.r0, s.z1, a.r1, n.z0, true);
       }
     }
@@ -417,7 +469,7 @@ export class City {
   }
 
   sidewalk(B) {
-    const L = this.L, r = this.r, m = (x) => this.m(x);
+    const L = this.L, rg = this.rg, m = (x) => this.m(x);
     const g = this.buf('ground');
     const x0 = B.x0 - L.aveWalk, x1 = B.x1 + L.aveWalk, z0 = B.z0 - L.stWalk, z1 = B.z1 + L.stWalk;
     const h = L.curb, rad = m(4.5), cw = m(0.45);
@@ -428,14 +480,15 @@ export class City {
       return pts;
     };
     const outer = ring(0), inner = ring(cw);
-    const slab = pick(r, G.slab), curb = 'paveB32', ts = m(3), up = new V3(0, 1, 0);
     const center = new V3((x0 + x1) / 2, h, (z0 + z1) / 2);
-    const c1 = cell(slab), c2 = cell(curb), c3 = cell('walls53');
-    const tint = [0.96 + r() * 0.06, 0.96 + r() * 0.05, 0.95 + r() * 0.05];
-    const uv = (p) => [p.x / ts, -p.z / ts];
+    const slab = this.groundTile('walk', center.x, center.z, G.slab), curb = 'paveB32', up = new V3(0, 1, 0);
+    const [sw, sh] = PANELS[slab] ? tileMeters(slab).map(m) : [m(3), m(3)];
+    const sg = this.groundBuf(slab), c1 = cell(slab), c2 = cell(curb);
+    const tint = [0.96 + rg() * 0.06, 0.96 + rg() * 0.05, 0.95 + rg() * 0.05];
+    const uv = (p) => [p.x / sw, -p.z / sh];
     for (let i = 0; i < inner.length; i++) {
       const p = inner[i], q = inner[(i + 1) % inner.length];
-      this.tri(g, [center, p, q], [uv(center), uv(p), uv(q)], c1, tint, 0, up);
+      this.tri(sg, [center, p, q], [uv(center), uv(p), uv(q)], c1, tint, 0, up);
       const P = outer[i], Q = outer[(i + 1) % outer.length];
       const cuv = (v) => [v.x / m(1.2), -v.z / m(1.2)];
       this.tri(g, [P, Q, q], [cuv(P), cuv(Q), cuv(q)], c2, WHITE, 0, up);
@@ -444,19 +497,50 @@ export class City {
       this.wall(g, 'walls53', Q.x, Q.z, P.x, P.z, 0, h, m(1.2), m(1.2), { ao: false, tint: [0.8, 0.8, 0.8] });
     }
     this.collide(x0, 0, z0, x1, h, z1, { low: true });
-    // A few utility covers set into the sidewalk
+    // A few utility covers set into the sidewalk, at their own size (up to 1.4 m)
     for (let i = 0; i < 2; i++) {
-      const side = r() < 0.5, along = B.x0 + r() * (B.x1 - B.x0), off = m(1.4) + r() * m(1.5);
-      const z = side ? B.z0 - off : B.z1 + off, s = m(1.6);
-      this.flat(this.buf('decal'), pick(r, G.manholeSquare), along - s / 2, z - s / 2, along + s / 2, z + s / 2, h + m(0.02), (x, zz) => [(x - along + s / 2) / s, (z + s / 2 - zz) / s]);
+      const side = rg() < 0.5, along = B.x0 + rg() * (B.x1 - B.x0), off = m(1.4) + rg() * m(1.5);
+      const z = side ? B.z0 - off : B.z1 + off;
+      const t = this.groundTile('square', along, z, G.manholeSquare);
+      let [w, d] = PANELS[t] ? tileMeters(t) : [1.6, 1.6];
+      const k = clamp(Math.max(w, d), 0.7, 1.4) / Math.max(w, d);
+      w = m(w * k); d = m(d * k);
+      this.flat(this.groundBuf(t, true), t, along - w / 2, z - d / 2, along + w / 2, z + d / 2, h + m(0.02), (x, zz) => [(x - along + w / 2) / w, (z + d / 2 - zz) / d]);
     }
+  }
+
+  /**
+   * A painted line along a road: along z at x = c for an avenue, along x at z = c for a
+   * street, from a0 to a1. Kit lines are cropped to their paint and stretched along the
+   * road; the original tiles hold a line in the middle of a 3 m strip.
+   */
+  roadLine(tile, alongZ, c, a0, a1, y) {
+    const m = (x) => this.m(x), b = this.groundBuf(tile, true);
+    const [w, len] = PANELS[tile] ? [m(tileMeters(tile)[0]), m(tileMeters(tile)[1] * 3)] : [m(3), m(tile === 'asphB11' ? 3 : 9)];
+    if (alongZ) this.flat(b, tile, c - w / 2, a0, c + w / 2, a1, y, (x, z) => [(x - c + w / 2) / w, -z / len], 1);
+    else this.flat(b, tile, a0, c - w / 2, a1, c + w / 2, y, (x, z) => [(z - c + w / 2) / w, x / len], 1);
+  }
+
+  /** A crosswalk over x0..x1, z0..z1; alongZ: its stripes run along z, across an avenue */
+  crosswalk(tile, x0, z0, x1, z1, y, alongZ) {
+    const b = this.groundBuf(tile, true);
+    if (!PANELS[tile]) {
+      // The original tiles: stripes run across the tile, repeating every 4.8 m
+      const rep = this.m(4.8);
+      if (alongZ) this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(z - z0) / (z1 - z0), x / rep], 1);
+      else this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(x - x0) / (x1 - x0), -z / rep], 1);
+      return;
+    }
+    // Kit tiles stand upright: the stripes span the crossing, repeating across the road at the tile's aspect
+    const [tw, th] = tileMeters(tile);
+    if (alongZ) { const rep = (z1 - z0) * tw / th; this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(x - x0) / rep, (z - z0) / (z1 - z0)], 1); }
+    else { const rep = (x1 - x0) * tw / th; this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(z - z0) / rep, (x - x0) / (x1 - x0)], 1); }
   }
 
   markings() {
     const L = this.L, r = this.r, m = (x) => this.m(x);
     const d = this.buf('decal');
     const y = m(0.02);
-    const lineW = m(3);
     // Avenues: four lanes one way, dashed white dividers, crosswalks and stop bars at each street
     for (const a of L.aves) {
       const cx = (a.r0 + a.r1) / 2, lane = (a.r1 - a.r0) / 4;
@@ -464,16 +548,14 @@ export class City {
         const z0 = s.z1, z1 = s.z1 + L.blockD;
         if (z0 >= L.z1) continue;
         const za = z0 + m(9), zb = Math.min(z1, L.z1) - m(9);
-        for (const off of [-1, 0, 1]) {
-          const x = cx + off * lane;
-          this.flat(d, 'asphB12', x - lineW / 2, za, x + lineW / 2, zb, y, (xx, z) => [(xx - x + lineW / 2) / lineW, -z / m(9)], 1);
-        }
+        const t = this.groundTile('lane', cx, (za + zb) / 2, ['asphB12']);
+        for (const off of [-1, 0, 1]) this.roadLine(t, true, cx + off * lane, za, zb, y);
       }
       for (const s of L.sts) {
         // Crosswalks across the avenue, in line with the street's sidewalks
         for (const [zc0, zc1] of [[s.z0, s.r0], [s.r1, s.z1]]) {
           const zz0 = zc0 + m(0.4), zz1 = zc1 - m(0.4);
-          this.flat(d, 'asphB20', a.r0 + m(0.6), zz0, a.r1 - m(0.6), zz1, y, (x, z) => [(z - zz0) / (zz1 - zz0), x / m(4.8)], 1);
+          this.crosswalk(this.groundTile('crosswalk', cx, zz0, ['asphB20']), a.r0 + m(0.6), zz0, a.r1 - m(0.6), zz1, y, true);
         }
         // Stop bar on the approach side
         const zs = a.dir > 0 ? s.z0 - m(1.2) : s.z1 + m(1.2);
@@ -497,13 +579,13 @@ export class City {
       const cz = (s.r0 + s.r1) / 2, two = (s.k + 20) % 3 === 0;
       for (let i = 0; i < L.aves.length - 1; i++) {
         const x0 = L.aves[i].x1 + m(8), x1 = L.aves[i + 1].x0 - m(8);
-        const t = two ? 'asphB11' : 'asphB12';
-        this.flat(d, t, x0, cz - lineW / 2, x1, cz + lineW / 2, y, (x, z) => [(z - cz + lineW / 2) / lineW, x / m(two ? 3 : 9)], 1);
+        const t = two ? this.groundTile('yellow', (x0 + x1) / 2, cz, ['asphB11']) : this.groundTile('lane', (x0 + x1) / 2, cz, ['asphB12']);
+        this.roadLine(t, false, cz, x0, x1, y);
       }
       for (const a of L.aves) {
         for (const [xc0, xc1] of [[a.x0, a.r0], [a.r1, a.x1]]) {
           const xx0 = xc0 + m(0.4), xx1 = xc1 - m(0.4);
-          this.flat(d, r() < 0.5 ? 'asphB20' : 'asphB21', xx0, s.r0 + m(0.5), xx1, s.r1 - m(0.5), y, (x, z) => [(x - xx0) / (xx1 - xx0), -z / m(4.8)], 1);
+          this.crosswalk(this.groundTile('crosswalk', xx0, cz, ['asphB20', 'asphB21']), xx0, s.r0 + m(0.5), xx1, s.r1 - m(0.5), y, false);
         }
       }
     }
@@ -511,12 +593,16 @@ export class City {
     for (const a of L.aves) {
       for (const s of L.sts) {
         if (s.k < 0) continue;
-        if (r() < 0.12) this.flat(d, 'asphB23', a.r0 + m(0.5), s.r0 + m(0.3), a.r1 - m(0.5), s.r1 - m(0.3), y, (x, z) => [(x - a.r0) / (a.r1 - a.r0), (s.r1 - z) / (s.r1 - s.r0)], 1);
+        if (r() < 0.12) {
+          const t = this.groundTile('box', (a.r0 + a.r1) / 2, (s.r0 + s.r1) / 2, ['asphB23']);
+          this.flat(this.groundBuf(t, true), t, a.r0 + m(0.5), s.r0 + m(0.3), a.r1 - m(0.5), s.r1 - m(0.3), y, (x, z) => [(x - a.r0) / (a.r1 - a.r0), (s.r1 - z) / (s.r1 - s.r0)], 1);
+        }
         const n = 1 + Math.floor(r() * 2);
         for (let i = 0; i < n; i++) {
           const x = a.r0 + m(3) + r() * (a.r1 - a.r0 - m(6)), z = s.z1 + m(10) + r() * (L.blockD - m(20)), w = m(1.6);
           if (z > L.z1) continue;
-          this.flat(d, pick(r, G.manholeRound), x - w / 2, z - w / 2, x + w / 2, z + w / 2, y, (xx, zz) => [(xx - x + w / 2) / w, (z + w / 2 - zz) / w], 2);
+          const t = this.groundTile('round', x, z, G.manholeRound);
+          this.flat(this.groundBuf(t, true), t, x - w / 2, z - w / 2, x + w / 2, z + w / 2, y, (xx, zz) => [(xx - x + w / 2) / w, (z + w / 2 - zz) / w], 2);
           if (r() < 0.06 && s.k >= 0) this.steam.push({ pos: new V3(x, 0, z), t: r() * 3, stack: false });
         }
       }
@@ -1039,7 +1125,10 @@ export class City {
 
   plazaBlock(B) {
     const m = (x) => this.m(x), r = this.r, g = this.buf('decal'), y0 = this.L.curb;
-    this.flat(g, 'paveB04', B.x0, B.z0 + m(3), B.x1, B.z1 - m(3), y0 + m(0.05), (x, z) => [x / m(5), -z / m(5)]);
+    // Setts, herringbone brick or pavers from the ground kits, at their own size
+    const pave = pick(this.rg, Object.values(GROUND).flatMap((k) => k.plaza).concat(['paveB04']));
+    const [pw, ph] = PANELS[pave] ? tileMeters(pave).map(m) : [m(5), m(5)];
+    this.flat(this.groundBuf(pave, true), pave, B.x0, B.z0 + m(3), B.x1, B.z1 - m(3), y0 + m(0.05), (x, z) => [x / pw, -z / ph]);
     // Granite border bands
     for (const [x0, z0, x1, z1] of [[B.x0, B.z0, B.x1, B.z0 + m(3)], [B.x0, B.z1 - m(3), B.x1, B.z1]]) {
       this.flat(g, 'paveB32', x0, z0, x1, z1, y0 + m(0.05), (x, z) => [x / m(3), -z / m(3)]);
@@ -1065,6 +1154,16 @@ export class City {
     const g = this.buf('decal');
     this.slab(sb, 'walls53', x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0, y0 + m(0.8), m(1.2), { tint: [0.9, 0.9, 0.88] });
     this.flat(g, pick(this.r, ['planter20', 'planter40', 'planter00']), x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0 + m(0.81), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
+  }
+
+  /** A street tree in a pit set into the sidewalk */
+  streetTree(x, z) {
+    const pits = Object.values(GROUND).flatMap((k) => k.pit), y = this.L.curb;
+    if (pits.length) {
+      const t = pick(this.rg, pits), s = this.m(1.3);
+      this.flat(this.groundBuf(t, true), t, x - s / 2, z - s / 2, x + s / 2, z + s / 2, y + this.m(0.02), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
+    }
+    this.tree(x, y, z, 0.8);
   }
 
   tree(x, y, z, scale = 1) {
@@ -1121,8 +1220,8 @@ export class City {
       for (let x = B.x0 + m(14); x < B.x1 - m(10); x += m(46)) {
         streetLight(x, zs0, 0, -1);
         streetLight(x + m(23), zs1, 0, 1);
-        if (B.playable && r() < 0.55) this.tree(x + m(10), y0, zs0 + m(0.6), 0.8);
-        if (B.playable && r() < 0.55) this.tree(x + m(33), y0, zs1 - m(0.6), 0.8);
+        if (B.playable && r() < 0.55) this.streetTree(x + m(10), zs0 + m(0.6));
+        if (B.playable && r() < 0.55) this.streetTree(x + m(33), zs1 - m(0.6));
       }
       for (let z = B.z0 + m(20); z < B.z1 - m(10); z += m(60)) {
         streetLight(xs0, z, -1, 0);
@@ -1355,9 +1454,10 @@ export class City {
       const mesh = new THREE.Mesh(b.geometry(), mat);
       const chunk = key.split('|')[1];
       const far = chunk === 'far' || chunk === 'bridge';
-      mesh.castShadow = !far && b.mat !== 'ground' && b.mat !== 'decal';
+      const decal = b.mat === 'decal' || b.mat.endsWith('Decal');
+      mesh.castShadow = !far && !decal && b.mat !== 'ground' && !b.mat.startsWith('roads');
       mesh.receiveShadow = !far;
-      mesh.renderOrder = b.mat === 'decal' ? 1 : 0;
+      mesh.renderOrder = decal ? 1 : 0;
       mesh.matrixAutoUpdate = false;
       this.scene.add(mesh);
       this.meshes.push(mesh);

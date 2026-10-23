@@ -5,7 +5,7 @@ loose in a Lower Manhattan overrun by spider-frames, six-legged machines that
 climb the towers and swarm in growing waves. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from thirty-two more in `textures/city-src/`, and the spiders
+`textures/`, the city from forty-two more in `textures/city-src/`, and the spiders
 from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
@@ -99,6 +99,11 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
 - **Street grid:** 100 ft avenues with four one-way lanes and 60 ft cross streets, on long east-west blocks.
   - Crosswalks, stop bars, lane arrows, "don't block the box" junctions and manholes are keyed out of the asphalt sheets.
   - Sidewalks are raised with granite curbs and rounded corners.
+  - Streets and sidewalks draw on ten ground kits (tactile, crisp, cobble, ruin, faded, redcurb, hazard, buslane, grime, fresh), picked by how worn the pavement is in each part of town:
+    - A smooth wear field over the city leaves about half the intersections clean, a quarter worn and a quarter broken.
+    - Clean streets get fresh asphalt, crisp lane lines, double yellows and crosswalks; worn and broken ones get faded and cracked paint, stained or broken slabs, and cracked patches and potholes laid over the asphalt in soft-edged rounds.
+    - Each avenue segment, cross street and sidewalk picks its own tile, so the paving changes block by block. The original asphalt and slab tiles stay in the clean mix.
+    - Manholes, sidewalk covers and grates, tree pits under the street trees, and the starting plaza's paving (setts, fan cobbles, herringbone brick or pavers) come from the kits too.
 - **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters:
   - Walk-ups with storefronts, cornices and rooftop water towers.
   - Prewar mid-rises with setbacks.
@@ -117,12 +122,13 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
 - **Scenery:** Jersey City and Brooklyn skylines across the rivers, a suspension bridge, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
 
-All city surfaces sample four texture atlases (`textures/city-facade.jpg`,
-`city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`) through a shader that tiles
-inside one atlas cell with `textureGrad`, so the whole city is merged into a few dozen
-meshes. Each vertex carries its cell's rectangle, so cells can be any size. If the
-panels ever outgrow one 4096 px page, the build splits them over `city-panels2.jpg`
-and on, keeping each kit on one page, and the city gives each page a material.
+All city surfaces sample five texture atlases (`textures/city-facade.jpg`,
+`city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`, `city-roads.jpg`) through a
+shader that tiles inside one atlas cell with `textureGrad`, so the whole city is merged
+into a few dozen meshes. Each vertex carries its cell's rectangle, so cells can be any
+size. If the facade or ground panels ever outgrow one 4096 px page, the build splits
+them over `city-panels2.jpg` (or `city-roads2.jpg`) and on, keeping each kit on one
+page, and the city gives each page a material.
 `tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
 source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
@@ -133,11 +139,22 @@ sheets of loose panels on dark gutters. `python3 tools/build_city_atlas.py --seg
 panel's rectangle to `tools/city-panels.json`, and draws numbered sheets into the
 review directory. Each kit sets the gray level that counts as gutter and, for sheets
 whose gutters fade in places, a gap bridge that closes short breaks along a gutter
-line; `PANEL_FIXES` lists the rare panels the cut still gets wrong. The last field of each panel is its role, picked by hand: `B` window
-bay, `P` pier, `S` solid wall, `V` vent, `x` unused. Roles carry over when the sheets
-are cut again. The normal build packs every panel in use into `city-panels.jpg` at its
-own aspect ratio, scaled to a common texel density from each kit's measured floor
-height.
+line; `PANEL_FIXES` lists the rare panels the cut still gets wrong. The last field of
+each panel is its role, picked by hand: `B` window bay, `P` pier, `S` solid wall, `V`
+vent, `x` unused. Roles carry over when the sheets are cut again. The normal build packs
+every panel in use into `city-panels.jpg` at its own aspect ratio, scaled to a common
+texel density from each kit's measured floor height.
+
+The ground kits (`GROUND_KITS`) are road and sidewalk tiles between thin separator
+lines, so `--segment` cuts them along rows and columns instead: by the separators'
+color, by thin lines lighter than their surroundings, along only the lines that cross
+the whole sheet, or along lines given by hand for a sheet whose separators are too
+faint. Their roles are `A` asphalt, `W` sidewalk, `Z` plaza paving, `C` crosswalk, `L`
+white lane line, `Y` yellow center line, `X` box junction, `O` round cover, `Q` square
+cover or grate, `T` tree pit and `H` damage (cracks and potholes). The build packs them
+into `city-roads.jpg`, and on the way turns crosswalks and lines so their stripes run up
+the tile, crops lines to their paint and covers and pits to their outline, and evens out
+broad stains on the tiled surfaces so they don't show as a checkerboard.
 
 ## Spider-frames
 
@@ -273,7 +290,7 @@ in the hangar settings.
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, waterfront, distant scenery |
-| `js/cityTiles.js` | Generated: atlas layouts, tile positions, and the facade panels and kits for the city |
+| `js/cityTiles.js` | Generated: atlas layouts, tile positions, and the facade and ground panels and kits for the city |
 | `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
@@ -284,8 +301,8 @@ in the hangar settings.
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
 | `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
-| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade panel kits |
-| `tools/city-panels.json` | Each kit panel's rectangle on its sheet and its hand-picked role |
+| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade and ground panel kits |
+| `tools/city-panels.json` | Each facade and ground panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six

@@ -5,10 +5,12 @@ used by the city, and packs them into textures/city-*.jpg with wrap-around
 gutters so tiling and mipmaps stay seamless. Also writes js/cityTiles.js.
 
 The facade panel kits are sheets of loose panels (window bays, piers, solid
-walls, louvers) on dark gutters. Their panels are cut out once with --segment,
-which writes each panel's rectangle to tools/city-panels.json; the role of each
-panel is picked by hand there. They pack into textures/city-panels.jpg at their
-own aspect ratios.
+walls, louvers) on dark gutters, and the ground kits are sheets of road and
+sidewalk tiles between thin separator lines. Their panels are cut out once with
+--segment, which writes each panel's rectangle to tools/city-panels.json; the
+role of each panel is picked by hand there. Facade panels pack into
+textures/city-panels.jpg and ground panels into textures/city-roads.jpg, each at
+its own aspect ratio.
 
 Run from the repository root:  python3 tools/build_city_atlas.py
 Re-cut the panel kits:         python3 tools/build_city_atlas.py --segment [review dir]
@@ -68,9 +70,47 @@ PANEL_FIXES = {
   'brick': [[104, 654, 186, 883], [195, 654, 246, 886], [254, 654, 304, 883], [307, 654, 425, 886],
             [9, 889, 186, 1075], [193, 887, 314, 1078], [323, 887, 426, 1078]],
   'basalt': [[7, 124, 309, 239], [7, 245, 149, 464], [158, 245, 180, 464], [187, 245, 242, 464]],
+  # Three rows of six slabs, then a row of covers and drains, whose faint separators merge
+  'redcurb': [[x0, y0, x1, y1] for y0, y1 in ((575, 689), (692, 828), (832, 1014))
+              for x0, x1 in ((2, 206), (209, 420), (423, 626), (629, 845), (848, 1045), (1048, 1252))]
+             + [[x0, 1018, x1, 1105] for x0, x1 in ((2, 89), (92, 162), (166, 256), (260, 315), (318, 370), (374, 464),
+                                                     (467, 620), (624, 728), (731, 888), (891, 1024), (1028, 1252))],
+  # Two crosswalks: one lost to its white bars, one joined to the strip beside it
+  'buslane': [[70, 162, 236, 322], [243, 161, 391, 323]],
+  # The paving tiles in the top two rows butt together with no separator
+  'cobble': [[x0, y0, x1, y1] for y0, y1 in ((2, 108), (111, 217))
+             for x0, x1 in ((438, 566), (568, 694), (696, 823), (825, 972), (975, 1107), (1110, 1252))],
 }
-# Panel roles in tools/city-panels.json
-ROLES = {'B': 'bays', 'P': 'piers', 'S': 'solids', 'V': 'vents'}  # anything else ('x') is unused
+# Ground kits: road and sidewalk tiles. key: (file, cut, sheet px per meter, atlas px per meter)
+# The sheets' separators come in two kinds, so each kit says how to find them:
+#   ('grid', [RGB, ...], tolerance, fill): separator lines are one of these colors, and
+#       a row or column counts as a separator where that much of it matches
+#   ('edge', 'light' | 'dark', k, contrast, fill): thin lines lighter (or darker) than
+#       the pixels k away on both sides, for separators close in color to the tiles
+#   ('lines', ...same as edge): as edge, but only lines that cross the whole sheet cut,
+#       for regular grids whose markings would fool the recursive cut
+#   ('given', [y, ...], [x, ...]): a grid whose separator lines are too faint to find
+# Sheet scales put a sidewalk tile of two by two slabs at about 2.8 m.
+GROUND_KITS = {
+  'tactile': ('tactile.jpg', ('grid', [(222, 222, 222), (12, 12, 12)], 34, 0.7), 53, 56),  # pavers, red brick and tactile strips
+  'crisp':   ('crisp.jpg', ('grid', [(254, 255, 255)], 14, 0.75), 64, 56),                 # crisp new paint, painted curbs
+  'cobble':  ('cobble.jpg', ('grid', [(20, 17, 8)], 30, 0.6), 54, 56),                      # cobbles and setts, old asphalt
+  'ruin':    ('ruin.jpg', ('grid', [(11, 10, 8)], 22, 0.75), 50, 56),                      # potholes and broken slabs
+  'faded':   ('faded.jpg', ('lines', 'light', 5, 12, 0.6), 40, 56),                        # faded and worn markings
+  'redcurb': ('redcurb.jpg', ('edge', 'light', 5, 12, 0.6), 74, 56),                       # red curbs, tree pits, big slabs
+  'hazard':  ('hazard.jpg', ('grid', [(4, 4, 3)], 20, 0.75), 59, 56),                       # yellow curbs and hazard stripes
+  'buslane': ('buslane.jpg', ('grid', [(242, 241, 240)], 26, 0.75), 49, 56),                # bus lanes, parking bays
+  'grime':   ('grime.jpg', ('given', [203, 374, 531, 764, 920, 1076], [157, 313, 470, 627, 783, 940, 1096]), 55, 56),  # grimy weathered streets
+  'fresh':   ('fresh.jpg', ('grid', [(254, 253, 251)], 24, 0.75), 55, 56),                  # clean streets and yellow curbs
+}
+
+# Panel roles in tools/city-panels.json; anything else ('x') is unused
+ROLES = {'B': 'bays', 'P': 'piers', 'S': 'solids', 'V': 'vents'}
+# Ground roles: tileable surfaces (asphalt, sidewalk, plaza paving), markings keyed out
+# of their asphalt (crosswalk, white lane line, yellow center line, box junction), covers
+# and tree pits cropped to their outline, and potholes laid over the asphalt
+GROUND_ROLES = {'A': 'asphalt', 'W': 'walk', 'Z': 'plaza', 'C': 'crosswalk', 'L': 'lane', 'Y': 'yellow', 'X': 'box',
+                'O': 'round', 'Q': 'square', 'T': 'pit', 'H': 'hole'}
 # Panel atlas pages are at most this big: 4096 px textures work on practically every current device
 PANEL_INSET, PANEL_PAD, PANEL_ATLAS_W, PANEL_ATLAS_H = 3, 8, 4096, 4096
 
@@ -140,9 +180,92 @@ def split_panel(dark, r, minside=18):
     return [r]
 
 
+def separator_masks(img, how):
+    """Pixels on separator lines, for the row cuts and for the column cuts."""
+    import cv2
+    if how[0] == 'grid':
+        _, colors, tol, fill = how
+        m = np.zeros(img.shape[:2], bool)
+        for c in colors: m |= np.abs(img.astype(int) - np.array(c[::-1])).max(axis=2) < tol
+        return m.astype(np.float32), m.astype(np.float32), fill
+    _, kind, k, contrast, fill = how
+    g = cv2.GaussianBlur(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (3, 3), 0).astype(np.float32)
+    if kind == 'light': g = 255 - g
+    rows = np.minimum(np.roll(g, k, 0), np.roll(g, -k, 0)) - g > contrast
+    cols = np.minimum(np.roll(g, k, 1), np.roll(g, -k, 1)) - g > contrast
+    return rows.astype(np.float32), cols.astype(np.float32), fill
+
+
+def xy_cut(Mr, Mc, r, fill, out, maxw=14, minp=36):
+    """Split a region along full-width separator rows, else full-height separator columns,
+    and recurse; regions with neither are panels."""
+    x0, y0, x1, y1 = r
+    if x1 - x0 < minp or y1 - y0 < minp: return
+    while y1 - y0 > minp and Mr[y0, x0:x1].mean() >= fill: y0 += 1
+    while y1 - y0 > minp and Mr[y1 - 1, x0:x1].mean() >= fill: y1 -= 1
+    while x1 - x0 > minp and Mc[y0:y1, x0].mean() >= fill: x0 += 1
+    while x1 - x0 > minp and Mc[y0:y1, x1 - 1].mean() >= fill: x1 -= 1
+    for axis, M in (('y', Mr), ('x', Mc)):
+        f = M[y0:y1, x0:x1].mean(axis=1 if axis == 'y' else 0)
+        L, cuts, i = len(f), [], 0
+        while i < L:
+            if f[i] >= fill:
+                j = i
+                while j < L and f[j] >= fill: j += 1
+                # Thin lines only: a wide band is paint or paving, not a separator
+                if j - i <= maxw and i >= minp // 2 and j <= L - minp // 2: cuts.append((i, j))
+                i = j
+            else:
+                i += 1
+        if not cuts: continue
+        prev = 0
+        for a, b in cuts + [(L, L)]:
+            xy_cut(Mr, Mc, [x0, y0 + prev, x1, y0 + a] if axis == 'y' else [x0 + prev, y0, x0 + a, y1], fill, out, maxw, minp)
+            prev = b
+        return
+    out.append([int(x0), int(y0), int(x1), int(y1)])
+
+
 def cut_panels(key):
-    """Panels are the regions the gutter network encloses. The network is the dark area
-    touching the sheet border plus any long, thin dark component."""
+    """Facade kits: panels are the regions the gutter network encloses. The network is the
+    dark area touching the sheet border plus any long, thin dark component.
+    Ground kits: split along separator rows and columns (see GROUND_KITS)."""
+    import cv2
+    if key in GROUND_KITS:
+        f, how = GROUND_KITS[key][:2]
+        img = cv2.imread(SRC + f)
+        rects = []
+        if how[0] == 'given':
+            ys, xs = [-2] + how[1] + [img.shape[0] + 1], [-2] + how[2] + [img.shape[1] + 1]
+            rects = [[xs[i] + 2, ys[j] + 2, xs[i + 1] - 1, ys[j + 1] - 1] for j in range(len(ys) - 1) for i in range(len(xs) - 1)]
+        elif how[0] == 'lines':
+            Mr, Mc, fill = separator_masks(img, how)
+            def lines(f, L):
+                ys = [i for i in range(L) if f[i] >= fill]
+                runs = []
+                for y in ys:
+                    if runs and y - runs[-1][1] <= 2: runs[-1][1] = y + 1
+                    else: runs.append([y, y + 1])
+                return [0] + [v for r in runs for v in r] + [L]
+            ys, xs = lines(Mr.mean(axis=1), img.shape[0]), lines(Mc.mean(axis=0), img.shape[1])
+            rects = [[xs[i], ys[j], xs[i + 1], ys[j + 1]] for j in range(0, len(ys), 2) for i in range(0, len(xs), 2)
+                     if xs[i + 1] - xs[i] > 30 and ys[j + 1] - ys[j] > 30]
+        else:
+            Mr, Mc, fill = separator_masks(img, how)
+            xy_cut(Mr, Mc, [0, 0, img.shape[1], img.shape[0]], fill, rects)
+    else:
+        img, rects = net_cut(key)
+    fixes = PANEL_FIXES.get(key, [])
+    rects = [r for r in rects if not any(overlap(r, q) for q in fixes)] + fixes
+    # A panel mostly covered by a larger (or identical, earlier) one is a duplicate
+    keep = [r for i, r in enumerate(rects) if not any(
+        j != i and overlap(r, q) > 0.6 * area(r) and (area(q) > area(r) or (area(q) == area(r) and j < i))
+        for j, q in enumerate(rects))]
+    keep.sort(key=lambda r: (r[1] // 40, r[0]))
+    return img, keep
+
+
+def net_cut(key):
     import cv2
     f, thr, bridge = KITS[key][:3]
     img = cv2.imread(SRC + f)
@@ -165,15 +288,7 @@ def cut_panels(key):
     rects = [r for r in rects if not any(o is not r and o[0] <= r[0] and o[1] <= r[1] and o[2] >= r[2] and o[3] >= r[3] for o in rects)]
     core = cv2.erode(gut.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
     dk = g < np.percentile(g[core], 90) + 2
-    rects = [q for r in rects for q in split_panel(dk, r)]
-    fixes = PANEL_FIXES.get(key, [])
-    rects = [r for r in rects if not any(overlap(r, q) for q in fixes)] + fixes
-    # A panel mostly covered by a larger (or identical, earlier) one is a duplicate
-    keep = [r for i, r in enumerate(rects) if not any(
-        j != i and overlap(r, q) > 0.6 * area(r) and (area(q) > area(r) or (area(q) == area(r) and j < i))
-        for j, q in enumerate(rects))]
-    keep.sort(key=lambda r: (r[1] // 40, r[0]))
-    return img, keep
+    return img, [q for r in rects for q in split_panel(dk, r)]
 
 
 def segment(review):
@@ -183,7 +298,7 @@ def segment(review):
     old = json.load(open(PANELS_JSON)) if os.path.exists(PANELS_JSON) else {}
     iou = lambda a, b: overlap(a, b) / (area(a) + area(b) - overlap(a, b))
     out = {}
-    for key in KITS:
+    for key in list(KITS) + list(GROUND_KITS):
         img, rects = cut_panels(key)
         prev = old.get(key, [])
         out[key] = []
@@ -219,40 +334,132 @@ def skyline(items, W, pad):
     return int(sky.max())
 
 
-def build_panels():
-    """Pack the panels in use into panel atlas pages, each scaled to its kit's texel
-    density. A kit's panels share one page, so a building samples one texture."""
-    kits = json.load(open(PANELS_JSON))
+def panel_item(key, i, crop, role, sheet_ppm, atlas_ppm):
+    """A packed panel: its pixels at the atlas density and its size in meters."""
+    s = atlas_ppm / sheet_ppm
+    w, h = max(8, round(crop.width * s)), max(8, round(crop.height * s))
+    return dict(name=f'{key}{i}', kit=key, role=role, px=np.asarray(crop.resize((w, h), Image.LANCZOS)),
+                m=[round(crop.width / sheet_ppm, 2), round(crop.height / sheet_ppm, 2)])
+
+
+def run_around(f, c, thr):
+    """The run of f >= thr that contains (or is nearest to) index c, as [a, b)."""
+    on = np.flatnonzero(f >= thr)
+    if not len(on): return None
+    c = on[np.argmin(np.abs(on - c))]
+    a = b = c
+    while a > 0 and f[a - 1] >= thr: a -= 1
+    while b < len(f) - 1 and f[b + 1] >= thr: b += 1
+    return a, b + 1
+
+
+def shape_ground(crop, role):
+    """Turn crosswalks and lines so their stripes run up the tile, crop lines to their
+    paint, and crop covers and pits to their outline."""
+    from PIL import ImageFilter
+    a = np.asarray(crop).astype(np.float32)
+    lum = a @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    if role in 'CLY':
+        # Stripes running up the tile make the column profile swing back and forth, while
+        # the row profile changes only where the stripes start and end
+        tv = lambda f: np.abs(np.diff(np.convolve(f, np.ones(3) / 3, 'valid'))).sum() / len(f)
+        if tv(lum.mean(axis=1)) > tv(lum.mean(axis=0)):
+            crop = crop.transpose(Image.Transpose.ROTATE_90)
+            a = np.asarray(crop).astype(np.float32)
+            lum = a @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    if role in 'LY':
+        # Paint: well above the asphalt, or yellow
+        paint = (lum > np.median(lum) + 32) | ((a[..., 0] - a[..., 2] > 30) & (a[..., 0] > 90))
+        # Leave out the tile's edges, where bits of the sheet's separators linger
+        f = paint.mean(axis=0)
+        e = max(2, int(len(f) * 0.08))
+        f[:e] = f[-e:] = 0
+        cols = np.flatnonzero(f > max(0.12, 0.5 * f.max()))
+        if len(cols):
+            x0, x1 = cols[0], cols[-1] + 1
+            pad = max(6, int((x1 - x0) * 0.6))
+            crop = crop.crop((max(0, x0 - pad), 0, min(crop.width, x1 + pad), crop.height))
+    if role in 'AWZ':
+        # Even out stains and shading broader than an eighth of the tile, which show as a
+        # checkerboard when the tile is laid down again and again; cracks and joints stay
+        n = max(crop.size)
+        wrap = Image.fromarray(np.pad(a, ((n // 2, n // 2), (n // 2, n // 2), (0, 0)), mode='wrap').astype(np.uint8))
+        low = np.asarray(wrap.filter(ImageFilter.GaussianBlur(n / 8))).astype(np.float32)[n // 2:n // 2 + crop.height, n // 2:n // 2 + crop.width]
+        a = np.clip(a - 0.9 * (low - low.mean(axis=(0, 1))), 0, 255)
+        crop = Image.fromarray(a.astype(np.uint8))
+    if role in 'OQT':
+        # The object is what differs from the tile's edge: find the rows and columns it fills
+        e = np.concatenate([a[:4].reshape(-1, 3), a[-4:].reshape(-1, 3), a[:, :4].reshape(-1, 3), a[:, -4:].reshape(-1, 3)])
+        diff = np.abs(np.asarray(crop.filter(ImageFilter.BoxBlur(2))).astype(np.float32) - np.median(e, axis=0)).max(axis=2) > 38
+        H, W = diff.shape
+        ry, rx = run_around(diff.mean(axis=1), H // 2, 0.25), run_around(diff.mean(axis=0), W // 2, 0.25)
+        # Too small to be the object (texture fooled it): keep the whole tile
+        if ry and rx and ry[1] - ry[0] > 0.4 * H and rx[1] - rx[0] > 0.4 * W:
+            (y0, y1), (x0, x1) = ry, rx
+            if role == 'O':
+                # Square, with the rim where the round cut-out fades (0.45 of the tile)
+                r = max(x1 - x0, y1 - y0) / 0.9 / 2
+                cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+                x0, x1, y0, y1 = cx - r, cx + r, cy - r, cy + r
+            crop = crop.crop((int(max(0, x0 - 2)), int(max(0, y0 - 2)), int(min(W, x1 + 2)), int(min(H, y1 + 2))))
+    return crop
+
+
+def facade_items(kits):
     items = []
     for key, (f, _thr, _bridge, sheet_ppm, atlas_ppm) in KITS.items():
         im = Image.open(SRC + f).convert('RGB')
-        s = atlas_ppm / sheet_ppm
         for i, (x0, y0, x1, y1, role) in enumerate(kits[key]):
             if role not in ROLES: continue
             k = PANEL_INSET
-            crop = im.crop((x0 + k, y0 + k, x1 - k, y1 - k))
-            w, h = max(8, round(crop.width * s)), max(8, round(crop.height * s))
-            t = np.asarray(crop.resize((w, h), Image.LANCZOS))
-            items.append(dict(name=f'{key}{i}', kit=key, role=role, px=t,
-                              m=[round(crop.width / sheet_ppm, 2), round(crop.height / sheet_ppm, 2)]))
+            items.append(panel_item(key, i, im.crop((x0 + k, y0 + k, x1 - k, y1 - k)), role, sheet_ppm, atlas_ppm))
+    return items
+
+
+def ground_items(kits):
+    items = []
+    for key, (f, _how, sheet_ppm, atlas_ppm) in GROUND_KITS.items():
+        im = Image.open(SRC + f).convert('RGB')
+        for i, (x0, y0, x1, y1, role) in enumerate(kits[key]):
+            if role not in GROUND_ROLES: continue
+            k = PANEL_INSET
+            crop = shape_ground(im.crop((x0 + k, y0 + k, x1 - k, y1 - k)), role)
+            items.append(panel_item(key, i, crop, role, sheet_ppm, atlas_ppm))
+    return items
+
+
+def build_panels():
+    """Pack the facade panels in use into panel atlas pages and the ground panels into
+    road atlas pages, each scaled to its kit's texel density."""
+    kits = json.load(open(PANELS_JSON))
+    facade, ground = facade_items(kits), ground_items(kits)
+    metas = {**pack(facade, list(KITS), 'panels'), **pack(ground, list(GROUND_KITS), 'roads')}
+    kit_roles = {k: {r: [it['name'] for it in facade if it['kit'] == k and it['role'] == c] for c, r in ROLES.items()} for k in KITS}
+    ground_roles = {k: {r: [it['name'] for it in ground if it['kit'] == k and it['role'] == c] for c, r in GROUND_ROLES.items()} for k in GROUND_KITS}
+    return metas, facade + ground, kit_roles, ground_roles
+
+
+def pack(items, order, prefix):
+    """Pack the panels into as few pages as fit. A kit's panels share one page, so a
+    building or street samples one texture."""
     pad, W = PANEL_PAD, PANEL_ATLAS_W
     # Split the kits, in order, into as few pages of similar size as fit
-    size = {k: sum((it['px'].shape[0] + 2 * pad) * (it['px'].shape[1] + 2 * pad) for it in items if it['kit'] == k) for k in KITS}
+    size = {k: sum((it['px'].shape[0] + 2 * pad) * (it['px'].shape[1] + 2 * pad) for it in items if it['kit'] == k) for k in order}
     n = 1
     while True:
         target, pages, cur, acc = sum(size.values()) / n, [], [], 0
-        for k in KITS:
+        for k in order:
             if cur and acc + size[k] / 2 > target * (len(pages) + 1) and len(pages) < n - 1:
                 pages.append(cur); cur = []
             cur.append(k); acc += size[k]
         pages.append(cur)
         heights = [skyline([it for it in items if it['kit'] in p], W, pad) for p in pages]
         if max(heights) <= PANEL_ATLAS_H: break
-        if n >= len(KITS): raise ValueError('a single kit is taller than a panel atlas page')
+        if n >= len(order): raise ValueError('a single kit is taller than an atlas page')
         n += 1
     metas = {}
     for i, (page, H) in enumerate(zip(pages, heights)):
-        name = 'panels' if i == 0 else f'panels{i + 1}'
+        name = prefix if i == 0 else f'{prefix}{i + 1}'
         on = [it for it in items if it['kit'] in page]
         skyline(on, W, pad)
         atlas = np.zeros((H, W, 3), np.uint8)
@@ -266,10 +473,9 @@ def build_panels():
         print(name, len(on), 'panels', W, 'x', H, '(' + ', '.join(page) + ')')
     # Drop pages left over from a build that needed more of them
     import glob
-    for f in glob.glob(OUT + 'city-panels*.jpg'):
+    for f in glob.glob(OUT + f'city-{prefix}*.jpg'):
         if os.path.basename(f)[5:-4] not in metas: os.remove(f)
-    kit_roles = {k: {r: [it['name'] for it in items if it['kit'] == k and it['role'] == c] for c, r in ROLES.items()} for k in KITS}
-    return metas, items, kit_roles
+    return metas
 
 
 if '--segment' in sys.argv:
@@ -334,7 +540,7 @@ for name, A in ATLASES.items():
     manifest['atlases'][name] = dict(url=f'textures/city-{name}.jpg', w=W, h=H, cell=cell, pad=pad, content=C, cols=ncols)
     print(name, len(tiles), 'tiles', W, 'x', H)
 
-metas, panels, kit_roles = build_panels()
+metas, panels, kit_roles, ground_roles = build_panels()
 manifest['atlases'].update(metas)
 
 js = '// Generated from the city texture sheets: atlas layouts and where each tile sits.\n'
@@ -344,7 +550,7 @@ js += 'export const TILES = {\n'
 for k, v in manifest['tiles'].items():
     js += f"  {k}: ['{v[0]}', {v[1]}, {v[2]}],\n"
 js += '};\n\n'
-js += '// Facade panels, named <kit><panel number in tools/city-panels.json>: [atlas page,\n'
+js += '// Facade and ground panels, named <kit><panel number in tools/city-panels.json>: [atlas page,\n'
 js += '// x, y, w, h in the page in pixels, then the panel\'s width and height in meters].\n'
 js += 'export const PANELS = {\n'
 for it in panels:
@@ -353,6 +559,12 @@ js += '};\n\n'
 js += '// Panels of each kit by role: window bays, piers (narrow strips), solid walls and vents (louvers).\n'
 js += 'export const KITS = {\n'
 for k, roles in kit_roles.items():
+    js += f'  {k}: {{\n' + ''.join(f"    {r}: {json.dumps(names)},\n".replace('"', "'") for r, names in roles.items()) + '  },\n'
+js += '};\n\n'
+js += '// Ground panels of each kit by role. Crosswalks and lines are turned so their stripes run up\n'
+js += '// the tile, lines are cropped to their paint, and covers and pits to their outline.\n'
+js += 'export const GROUND = {\n'
+for k, roles in ground_roles.items():
     js += f'  {k}: {{\n' + ''.join(f"    {r}: {json.dumps(names)},\n".replace('"', "'") for r, names in roles.items()) + '  },\n'
 js += '};\n'
 open(os.path.join(ROOT, 'js', 'cityTiles.js'), 'w').write(js)
