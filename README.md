@@ -1,12 +1,13 @@
 # VECTORCLAD
 
 A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
-loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines that
-climb the towers and swarm in growing waves. The mech walks, boost-dashes,
+loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
+that climb the towers and swarm in growing waves, and scorpion-frames that dig up
+out of the streets to claw and sting at it. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
 `textures/`, the city from fifty-two more in `textures/city-src/`, and the spiders
-from ten in `textures/spider-src/`. There is no build step.
+and scorpions from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
 
@@ -18,6 +19,9 @@ npx http-server -p 8080 .
 ```
 
 three.js 0.170.0 loads from jsDelivr, so the first load needs a network connection.
+
+Add `?wave=N` to the URL to start the fight at wave N, with every kind that has
+joined by then (every spider and scorpion is in by wave 6).
 
 ## Deploy
 
@@ -188,11 +192,11 @@ They are weak alone (one beam rifle bolt, one missile or a short burst drops
 most of them; the big Lancers and Bombardiers take two bolts) but come in waves
 that keep growing:
 
-- **Waves:** wave *n* sends 6 + 6*n* spiders, in packs, with up to 6 + 5*n*
-  alive at once (64 at most). Packs spawn out of sight, 75 to 230 units away, on
-  walls and roofs, and the gap between packs shrinks each wave. New kinds join as
-  the waves go on, and a Broodmother leads every fifth wave. Clearing a wave
-  patches 30% of the mech's armor.
+- **Waves:** wave *n* sends 6 + 6*n* spiders and [scorpions](#scorpion-frames),
+  in packs, with up to 6 + 5*n* alive at once (64 at most). Spider packs spawn out
+  of sight, 75 to 230 units away, on walls and roofs, and the gap between packs
+  shrinks each wave. New kinds join as the waves go on, and a Broodmother leads
+  every fifth wave. Clearing a wave patches 30% of the mech's armor.
 - **Variants:** each kind has its own palette, proportions, tactics and weapon.
   Every one of them has the same glowing red eyes.
 
@@ -247,10 +251,11 @@ them, move:
 the dark gaps around each piece (each part is picked by a point inside it),
 packs them into `textures/spider.jpg`, writes a glow map of only the lit red
 tubes and slits to `textures/spider-glow.jpg`, and records each part's rectangle
-and outline in `js/spiderParts.js`. In `js/spiders.js`, the outlines become
-extruded plates with the art mapped onto them: curved blades for the upper legs,
-striped claws for the lower legs (each crossed with a second plate so it has
-body from any angle), the skull face, brow, fangs and spine crest. The ribbed
+and outline in `js/spiderParts.js`. In `js/frameParts.js` (shared with the
+scorpions), the outlines become extruded plates with the art mapped onto them:
+curved blades for the upper legs, striped claws for the lower legs (each crossed
+with a second plate so it has body from any angle), the skull face, brow, fangs
+and spine crest. The ribbed
 dome and the slit plate are wrapped onto the abdomen and the carapace. The eyes
 are additive glow points.
 
@@ -263,6 +268,61 @@ dorsal lance plate.
 
 Every spider part is an `InstancedMesh` shared by the whole swarm, so 64 spiders
 cost about fifteen draw calls.
+
+## Scorpion-frames
+
+Eight-legged ground hunters built from the same spider sheets and palette swap,
+running in the same waves. They don't leap or shoot from the rooftops. They dig
+up out of the street, 60 to 200 units away and out of sight, and come straight
+for the mech to fight up close:
+
+- **Pincers:** a claw opens as it winds up, then snaps shut on the mech's hips or
+  torso (12 AP).
+- **Stinger:** the tail cocks back while its venom bulb glows, then whips over the
+  scorpion's head onto the mech (30 AP).
+- **Telegraphs:** every hit is tested against where the rendered pincer or
+  stinger tip actually is, so a dash during the wind-up dodges it. The raised
+  shield turns away strikes from the front, along with the venom, shock and grab
+  that ride on them.
+
+**Weakness:** a scorpion can only climb about 100 ft (30 m) up a wall. Past that
+its grip gives out: it scrabbles at the wall, slips back down and tries again, so
+scorpions chasing a mech up a tower end up lined along the wall at the 100 ft
+mark. They can still climb over buildings shorter than that, but a mech on a
+higher roof, or high in the air, is out of reach of everything but their ranged
+attacks.
+
+| Variant | Palette | From wave | What sets it apart |
+| --- | --- | --- | --- |
+| **Burrower** | Desert tan, amber glow | 1 | Dives into the street and tunnels at the mech, untargetable, straight under buildings, while the street heaves above it. A pulsing ring marks where it will burst out 0.6 seconds later, pincers first (24 AP). |
+| **Prowler** | Black | 2 | Runs dark: its lights go out and neither the lock-on button nor missile locks can find it. It swings wide round the mech to strike from behind, where the shield can't help and its hits do 50% more. Its lights flare whenever it strikes or is hit. |
+| **Berserker** | Dark red | 2 | Tougher (two rifle bolts). Below half its armor it goes berserk: glow flaring and venting red steam, it moves half again as fast and strikes and recovers far quicker. |
+| **Venomtail** | Neon green | 3 | Its sting injects venom that eats 7 AP a second for six seconds and holds off armor regeneration; its pincers inject a little too. Lobs pairs of venom globs from range, or at a mech out of reach. |
+| **Shocktail** | Neon blue | 3 | Its sting shorts out the mech's boost (45 drained, regen stalled). From range, and at a mech out of reach, it charges and arcs jagged lightning from its tail that drains boost too. |
+| **Scorcher** | Neon orange | 4 | Sprays a stream of fire from its tail that drags after the mech's legs, burning it while it stands in the stream and setting the street alight. Burning patches last a few seconds. |
+| **Emperor** | Royal purple, gold trim | 6 | Nearly twice the size of the other scorpions, with 160 HP and hits half again as hard. Its pincer seizes the mech and pins it for 1.8 seconds (dash to break free three times faster) while it reels itself in and stings. Arrives with two escorts. |
+
+### How they're built
+
+`js/scorpions.js` builds scorpions from the spider atlas parts: the thorax plate
+on a flat carapace hull, the ribbed dome stretched into the segmented body with
+the spine plate along its back, femur and tibia plates for the legs and arms,
+heavy hulls for the claw hands, striped claw plates for the fingers and stinger,
+and the glowing turbine disc wrapped onto the venom bulb. The neon kinds use a
+fourth channel on the palette's accent that makes the paint itself glow.
+
+- **Legs:** eight, stepping in alternating tetrapods with knees thrown wide and
+  the body slung low. They share the spiders' surface crawling and foot planting.
+- **Tail:** five segments posed with planar CCD in a plane that turns toward the
+  target. Each joint only curls forward, so the tail arches over the back at
+  rest and whips over the head when it stings. The strike aims at the torso,
+  chest or hips, whichever the stinger can reach.
+- **Pincers:** two-bone arms with the elbows thrown outward. Each hand points its
+  own way, forward at rest and at the mech in a strike, and a hinged finger
+  swings open against a fixed one.
+
+Every part is an `InstancedMesh`, drawn only up to the highest scorpion slot in
+use, so the 24 scorpions that can be alive at once cost about a dozen draw calls.
 
 ## Design notes
 
@@ -317,7 +377,9 @@ in the hangar settings.
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
 | `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
-| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders and scorpions |
+| `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
+| `js/frameParts.js` | Shared by spiders and scorpions: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, the mech's hit capsule |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
