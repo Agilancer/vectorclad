@@ -1,7 +1,7 @@
 # VECTORCLAD
 
 A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
-loose in a Lower Manhattan overrun by spider-frames, six-legged machines that
+loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines that
 climb the towers and swarm in growing waves. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
@@ -91,8 +91,8 @@ Weapons, from the weapon sheet:
 
 ## The city
 
-A 10 x 10 grid of blocks modeled on downtown Manhattan, built entirely from the
-city texture sheets. The mech stands 40 ft (12.2 m) tall: at startup `main.js`
+Port Meridian: a 10 x 10 grid of blocks on a peninsula between two rivers and a harbor,
+built entirely from the city texture sheets. The mech stands 40 ft (12.2 m) tall: at startup `main.js`
 measures the top of its head in the idle stance and sets the world scale from
 that (about 1.71 m per game unit), and the city is laid out in real meters.
 
@@ -104,29 +104,32 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
     - Clean streets get fresh asphalt, crisp lane lines, double yellows and crosswalks; worn and broken ones get faded and cracked paint, stained or broken slabs, and cracked patches and potholes laid over the asphalt in soft-edged rounds.
     - Each avenue segment, cross street and sidewalk picks its own tile, so the paving changes block by block. The original asphalt and slab tiles stay in the clean mix.
     - Manholes, sidewalk covers and grates, tree pits under the street trees, and the starting plaza's paving (setts, fan cobbles, herringbone brick or pavers) come from the kits too.
-- **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters:
-  - Walk-ups with storefronts, cornices and rooftop water towers.
-  - Prewar mid-rises with setbacks.
+- **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters (one around the starting plaza, one to the southeast):
+  - Walk-ups with storefronts and cornices; prewar mid-rises with setbacks.
   - Glass office slabs and towers with mechanical penthouses.
-  - Art deco "wedding cake" towers with copper pyramid crowns.
-  - A Woolworth-style gothic tower and a One WTC-style tapered landmark.
+  - Twisting towers, whose square floors turn a quarter turn or so on the way up, and tapering octagonal and hexagonal towers with spires.
+  - Stacked towers of shifted boxes that swing from side to side and hang out over the sidewalks, alternating two facades.
+  - Art deco setback towers, crowned with a copper pyramid or a steel lattice lantern around a needle.
+  - Signature blocks: the observation needle (the city's landmark, a tapering concrete shaft with a flared pod, a glass viewing ring and a beaconed mast), twin towers on a podium joined by a sky bridge, a gate building whose bridge of floors spans a plaza the mech can walk through, and a stepped ziggurat with a garden and trees on every terrace.
+  - Roofs carry gardens, steel tanks, masts, solar panels, billboards and helipads.
+  - Big screens for made-up brands hang over the streets on some tall buildings.
   - Party walls are brick, but buildings taller than their neighbors get windows on every side.
   - Many facades are composed from twenty panel kits, each a family of materials: steel, precast, graphite, brick, concrete, limestone, teal glass, aluminum, navy, slate, sandstone, indigo, silver, travertine, seaglass, masonry, ivory, basalt, azure, and a sheet of whole facades.
     - Each building picks one kit and one window bay, so its floors line up.
     - Piers frame the corners and split long sides into evenly sized groups of bays.
     - Offices and towers get a louvered mechanical floor every 40 to 85 m and under each setback, and their penthouses wear the kit's louvers.
     - Walk-ups draw from the brick, limestone and masonry kits; prewar buildings and art deco towers from the masonry and warm stone kits; offices and towers from the glass, metal and dark stone ones.
-- **Open spaces:** a starting plaza with a red cube and planters, a park with a fountain, and a small green.
+- **Open spaces:** a starting plaza with an armillary of steel rings and planters, a park with a fountain, a small green, and the plaza under the gate building.
 - **Elevated structures:** built from ten structure kits (railway, steel truss, overpass, viaduct, interchange, footing, suspension, cable-stay, stonework and industrial).
-  - An elevated railway runs down the avenue beside the starting plaza, after the old Els: double track on a deck carried by lattice girders, on steel bents every 15 m.
-  - An elevated highway runs along the east waterfront, after the FDR Drive: four lanes on girders and hammerhead piers, with lamps along its barriers. At the south end a ramp brings it down to the esplanade.
+  - An elevated railway runs down the avenue beside the starting plaza: double track on a deck carried by lattice girders, on steel bents every 15 m.
+  - An elevated expressway runs along the east waterfront: four lanes on girders and hammerhead piers, with lamps along its barriers. At the south end a ramp brings it down to the esplanade.
   - Both decks clear the mech (17 m up), so it can walk under them, and both are solid: jump up onto either, or walk up the highway ramp, and walk along the top. Railings and barriers keep it on unless it jumps them. Spiders perch on them like roofs.
-- **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the Battery. North of the playable area the city carries on past a barricade.
-- **Street life:** streetlights, traffic signals, subway entrances, street trees, steam stacks and vents, and parked cars (many of them cabs).
+- **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
+- **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, steam vents, and parked cars (the teal ones are taxis).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
-- **Scenery:** Jersey City and Brooklyn skylines across the rivers, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
-  - A suspension bridge across the East River: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
-  - A cable-stayed bridge across the Hudson, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
+- **Scenery:** skylines on the far shores of both rivers, uptown towers to the north led by a twisting supertall, and out in the harbor a lighthouse on a rocky islet and a line of wind turbines whose rotors turn.
+  - A suspension bridge across the east river: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
+  - A cable-stayed bridge across the west river, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
 
 All city surfaces sample six texture atlases (`textures/city-facade.jpg`,
 `city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`, `city-roads.jpg`,
@@ -309,7 +312,7 @@ in the hangar settings.
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
-| `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
+| `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
 | `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
