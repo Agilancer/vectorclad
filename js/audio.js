@@ -11,7 +11,8 @@ export class Sound {
 
   unlock() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      // iOS reports 'interrupted' (not 'suspended') after a call, Siri or a trip to the background
+      if (this.ctx.state !== 'running') this.ctx.resume();
       return;
     }
     const AC = window.AudioContext || window.webkitAudioContext;

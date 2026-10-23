@@ -8,7 +8,7 @@ import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
-import { titleDone } from './title/title.js';
+import { titleDone, portraitPhone } from './title/title.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -45,6 +45,8 @@ const store = {
 };
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+// The hangar is a bottom sheet rather than a side panel (same query as #hangar in style.css)
+const hangarSheet = matchMedia('(max-width: 720px) and (orientation: portrait)');
 
 // ---------------------------------------------------------------------------
 // Renderer & scene
@@ -179,7 +181,7 @@ async function init() {
   mats = makeMaterials(tex);
   applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
   fx = new FX(scene, { onShake: shake, sound });
-  hud = new HUD();
+  hud = new HUD({ touch: isTouch });
   mech = new Mech(mats, fx.glowTex);
   METERS = MECH_HEIGHT_M / measureMech();
   $('#load-msg').textContent = 'Building Lower Manhattan…';
@@ -234,7 +236,7 @@ async function init() {
   weapons.equip(loadout);
 
   hangar = new Hangar({
-    loadout, settings, sound,
+    loadout, settings, sound, touch: isTouch,
     onChange: () => {
       applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
       weapons.equip(loadout);
@@ -247,10 +249,16 @@ async function init() {
   if (isTouch) {
     document.body.classList.add('touch');
     input.setupTouch($('#touch'));
+    // The canvas never sees a tap under the touch controls, so wake the audio from them
+    $('#touch').addEventListener('pointerdown', () => sound.unlock());
   }
   input.onLockChange = (locked) => {
     if (!locked && mode === 'play' && !input.lockFailed) openHangar();
   };
+  // Pause in the hangar when the game can't be seen: the page goes to the background,
+  // or a phone turns upright and the rotate overlay covers it.
+  document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') openHangar(); });
+  portraitPhone.addEventListener('change', () => { if (portraitPhone.matches && mode === 'play') openHangar(); });
 
   $('#btn-launch').addEventListener('click', () => { sound.unlock(); startPlay(); });
   $('#btn-intro-hangar').addEventListener('click', () => { sound.unlock(); $('#intro').hidden = true; openHangar(); });
@@ -259,6 +267,9 @@ async function init() {
   $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); startPlay(); });
   $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); redeploy(); openHangar(); });
   $('#t-menu').addEventListener('click', () => openHangar());
+  // A tap with a second finger (thumb still on the stick) never becomes a click, so open on touchend.
+  // Cancelling it also keeps the click from landing on the hangar that just opened under the finger.
+  $('#t-menu').addEventListener('touchend', (e) => { e.preventDefault(); openHangar(); });
   canvas.addEventListener('click', () => {
     sound.unlock();
     if (mode === 'play' && !input.locked) input.requestLock();
@@ -339,6 +350,7 @@ function die() {
   setHardLock(null);
   input.exitLock();
   $('#touch').hidden = true;
+  input.releaseTouch();
   fx.explosion(P.chest, 2.2);
   sound.explosion(P.chest, 2);
   shake(null, 1.2);
@@ -354,6 +366,7 @@ function openHangar() {
   mode = 'hangar';
   $('#hangar').hidden = false;
   $('#touch').hidden = true;
+  input.releaseTouch();
   input.exitLock();
   cam.orbit = P.bodyYaw + 0.6;
 }
@@ -667,13 +680,13 @@ function updateCamera(dt, speed) {
     camera.position.copy(camPos);
     const look = _t.set(P.pos.x, P.pos.y + cam.lookY, P.pos.z);
     // Shift the mech left of center while a side panel covers the right
-    const panelOpen = mode === 'hangar' && window.innerWidth > 720;
+    const panelOpen = mode === 'hangar' && !hangarSheet.matches;
     const introOpen = mode === 'intro' && window.innerWidth > 720;
     if (panelOpen || introOpen) {
       _t2.subVectors(look, camPos).normalize().cross(new V3(0, 1, 0)).normalize();
       look.addScaledVector(_t2, panelOpen ? 4.5 : -4.5);
     }
-    if (mode === 'hangar' && window.innerWidth <= 720) look.y -= 2.5;
+    if (mode === 'hangar' && hangarSheet.matches) look.y -= 2.5;
     camera.lookAt(look);
     camDir.subVectors(look, camPos).normalize();
     cam.fov = damp(cam.fov, 50, 3, dt);
@@ -684,7 +697,9 @@ function updateCamera(dt, speed) {
     camera.lookAt(_t.set(...cam.free.look));
     cam.fov = cam.free.fov || cam.fov;
   }
-  camera.fov = cam.fov;
+  // On portrait screens, widen the vertical FOV so the view is never narrower than it is tall;
+  // otherwise an upright tablet crops the mech off the side of the screen.
+  camera.fov = camera.aspect < 1 ? 2 * Math.atan(Math.tan(cam.fov * Math.PI / 360) / camera.aspect) * 180 / Math.PI : cam.fov;
   camera.updateProjectionMatrix();
 
   // Shake

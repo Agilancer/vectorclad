@@ -29,13 +29,14 @@ export const WEAPONS = {
   shield: { name: 'RX-S Shield', short: 'SHIELD', slots: ['leftHand'], kind: 'shield', desc: 'Forearm shield. Hold the left trigger to raise it.' },
 };
 
+// key: the keyboard/mouse control; touch: the on-screen button that fires it
 export const SLOTS = [
-  { id: 'rightHand', label: 'Right hand', type: 'hand', key: 'LMB' },
-  { id: 'leftHand', label: 'Left hand', type: 'hand', key: 'RMB' },
-  { id: 'shoulderL', label: 'Left shoulder', type: 'shoulder', key: 'F' },
-  { id: 'shoulderR', label: 'Right shoulder', type: 'shoulder', key: 'F' },
-  { id: 'legL', label: 'Left leg', type: 'leg', key: 'Q/E' },
-  { id: 'legR', label: 'Right leg', type: 'leg', key: 'Q/E' },
+  { id: 'rightHand', label: 'Right hand', type: 'hand', key: 'LMB', touch: 'FIRE' },
+  { id: 'leftHand', label: 'Left hand', type: 'hand', key: 'RMB', touch: 'L' },
+  { id: 'shoulderL', label: 'Left shoulder', type: 'shoulder', key: 'F', touch: 'CNN' },
+  { id: 'shoulderR', label: 'Right shoulder', type: 'shoulder', key: 'F', touch: 'CNN' },
+  { id: 'legL', label: 'Left leg', type: 'leg', key: 'Q/E', touch: 'MSL/SALVO' },
+  { id: 'legR', label: 'Right leg', type: 'leg', key: 'Q/E', touch: 'MSL/SALVO' },
 ];
 
 export function allowedFor(slot) {

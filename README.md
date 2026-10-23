@@ -35,7 +35,8 @@ compete for the GPU.
 
 On phones held upright, a "Rotate your phone" overlay covers the screen until the phone
 is turned sideways. Tapping start on a phone also asks for fullscreen and a landscape
-lock, which Android browsers honor and iOS ignores.
+lock, which Android browsers honor and iOS ignores. Turning a phone upright mid-fight,
+or leaving the page, pauses the game in the hangar.
 
 The logo files live in `js/title/`. `logo.js` and `wordmark-data.js` are copied from the
 brand kit; regenerate them there rather than editing them here. The title's three.js
