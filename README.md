@@ -134,7 +134,7 @@ built entirely from the city texture sheets. The mech stands 40 ft (12.2 m) tall
 measures the top of its head in the idle stance and sets the world scale from
 that (about 1.71 m per game unit), and the city is laid out in real meters.
 
-- **Street grid:** 28 m avenues and 22 m cross streets, both four lanes wide, on long east-west blocks. Avenues run one way; cross streets alternate between one way and two way with a double yellow.
+- **Street grid:** 28 m avenues and cross streets, both four lanes wide (a 20 m roadway on the cross streets), on long east-west blocks. Avenues run one way; cross streets alternate between one way and two way with a double yellow.
   - Crosswalks, stop bars, lane arrows, "don't block the box" junctions and manholes are keyed out of the asphalt sheets.
   - Sidewalks are raised with granite curbs and rounded corners.
   - Streets and sidewalks draw on ten ground kits (tactile, crisp, cobble, ruin, faded, redcurb, hazard, buslane, grime, fresh), picked by how worn the pavement is in each part of town:
