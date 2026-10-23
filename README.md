@@ -113,7 +113,7 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Stacked towers of shifted boxes that swing from side to side and hang out over the sidewalks, alternating two facades.
   - Art deco setback towers, crowned with a copper pyramid or a steel lattice lantern around a needle.
   - Signature blocks: the observation needle (the city's landmark, a tapering concrete shaft with a flared pod, a glass viewing ring and a beaconed mast), twin towers on a podium joined by a sky bridge, a gate building whose bridge of floors spans a plaza the mech can walk through, and a stepped ziggurat with a garden and trees on every terrace.
-  - Roofs carry gardens, steel tanks, masts, solar panels, billboards and helipads.
+  - Roofs carry gardens, steel tanks, masts, solar panels, billboards and helipads. About half the walk-ups and prewar buildings also carry an old timber water tower on braced steel legs.
   - Big screens for made-up brands hang over the streets on some tall buildings.
   - Party walls are brick, but buildings taller than their neighbors get windows on every side.
   - Many facades are composed from twenty panel kits, each a family of materials: steel, precast, graphite, brick, concrete, limestone, teal glass, aluminum, navy, slate, sandstone, indigo, silver, travertine, seaglass, masonry, ivory, basalt, azure, and a sheet of whole facades.
@@ -180,6 +180,77 @@ see-through shadows). Piers, towers and pylons also have their outline traced in
 `OUTLINES` in `js/cityTiles.js`, holes included, and the city extrudes them into solid
 slabs with the piece on both faces. Bridges size their towers and pylons from these
 outlines, so the deck always passes through the opening under the crossbeam.
+
+## Destruction
+
+Everything the mech can shoot in the playable city can be shot apart: buildings and towers,
+their cornices, penthouses, billboards, solar panels and the old timber water towers on the
+walk-up and prewar roofs, street trees, lamp posts, signals, kiosks, subway entrances, the El
+and the elevated highway. (The bridges and the distant skylines stay whole.) It lives in
+`js/destruct/`.
+
+- **Hits carve cells.** A structure stays part of the city's merged meshes until something
+  hits it. Then it is voxelized into cells of about half a meter (up to 1.25 m for the
+  biggest towers). The grid lines snap to every wall, floor and setback, so cell faces lie
+  exactly on the original surfaces. Each round takes its own bite:
+  - machine gun, vulcan and shotgun rounds punch holes about a meter across;
+  - beam rifle bolts blow out bigger ones;
+  - rockets, grenades and missiles leave craters 2 to 5 m across;
+  - the mega beam burns a trench as deep as it is held on a spot, so a sweep cuts a line
+    through a building.
+
+  Spider fire chips the city too, but less: plasma bolts, lasers, mortar shells and
+  skitterer blasts.
+- **Holes are cut to the pixel.** A damaged structure keeps the triangles it was drawn
+  with as a skin. A 3D mask texture, one texel per cell, drops every fragment whose cell is
+  gone, with torn cladding at the edges and scorch around them, and the shadow map uses the
+  same mask, so light falls through the holes. Behind the skin, the cells are built like a
+  building: one-cell walls of the facade's material (glass curtain wall, stone, brick or
+  panel), floor slabs, a grid of columns about 7 m apart, a core in tall towers, and rooms
+  between them.
+  - A hole shows broken concrete with rebar, brick or shattered curtain wall, and the
+    office floors behind it with their ceiling lights on.
+  - Faces are greedy-meshed one 16-cell chunk at a time, so a hit only re-meshes what it
+    touched.
+- **Structures fail like structures.** After damage, a standing structure is checked
+  three ways:
+  - **Islands:** cells cut off from the ground break away.
+  - **Sections:** at each weakened level, everything above is weighed against what is left
+    to carry it, and the level fails when the load wins.
+    - Every building's strength is calibrated so its weakest intact level carries 3.4
+      times its load.
+    - Plan pieces more than about 8 m apart stand apart: twin towers, the bents of the El.
+    - Strength falls off as the load's center moves toward the edge of what is left. Cut a
+      building a little past halfway and its top tips over toward the cut, pivoting on
+      what remains.
+    - Shoot out too much of a storey and the floors above crush it and drop.
+  - **Spans:** floors, lintels and overhangs held too far from a solid path to the ground
+    give way in slabs. Shoot out a run of columns and the floor above sags off.
+- **Falling pieces are rigid bodies** (`physics.js`). Each is a voxel grid with mass and
+  inertia summed over its cells. It collides through probes on its outer corners against
+  the street, unbroken buildings, damaged ones and other pieces, with friction, warm
+  starting and sleep.
+  - **Contacts crush.** Where a contact presses harder than the material can take, both
+    sides grind away. A toppling top chews through the edge it pivots on and goes over,
+    or wedges itself against the next building.
+  - **Pancakes.** A block that drops onto what is left of a building crushes down through
+    it storey by storey, as real towers do.
+  - **Shattering.** Hard landings break pieces along jagged Voronoi cracks. The cracks
+    cluster around the impact, so a falling tower's far end may survive as one big block
+    leaning on the street.
+  - **What they hit.** Pieces carve whatever they land on, which can bring that down too.
+    They crush cars, lamp posts and spiders, and hurt the mech. Spiders on a piece that
+    breaks away fall off it.
+- **Rubble and dust:** up to 2,400 tumbling chunks (900 on touch devices), shaped by
+  material: rocks, glass shards, timber splinters and steel rods. Collapses throw out dust
+  surges, and straining levels groan and shed grit before they go.
+- **The mech walks into what it breaks open.** It stands on broken floors and climbs
+  rubble.
+
+The test script `tools/tests/destruction.js` (headless Chromium through Playwright) runs
+these scenarios: bullet holes, a tower cut past halfway, a pancake collapse, props, the El,
+walking into a breach, activation cost of the biggest structures, real weapons, and a soak
+with the swarm. It prints timings and writes screenshots to `tools/tests/out/`.
 
 ## Spider-frames
 
@@ -316,7 +387,16 @@ in the hangar settings.
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
-| `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
+| `js/world.js` | Sky, lights, spatial collision grid, raycasts (through voxel structures and falling pieces), damage routing |
+| `js/destruct/destruct.js` | Destruction: activating structures, damage, structural checks (islands, sections, spans), breaking away, crushing, shattering, rendering budgets |
+| `js/destruct/grid.js` | Voxel grids on lines snapped to the original surfaces, materials, ray marching and push-out |
+| `js/destruct/voxelize.js` | Turns a city owner's recorded volumes into walls, floors, columns, cores and rooms |
+| `js/destruct/skin.js` | Original triangles lifted out of the city meshes, masked per pixel by a 3D cell texture (and in shadows) |
+| `js/destruct/mesher.js` | Greedy mesher for broken faces and the rooms behind them, chunk by chunk |
+| `js/destruct/physics.js` | Rigid voxel bodies: probes, contacts, sequential-impulse solver, sleep |
+| `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
+| `js/destruct/textures.js` | Painted atlas for broken materials, office floors, lit ceilings and plaster |
+| `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |

@@ -293,6 +293,65 @@ export class Sound {
     this.tone({ type: 'square', freq: 440, peak: 0.07, decay: 0.18, delay: 0.25 });
   }
 
+  // ---- destruction (js/destruct) ----------------------------------------------
+  /** Masonry chipping and crumbling; size ~ cells broken */
+  crumble(pos, size = 1) {
+    if (!this.gate('crumble', 0.05, pos)) return;
+    const k = Math.min(1, 0.25 + size * 0.05);
+    this.noiseHit({ type: 'bandpass', freq: 900 + Math.random() * 600, q: 0.7, peak: 0.28 * k, decay: 0.18 + k * 0.4, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 380, peak: 0.35 * k, decay: 0.3 + k * 0.6, pos });
+    for (let i = 0; i < Math.min(6, 1 + size / 6); i++) this.tone({ type: 'triangle', freq: 300 + Math.random() * 500, freqEnd: 120, peak: 0.03, decay: 0.06, pos, delay: Math.random() * 0.25 });
+  }
+  /** Curtain wall shattering */
+  glassBreak(pos, size = 1) {
+    if (!this.gate('glass', 0.06, pos)) return;
+    const k = Math.min(1, 0.3 + size * 0.06);
+    this.noiseHit({ type: 'highpass', freq: 4200, peak: 0.24 * k, decay: 0.25 + k * 0.3, pos });
+    for (let i = 0; i < 4 + Math.min(10, size); i++) this.tone({ type: 'sine', freq: 2400 + Math.random() * 4200, peak: 0.025 * k, decay: 0.05 + Math.random() * 0.12, pos, delay: Math.random() * (0.2 + k * 0.5) });
+  }
+  /** Steel taking a hit or tearing */
+  metalHit(pos, k = 1) {
+    if (!this.gate('metal', 0.05, pos)) return;
+    this.tone({ type: 'triangle', freq: 520 + Math.random() * 380, freqEnd: 260, peak: 0.09 * k, decay: 0.35, pos });
+    this.tone({ type: 'sine', freq: 1310 + Math.random() * 600, peak: 0.04 * k, decay: 0.5, pos });
+    this.noiseHit({ type: 'bandpass', freq: 2200, q: 2, peak: 0.12 * k, decay: 0.12, pos });
+  }
+  /** A structure straining under its load before it goes */
+  groan(pos, k = 1) {
+    if (!this.gate('groan', 0.6, pos, 0.04)) return;
+    const ctx = this.ctx, t = ctx.currentTime, a = this.att(pos) * Math.min(1.2, k);
+    const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth';
+    const base = 38 + Math.random() * 22;
+    o.frequency.setValueAtTime(base, t);
+    for (let i = 1; i <= 6; i++) o.frequency.linearRampToValueAtTime(base * (0.8 + Math.random() * 0.6), t + i * 0.28);
+    f.type = 'bandpass'; f.frequency.value = 180 + Math.random() * 120; f.Q.value = 3;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.32 * a, t + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2);
+    o.connect(f).connect(g).connect(this.master);
+    o.start(t); o.stop(t + 2.1);
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 160, peak: 0.4 * a, attack: 0.3, decay: 1.6, pos });
+  }
+  /** A heavy piece hitting the street or another building; size grows with its mass */
+  crash(pos, size = 1) {
+    if (!this.gate('crash', 0.08, pos, 0.03)) return;
+    const p = Math.min(1.3, 0.4 + size * 0.25);
+    this.noiseHit({ type: 'lowpass', freq: 1600, freqEnd: 90, peak: p, attack: 0.004, decay: 0.9 + size * 0.4, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 260, peak: p * 1.3, decay: 1.8 + size * 0.8, pos });
+    this.tone({ type: 'sine', freq: 52, freqEnd: 22, peak: p * 0.9, decay: 1.1 + size * 0.3, pos });
+    this.crumble(pos, 20);
+  }
+  /** The long roar of a building coming down */
+  collapse(pos, size = 1) {
+    if (!this.gate('collapse', 0.5, pos, 0.02)) return;
+    const p = Math.min(1.4, 0.6 + size * 0.2), d = 3 + size * 1.5;
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 220, peak: p * 1.4, attack: 0.6, decay: d, pos });
+    this.noiseHit({ type: 'bandpass', freq: 600, q: 0.5, peak: p * 0.45, attack: 0.8, decay: d * 0.8, pos });
+    this.last.groan = 0;
+    this.groan(pos, 1.2);
+  }
+
   // Continuous layers -------------------------------------------------------
   setThrust(level, dt) {
     if (!this.ctx) return;

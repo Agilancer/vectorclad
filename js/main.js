@@ -8,6 +8,7 @@ import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
+import { Destruction } from './destruct/destruct.js';
 import { titleDone, portraitPhone } from './title/title.js';
 
 const V3 = THREE.Vector3;
@@ -217,6 +218,11 @@ async function init() {
   });
   world.spiders = spiders;
   spiders.camPos = camera.position;
+  // Everything in the city can be shot apart (js/destruct)
+  const D = (world.destruct = new Destruction({ scene, world, city: world.city, fx, sound, renderer, M: 1 / METERS, mobile: isTouch }));
+  D.player = P;
+  D.spiders = spiders;
+  D.onPlayerHit = (amount, from, kind) => hurt(amount, from, kind);
   P.pos.copy(world.spawn);
   mech.root.position.copy(P.pos);
   mech.resetFeet();
@@ -335,7 +341,7 @@ function hurt(amount, from, kind) {
     sound.shieldBlock();
     shake(null, 0.06);
   } else {
-    const heavy = kind === 'laser' || kind === 'shell' || kind === 'blast';
+    const heavy = kind === 'laser' || kind === 'shell' || kind === 'blast' || kind === 'crush';
     sound.playerHit(heavy ? 1.3 : 0.8);
     shake(null, heavy ? 0.4 : 0.14);
   }
@@ -853,5 +859,5 @@ init().catch((err) => {
 window.__mech = {
   P, cam, input, startPlay, openHangar, redeploy, hurt, AP_MAX, get spiders() { return spiders; }, scene, camera,
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
-  renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get mech() { return mech; }, get mode() { return mode; },
+  renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
 };

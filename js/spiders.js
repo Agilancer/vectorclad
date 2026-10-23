@@ -979,6 +979,7 @@ export class SpiderSwarm {
       if (d < 9) this.cb.onPlayerHit && this.cb.onPlayerHit(8 + 26 * (1 - d / 9), p, 'blast');
     }
     this.world.damageRadius(p, 6, 30);
+    if (this.world.destruct) this.world.destruct.blast(p, 1.5, 120, { enemy: true });
   }
 
   /** The Broodmother sets down a pair of skitterers beside her */
@@ -1151,6 +1152,7 @@ export class SpiderSwarm {
       this.fx.explosion(p, 0.75 * s.scale, { normal: hit ? hit.normal : UP });
       this.sound.explosion(p, 0.7);
       this.world.damageRadius(p, 4, 12);
+      if (this.world.destruct) this.world.destruct.blast(p, 1.2, 80, { enemy: true });
       this.remove(s);
       return;
     }
@@ -1367,7 +1369,7 @@ export class SpiderSwarm {
         b.ring.material.opacity = (0.35 + 0.65 * Math.abs(Math.sin(u.t * (5 + 20 * k)))) * Math.min(1, u.t * 4);
       }
       if (ph || hit || b.life <= 0) {
-        this.impact(b, ph ? b.pos : hit ? hit.point : b.pos, hit ? hit.normal : _c.copy(_a).negate(), ph, P);
+        this.impact(b, ph ? b.pos : hit ? hit.point : b.pos, hit ? hit.normal : _c.copy(_a).negate(), ph, P, ph ? null : hit);
         this.bolts.splice(i, 1);
         continue;
       }
@@ -1385,9 +1387,14 @@ export class SpiderSwarm {
     this.boltMesh.instanceColor.needsUpdate = true;
   }
 
-  impact(b, p, nrm, direct, P) {
-    const B = b.B, fx = this.fx, hurt = this.cb.onPlayerHit;
+  impact(b, p, nrm, direct, P, hit) {
+    const B = b.B, fx = this.fx, hurt = this.cb.onPlayerHit, D = this.world.destruct;
     if (b.ring) b.ring.visible = false;
+    // Spider fire chips the city too, though less than the mech's
+    if (D && hit && !B.web) {
+      if (b.kind === 'shell') D.blast(_e.copy(p).addScaledVector(nrm, -0.3), 1.8, 140, { enemy: true });
+      else D.bullet(hit, { radius: 0.6, power: 38, dir: _e.copy(b.vel).normalize(), enemy: true, chunks: 2, speed: 5 });
+    }
     if (b.kind === 'shell') {
       fx.explosion(p, 0.85, { normal: nrm });
       this.sound.explosion(p, 0.8);
@@ -1464,6 +1471,7 @@ export class SpiderSwarm {
             this.cb.onPlayerHit && this.cb.onPlayerHit(cfg.dmg, L.from.clone(), 'laser');
           }
           this.fx.beamHit(L.end, _a.copy(L.dir).negate(), cfg.beam);
+          if (!onMech && this.world.destruct) this.world.destruct.blast(L.end, 0.6 + cfg.width, 95, { enemy: true });
           if (L.end.y < 0.6) this.fx.scorch(L.end.x, L.end.z, 2.5, L.end.y + 0.03);
         }
       } else {
