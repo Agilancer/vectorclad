@@ -723,9 +723,18 @@ export class WeaponSystem {
     mObj.visible = true;
     this.scene.add(mObj);
     // Eject with a random scatter so the swarm fans out before homing in
-    const vel = dir.clone().multiplyScalar(16 + Math.random() * 6);
-    vel.y += 5 + Math.random() * 5;
-    vel.x += rand(-7, 7); vel.z += rand(-7, 7);
+    let vel;
+    if (s.slot.type === 'leg') {
+      // Leg pods sit low and face down the shin, so they pop their missiles almost straight
+      // up and arc them over rather than fire along the tube into the ground ahead
+      vel = new V3(dir.x, 0, dir.z).normalize().multiplyScalar(rand(5, 8));
+      vel.y = rand(18, 22);
+      vel.x += rand(-4, 4); vel.z += rand(-4, 4);
+    } else {
+      vel = dir.clone().multiplyScalar(16 + Math.random() * 6);
+      vel.y += 5 + Math.random() * 5;
+      vel.x += rand(-7, 7); vel.z += rand(-7, 7);
+    }
     this.missiles.push({
       obj: mObj, pos: _p.clone(), prev: _p.clone(), vel, dir: vel.clone().normalize(), speed: vel.length(),
       target, point: point.clone(), age: 0, def: s.def, scale: sc, seed: Math.random() * 100,
