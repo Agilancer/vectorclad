@@ -11,6 +11,12 @@ import { SOLID, MATS } from './grid.js';
 // are pushed out of the ground, the city's boxes, standing structures and
 // other bodies (both ways), and contacts are solved with sequential impulses:
 // friction, a little bounce, warm starting from the last step, and sleep.
+//
+// A piece that has just broken away slides freely down the walls it was
+// flush against (its parent's and the buildings next door): they give it no
+// support until it leans into them. A piece tipping over the edge of what is
+// left below can be held by a hinge: a pin on the edge it pivots about, which
+// resists turning with the strength left in the hinge until it snaps.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -21,6 +27,10 @@ const BAUMGARTE = 0.22;
 const SLOP_K = 0.04;          // allowed penetration, in cells
 const MAX_W = 6;              // rad/s
 const MAX_V = 140;
+const MAX_IMPACTS = 3;        // impact sites kept per body per step
+const HINGE_MU = 1.6;         // how hard a hinge holds against sliding off its edge
+const PK = 1024;              // contact keys: (pair key) * PK + probe
+const OID = 131072;           // pair keys: body id * OID + other: 0 ground, boxes, structures, bodies
 
 let NEXT_ID = 1;
 
@@ -42,8 +52,12 @@ export class Body {
     this.c = new V3();
     this.R = new Float64Array(9); this.Iinv = new Float64Array(9); this.Iw = new Float64Array(9);
     this.min = new V3(); this.max = new V3();
-    this.sleeping = false; this.still = 0; this.age = 0; this.fractureCool = 0.25;
-    this.impact = null; // strongest contact this step: { speed, point, normal, other }
+    this.sleeping = false; this.still = 0; this.age = 0; this.fractureCool = 0.25; this.touching = false; this.resting = false;
+    this.impact = null; // strongest contact this step: { speed, point, normal, other, kind, meff }
+    this.imps = [];     // up to MAX_IMPACTS of them, apart from each other (impact is the first)
+    this.nimp = 0;
+    this.fresh = null;  // just broke away: { near: Set of the owners it was flush against, x0, q0 }
+    this.hinge = null;  // pivoting on an edge (see Physics.setHinge)
     this.mass();
     this.probes = makeProbes(s.g, this.c);
     this.x.copy(this.c); // starts where it stood: world = local
@@ -175,9 +189,12 @@ const _w = new V3();
  */
 export function makeProbes(g, com, maxProbes = 520) {
   const { nx, ny, nz, mat } = g;
-  const ext = Math.hypot(g.xs[nx] - g.xs[0], g.ys[ny] - g.ys[0], g.zs[nz] - g.zs[0]);
   const cell = Math.max(1e-3, (g.xs[nx] - g.xs[0]) / nx);
-  let s = Math.max(cell * 1.01, ext / 13);
+  // Bins about a tenth of the piece along each axis, so a tall tower still gets a ring of
+  // probes round its foot to pivot on; no finer than a thirtieth of its size, so a slab or a
+  // strip doesn't get a probe for every cell of its thin side
+  const ext = Math.hypot(g.xs[nx] - g.xs[0], g.ys[ny] - g.ys[0], g.zs[nz] - g.zs[0]), lo = Math.max(cell * 1.01, ext / 30);
+  let sx = Math.max(lo, (g.xs[nx] - g.xs[0]) / 10), sy = Math.max(lo, (g.ys[ny] - g.ys[0]) / 10), sz = Math.max(lo, (g.zs[nz] - g.zs[0]) / 10);
   const corners = [];
   const seen = new Set();
   const addCorner = (x, y, z) => {
@@ -211,7 +228,7 @@ export function makeProbes(g, com, maxProbes = 520) {
     const bins = new Map();
     for (let i = 0; i < n; i++) {
       const x = corners[i * 3], y = corners[i * 3 + 1], z = corners[i * 3 + 2];
-      const key = `${Math.floor(x / s)},${Math.floor(y / s)},${Math.floor(z / s)}`;
+      const key = Math.floor(x / sx) + 4096 * (Math.floor(z / sz) + 4096 * Math.floor(y / sy));
       const d = (x - com.x) ** 2 + (y - com.y) ** 2 + (z - com.z) ** 2;
       const b = bins.get(key);
       if (!b || d > b[0]) bins.set(key, [d, i]);
@@ -220,7 +237,7 @@ export function makeProbes(g, com, maxProbes = 520) {
       for (const [, i] of bins.values()) pick.add(i);
       break;
     }
-    s *= 1.35;
+    sx *= 1.35; sy *= 1.35; sz *= 1.35;
   }
   const out = new Float32Array(pick.size * 3);
   let k = 0;
@@ -247,6 +264,8 @@ export class Physics {
     this.manifolds = []; // contacts grouped by the pair of things touching
     this.pool = [];
     this.cache = new Map(); // warm starting: key -> [jn, jt1, jt2]
+    this.old = new Map();
+    this.pairs = new Map();
     this.time = 0;
   }
 
@@ -265,8 +284,15 @@ export class Physics {
     }
     this.collide();
     this.prestep(dt);
-    for (let it = 0; it < ITER; it++) this.solve();
-    for (const c of this.contacts) this.cache.set(c.key, [c.jn, c.jt1, c.jt2]);
+    for (const b of B) if (b.hinge && !b.sleeping) this.prepHinge(b, dt);
+    for (let it = 0; it < ITER; it++) {
+      this.solve();
+      for (const b of B) if (b.hinge && !b.sleeping) this.solveHinge(b.hinge, b);
+    }
+    for (const c of this.contacts) {
+      const w = this.cache.get(c.key);
+      if (w) { w[0] = c.jn; w[1] = c.jt1; w[2] = c.jt2; } else this.cache.set(c.key, [c.jn, c.jt1, c.jt2]);
+    }
     // Integrate
     for (const b of B) {
       if (b.sleeping) continue;
@@ -283,20 +309,119 @@ export class Physics {
       q.w += h * (-w.x * qx - w.y * qy - w.z * qz);
       q.normalize();
       b.updateR();
-      // Air and contact damping, then sleep once it has been still a while
-      const touching = b.touching;
-      const lin = touching ? 0.6 : 0.02, ang = touching ? 1.4 : 0.05;
+      // Air and contact damping (only resting on something: a piece sliding down a wall falls
+      // freely), then sleep once it has been still a while
+      const touching = b.touching, rest = b.resting;
+      const lin = rest ? 0.6 : 0.02, ang = rest ? 1.4 : touching ? 0.4 : 0.05;
       b.v.multiplyScalar(Math.max(0, 1 - lin * dt));
       b.w.multiplyScalar(Math.max(0, 1 - ang * dt));
       const slow = b.v.lengthSq() < 0.09 && b.w.lengthSq() < 0.004;
-      b.still = slow && touching ? b.still + dt : 0;
+      b.still = slow && touching && !b.hinge ? b.still + dt : 0;
       if (b.still > 0.7) { b.sleeping = true; b.v.set(0, 0, 0); b.w.set(0, 0, 0); }
+      if (b.hinge) this.hingeAngle(b, dt);
+      // Flush against nothing any more once it has moved or turned a little
+      const F = b.fresh;
+      if (F && (b.age > 3 || b.x.distanceToSquared(F.x0) > F.r2 || Math.abs(b.q.dot(F.q0)) < 0.99966)) b.fresh = null;
     }
+  }
+
+  // ---- hinges ---------------------------------------------------------------------
+
+  /**
+   * Pin body b on the edge it tips over: wa the world point on the pivot line, axis the hinge
+   * line (turning +axis tips the top toward the fall), Mr the moment the hinge resists with,
+   * fading to nothing as it turns through yieldAng, and snapping at breakAng. The pin pushes
+   * up and holds against sliding (with friction), it never pulls down; turning about the other
+   * two axes is held still while it lasts.
+   */
+  setHinge(b, wa, axis, fall, Mr, yieldAng, breakAng, extra = {}) {
+    const la = b.toLocal(wa.x, wa.y, wa.z, new V3());
+    b.hinge = Object.assign({ wa: wa.clone(), la, axis: axis.clone().normalize(), fall: fall.clone().normalize(), up: new V3(0, 1, 0), Mr, yieldAng, breakAng,
+      q0: b.q.clone(), ang: 0, jn: 0, jt1: 0, jt2: 0, ja: 0, jb: 0, jc: 0, r: new V3(), err: new V3(), broken: null, age: 0 }, extra);
+    b.wake();
+    return b.hinge;
+  }
+
+  prepHinge(b, dt) {
+    const H = b.hinge;
+    if (H.broken) return;
+    H.age += dt;
+    b.toWorld(H.la.x, H.la.y, H.la.z, _p);
+    H.r.subVectors(_p, b.x);
+    H.err.subVectors(_p, H.wa);
+    const g = b.s.g, cell = (g.xs[g.nx] - g.xs[0]) / g.nx;
+    // Slid or lifted clear of its edge: the hinge is gone
+    if (H.err.length() > cell * 1.8) { H.broken = 'slid'; return; }
+    H.mn = 1 / this.effMassBody(b, H.r, H.up);
+    H.mt1 = 1 / this.effMassBody(b, H.r, H.fall);
+    H.mt2 = 1 / this.effMassBody(b, H.r, H.axis);
+    const k = BAUMGARTE / dt;
+    H.bn = Math.min(6, k * Math.max(0, -H.err.y - cell * SLOP_K));
+    H.bt1 = -k * 0.5 * H.err.dot(H.fall);
+    H.bt2 = -k * 0.5 * H.err.dot(H.axis);
+    H.ka = 1 / Math.max(1e-12, angMass(b, H.axis));
+    H.kb = 1 / Math.max(1e-12, angMass(b, H.fall));
+    H.kc = 1 / Math.max(1e-12, angMass(b, H.up));
+    // The plastic moment it has left, as an impulse this step
+    const a = Math.max(0, H.ang);
+    H.lim = H.Mr * Math.max(0, 1 - a / H.yieldAng) * dt;
+    // Warm start
+    H.jn *= 0.85; H.jt1 *= 0.85; H.jt2 *= 0.85; H.ja *= 0.5;
+    _t.copy(H.up).multiplyScalar(H.jn).addScaledVector(H.fall, H.jt1).addScaledVector(H.axis, H.jt2);
+    applyBody(b, H.r, _t);
+    turn(b, H.axis, H.ja);
+  }
+
+  solveHinge(H, b) {
+    if (H.broken) return;
+    // Pin: normal (push only), then the two tangents within friction
+    b.pointVel(_p.addVectors(b.x, H.r), _va);
+    let j0 = H.jn;
+    H.jn = Math.max(0, j0 + (H.bn - _va.dot(H.up)) * H.mn);
+    if (H.jn !== j0) applyBody(b, H.r, _t.copy(H.up).multiplyScalar(H.jn - j0));
+    const lim = HINGE_MU * H.jn;
+    b.pointVel(_p, _va);
+    j0 = H.jt1;
+    H.jt1 = Math.max(-lim, Math.min(lim, j0 + (H.bt1 - _va.dot(H.fall)) * H.mt1));
+    if (H.jt1 !== j0) applyBody(b, H.r, _t.copy(H.fall).multiplyScalar(H.jt1 - j0));
+    b.pointVel(_p, _va);
+    j0 = H.jt2;
+    H.jt2 = Math.max(-lim, Math.min(lim, j0 + (H.bt2 - _va.dot(H.axis)) * H.mt2));
+    if (H.jt2 !== j0) applyBody(b, H.r, _t.copy(H.axis).multiplyScalar(H.jt2 - j0));
+    // The hinge's own strength against turning about its line, and a line holds the other two
+    j0 = H.ja;
+    H.ja = Math.max(-H.lim, Math.min(H.lim, j0 - b.w.dot(H.axis) * H.ka));
+    if (H.ja !== j0) turn(b, H.axis, H.ja - j0);
+    turn(b, H.fall, -b.w.dot(H.fall) * H.kb);
+    turn(b, H.up, -b.w.dot(H.up) * H.kc);
+  }
+
+  /** How far the body has turned about its hinge line since it was pinned, and whether it snapped */
+  hingeAngle(b, dt) {
+    const H = b.hinge, q = b.q, q0 = H.q0;
+    // q * q0^-1
+    const w = q.w * q0.w + q.x * q0.x + q.y * q0.y + q.z * q0.z;
+    const x = -q.w * q0.x + q.x * q0.w - q.y * q0.z + q.z * q0.y;
+    const y = -q.w * q0.y + q.x * q0.z + q.y * q0.w - q.z * q0.x;
+    const z = -q.w * q0.z - q.x * q0.y + q.y * q0.x + q.z * q0.w;
+    H.ang = 2 * Math.atan2(x * H.axis.x + y * H.axis.y + z * H.axis.z, w);
+    if (!H.broken && H.ang > H.breakAng) H.broken = 'snapped';
+    // Come to rest on its hinge (leaning on something): let it settle and sleep like the rest
+    H.stillT = Math.abs(b.w.dot(H.axis)) < 0.002 && H.age > 0.6 ? (H.stillT || 0) + dt : 0;
+    if (!H.broken && H.stillT > 0.6) H.broken = 'rest';
+    // Turning back onto the stump: let the contacts there take it
+    if (!H.broken && H.ang < -0.03) H.broken = 'back';
+    if (!H.broken && H.age > 40) H.broken = 'age';
+  }
+
+  effMassBody(b, r, d) {
+    _r.crossVectors(r, d); mulM3V(b.Iw, _r.x, _r.y, _r.z, _l); _l.cross(r);
+    return b.im + _l.dot(d);
   }
 
   contact(a, b, px, py, pz, nx, ny, nz, depth, key, kind) {
     const c = this.pool.pop() || { ra: new V3(), rb: new V3(), n: new V3(), t1: new V3(), t2: new V3(), p: new V3() };
-    c.a = a; c.b = b; c.p.set(px, py, pz); c.n.set(nx, ny, nz); c.depth = depth; c.key = key; c.kind = kind;
+    c.a = a; c.b = b; c.p.set(px, py, pz); c.n.set(nx, ny, nz); c.depth = depth; c.key = key; c.kind = kind; c.slip = false;
     return c;
   }
 
@@ -305,36 +430,52 @@ export class Physics {
     for (const c of this.contacts) this.pool.push(c);
     this.contacts.length = 0;
     const B = this.bodies, env = this.env;
-    const pairs = new Map();
-    const take = (list, c) => { list.push(c); };
+    const pairs = this.pairs;
+    pairs.clear();
     for (const a of B) {
-      a.touching = false;
+      a.touching = a.resting = false;
       if (a.sleeping) continue;
       const g = a.s.g, P = a.probes, np = P.length / 3;
       const cell = (g.xs[g.nx] - g.xs[0]) / g.nx;
-      const pad = cell;
+      const pad = cell, base = a.id * OID, F = a.fresh, H = a.hinge && !a.hinge.broken ? a.hinge : null;
       // Ground
-      let list = [];
+      let list = null;
       for (let i = 0; i < np; i++) {
         a.toWorld(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], _p);
         const gy = env.ground(_p.x, _p.z);
-        if (_p.y < gy) take(list, this.contact(a, null, _p.x, gy, _p.z, 0, 1, 0, gy - _p.y, `${a.id}|g|${i}`, 'ground'));
+        if (_p.y < gy) (list || (list = [])).push(this.contact(a, null, _p.x, gy, _p.z, 0, 1, 0, gy - _p.y, base * PK + i, 'ground'));
       }
-      if (list.length) pairs.set(`${a.id}|g`, list);
+      if (list) pairs.set(base, list);
       // City boxes and standing structures
       env.statics(_t.copy(a.min).subScalar(pad), _r.copy(a.max).addScalar(pad), (s) => {
-        list = [];
-        if (s.vox) {
+        const vox = s.vox;
+        // Walls it was flush against when it broke away hold nothing up: only a real push into
+        // them counts, and it slides along them freely
+        const flush = F !== null && F.near.has(vox ? vox.owner : s.owner || s);
+        // Pivoting on the stump: at the hinge line and behind it (lifting off) the hinge carries
+        // it, not contacts. Ahead of it, touching the stump means the gap under it has closed
+        const hs = H && vox === H.s ? H : null, stumpY = hs ? hs.wy + cell * 1.5 : -Infinity;
+        const pk = base + (vox ? 40001 + (vox.id % 40000) : 1 + ((s.id ?? (s.id = NEXT_ID++)) % 40000));
+        let list = pairs.get(pk) || null;
+        const n0 = list ? list.length : 0;
+        if (vox) {
           // Crushing down through it: no contacts, the structure gives way under it instead
-          if (a.crushDown && a.crushDown.s === s.vox) return;
-          const sg = s.vox.g;
+          if (a.crushDown && a.crushDown.s === vox) return;
+          const sg = vox.g;
           if (a.max.x < sg.xs[0] || a.min.x > sg.xs[sg.nx] || a.max.y < sg.ys[0] || a.min.y > sg.ys[sg.ny] || a.max.z < sg.zs[0] || a.min.z > sg.zs[sg.nz]) return;
           for (let i = 0; i < np; i++) {
             a.toWorld(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], _p);
+            const ahead = hs ? (_p.x - hs.wa.x) * hs.fall.x + (_p.z - hs.wa.z) * hs.fall.z : 0;
+            if (_p.y < stumpY && ahead < cell * 2) continue;
             const o = sg.pushOut(_p.x, _p.y, _p.z, 6, _out);
             if (!o) continue;
+            if (hs && !hs.broken && ahead >= cell * 2 && o.depth > cell * 0.1) hs.broken = 'closed';
             const d = o.depth < 0 ? cell : o.depth;
-            take(list, this.contact(a, s, _p.x + o.nx * d, _p.y + o.ny * d, _p.z + o.nz * d, o.nx, o.ny, o.nz, d, `${a.id}|v${s.vox.id}|${i}`, 'vox'));
+            const side = flush && o.ny === 0;
+            if (side && d < cell * 0.3) continue;
+            const c = this.contact(a, s, _p.x + o.nx * d, _p.y + o.ny * d, _p.z + o.nz * d, o.nx, o.ny, o.nz, d, pk * PK + i, 'vox');
+            c.slip = side;
+            (list || (list = [])).push(c);
           }
         } else {
           const mn = s.min, mx = s.max;
@@ -348,10 +489,14 @@ export class Physics {
             if (_p.z - mn.z < d) { d = _p.z - mn.z; nx = 0; ny = 0; nz = -1; }
             if (mx.z - _p.z < d) { d = mx.z - _p.z; nx = 0; ny = 0; nz = 1; }
             if (_p.y - mn.y < d && mn.y > 0.5) { d = _p.y - mn.y; nx = 0; ny = -1; nz = 0; }
-            take(list, this.contact(a, s, _p.x + nx * d, _p.y + ny * d, _p.z + nz * d, nx, ny, nz, d, `${a.id}|b${s.id ?? (s.id = NEXT_ID++)}|${i}`, 'box'));
+            const side = flush && ny === 0;
+            if (side && d < cell * 0.3) continue;
+            const c = this.contact(a, s, _p.x + nx * d, _p.y + ny * d, _p.z + nz * d, nx, ny, nz, d, pk * PK + i, 'box');
+            c.slip = side;
+            (list || (list = [])).push(c);
           }
         }
-        if (list.length) pairs.set(`${a.id}|s${s.vox ? s.vox.id : s.id}`, (pairs.get(`${a.id}|s${s.vox ? s.vox.id : s.id}`) || []).concat(list));
+        if (list && list.length > n0) pairs.set(pk, list);
       });
     }
     // Body against body, probes of each inside the other
@@ -364,18 +509,19 @@ export class Physics {
         const list = [];
         this.probeInto(a, b, list, 1);
         this.probeInto(b, a, list, -1);
-        if (list.length) pairs.set(`${a.id}|${b.id}`, list);
+        if (list.length) pairs.set(a.id * OID + 80001 + (b.id % 50000), list);
       }
     }
-    this.manifolds = [];
+    this.manifolds.length = 0;
     for (const list of pairs.values()) {
-      const kept = reduce(list);
+      const kept = reduce(list, this.pool);
       this.manifolds.push(kept);
-      for (const c of list) if (!kept.includes(c)) this.pool.push(c);
       for (const c of kept) {
         this.contacts.push(c);
+        if (c.slip) continue;
         c.a.touching = true;
-        if (c.b && c.b.isBody) c.b.touching = true;
+        if (c.n.y > 0.3) c.a.resting = true;
+        if (c.b && c.b.isBody) { c.b.touching = true; if (c.n.y < -0.3) c.b.resting = true; }
       }
     }
   }
@@ -393,7 +539,7 @@ export class Physics {
       o.dirWorld(r.nx, r.ny, r.nz, _n);
       if (d < 0) { _n.subVectors(p.x, o.x).normalize(); d = 0.5; }
       // Normal points from o toward p; contact a is p when sign > 0
-      const key = `${p.id}|${o.id}|${i}`;
+      const key = (p.id * OID + 80001 + (o.id % 50000)) * PK + i;
       if (sign > 0) list.push(this.contact(p, o, _p.x + _n.x * d, _p.y + _n.y * d, _p.z + _n.z * d, _n.x, _n.y, _n.z, d, key, 'body'));
       else list.push(this.contact(o, p, _p.x, _p.y, _p.z, -_n.x, -_n.y, -_n.z, d, key, 'body'));
     }
@@ -401,7 +547,10 @@ export class Physics {
 
   prestep(dt) {
     const old = this.cache;
-    this.cache = new Map();
+    this.cache = this.old;
+    this.cache.clear();
+    this.old = old;
+    for (const b of this.bodies) { b.nimp = 0; b.impact = null; }
     for (const c of this.contacts) {
       const a = c.a, b = c.b && c.b.isBody ? c.b : null;
       c.bb = b;
@@ -423,11 +572,13 @@ export class Physics {
       c.bias = Math.min(6, (BAUMGARTE / dt) * Math.max(0, c.depth - cell * SLOP_K));
       if (vn < -2.5) c.bias = Math.max(c.bias, -0.12 * vn);
       // A piece only feels an impact from something at least a tenth its weight: rubble
-      // squeezed out from under a falling block doesn't shatter it
-      if (-vn > 0 && (!b || b.m > a.m * 0.1) && (!a.impact || -vn > a.impact.speed)) a.impact = { speed: -vn, point: c.p.clone(), normal: n.clone(), other: c.b, kind: c.kind };
-      if (b && -vn > 0 && a.m > b.m * 0.1 && (!b.impact || -vn > b.impact.speed)) b.impact = { speed: -vn, point: c.p.clone(), normal: n.clone().negate(), other: a, kind: 'body' };
+      // squeezed out from under a falling block doesn't shatter it. The effective mass at the
+      // point says how hard it lands there
+      if (-vn > 0 && (!b || b.m > a.m * 0.1)) addImpact(a, -vn, c.p, n, 1, c.b, c.kind, c.mn, cell);
+      if (b && -vn > 0 && a.m > b.m * 0.1) addImpact(b, -vn, c.p, n, -1, a, 'body', c.mn, cell);
       // Warm start
       const w = old.get(c.key);
+      if (w) this.cache.set(c.key, w);
       c.jn = w ? w[0] * 0.85 : 0; c.jt1 = w ? w[1] * 0.85 : 0; c.jt2 = w ? w[2] * 0.85 : 0;
       if (c.jn || c.jt1 || c.jt2) {
         _t.copy(n).multiplyScalar(c.jn).addScaledVector(c.t1, c.jt1).addScaledVector(c.t2, c.jt2);
@@ -469,7 +620,7 @@ export class Physics {
       dj = c.jn - jn0;
       if (dj) { _t.copy(c.n).multiplyScalar(dj); this.apply(c, _t); }
       // Friction
-      const lim = FRICTION * c.jn;
+      const lim = c.slip ? 0 : FRICTION * c.jn;
       a.pointVel(c.p, _va);
       if (b) { b.pointVel(c.p, _vb); _va.sub(_vb); }
       let j0 = c.jt1;
@@ -484,20 +635,60 @@ export class Physics {
   }
 }
 
-/** Keep the deepest contact, then the ones spreading farthest from those kept */
-function reduce(list) {
+/** Keep the deepest contact, then the ones spreading farthest from those kept (the rest go back to the pool) */
+let DIST = new Float64Array(256);
+function reduce(list, pool) {
   if (list.length <= MAX_CONTACTS) return list;
-  let best = list[0];
-  for (const c of list) if (c.depth > best.depth) best = c;
-  const kept = [best];
-  const dist = list.map((c) => c.p.distanceToSquared(best.p));
+  const n = list.length;
+  if (DIST.length < n) DIST = new Float64Array(n * 2);
+  let bi = 0;
+  for (let i = 1; i < n; i++) if (list[i].depth > list[bi].depth) bi = i;
+  const kept = [list[bi]];
+  const best = list[bi].p;
+  for (let i = 0; i < n; i++) DIST[i] = list[i].p.distanceToSquared(best);
+  DIST[bi] = -1;
   while (kept.length < MAX_CONTACTS) {
-    let bi = -1, bd = -1;
-    for (let i = 0; i < list.length; i++) if (dist[i] > bd && !kept.includes(list[i])) { bd = dist[i]; bi = i; }
-    if (bi < 0 || bd <= 1e-6) break;
-    const c = list[bi];
+    let k = -1, bd = 1e-6;
+    for (let i = 0; i < n; i++) if (DIST[i] > bd) { bd = DIST[i]; k = i; }
+    if (k < 0) break;
+    const c = list[k];
     kept.push(c);
-    for (let i = 0; i < list.length; i++) dist[i] = Math.min(dist[i], list[i].p.distanceToSquared(c.p));
+    DIST[k] = -1;
+    for (let i = 0; i < n; i++) if (DIST[i] > 0) DIST[i] = Math.min(DIST[i], list[i].p.distanceToSquared(c.p));
   }
+  for (let i = 0; i < n; i++) if (DIST[i] !== -1) pool.push(list[i]);
   return kept;
+}
+
+/** Keep the hardest impacts on a body this step, one per patch a few cells across */
+function addImpact(b, speed, p, n, sign, other, kind, meff, cell) {
+  const L = b.imps, r2 = cell * cell * 16;
+  let k = -1;
+  for (let i = 0; i < b.nimp; i++) if (L[i].point.distanceToSquared(p) < r2) { k = i; break; }
+  if (k >= 0) { if (speed <= L[k].speed) return; } else if (b.nimp < MAX_IMPACTS) {
+    k = b.nimp++;
+    if (!L[k]) L[k] = { speed: 0, point: new V3(), normal: new V3(), other: null, kind: '', meff: 0 };
+  } else {
+    k = 0;
+    for (let i = 1; i < MAX_IMPACTS; i++) if (L[i].speed < L[k].speed) k = i;
+    if (speed <= L[k].speed) return;
+  }
+  const I = L[k];
+  I.speed = speed; I.point.copy(p); I.normal.copy(n).multiplyScalar(sign); I.other = other; I.kind = kind; I.meff = meff;
+  if (!b.impact || speed > b.impact.speed) b.impact = I;
+}
+
+/** Inverse angular mass of b about world axis d */
+function angMass(b, d) { mulM3V(b.Iw, d.x, d.y, d.z, _l); return d.dot(_l); }
+
+/** Impulse J at offset r from b's center */
+function applyBody(b, r, J) {
+  b.v.addScaledVector(J, b.im);
+  _r.crossVectors(r, J); mulM3V(b.Iw, _r.x, _r.y, _r.z, _l); b.w.add(_l);
+}
+
+/** Angular impulse j about world axis d */
+function turn(b, d, j) {
+  if (!j) return;
+  mulM3V(b.Iw, d.x * j, d.y * j, d.z * j, _l); b.w.add(_l);
 }

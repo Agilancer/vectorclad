@@ -4,10 +4,17 @@
 //
 // Scenarios: holes (bullets and blasts in a mid-rise), cut (a beam slot cut a little past
 // halfway through a tower: it must tip toward the cut), crush (a storey shot out), props
-// (water tower legs, lamps, trees), all (default). Prints timings and structure counts and
-// writes screenshots to tools/tests/out/.
+// (water tower legs, lamps, trees), needle (missiles into one side of the observation
+// needle's base: it must lean and fall that way like a tree), row (the ground storey of a
+// building flush between two others shot out: it must drop straight down between them),
+// corner (bazookas into a building's street corner: the corner above breaks away), all
+// (default). Prints timings and structure counts and writes screenshots to tools/tests/out/.
 //
-// Env: BASE_URL (default http://127.0.0.1:8217), CHROMIUM_ARGS (default: the real GPU on Windows).
+// Env: BASE_URL (default http://127.0.0.1:8217), CHROMIUM_ARGS (default: the real GPU on Windows),
+// THREE_DIR (a local copy of the three@0.170.0 npm package, served in place of the CDN: for
+// machines that can't reach it), SIM=1 (no rendering between screenshots, fixed 1/60 s steps:
+// game time runs as fast as the simulation, for software GL), VIEWPORT (default 1280x720),
+// NOSHOT=1 (no screenshots: the numbers only, where a frame takes minutes to draw).
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
@@ -21,7 +28,16 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
 
 (async () => {
   const browser = await chromium.launch({ args: ARGS });
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  const [VW, VH] = (process.env.VIEWPORT || '1280x720').split('x').map(Number);
+  const ctx = await browser.newContext({ viewport: { width: VW, height: VH } });
+  if (process.env.THREE_DIR) {
+    await ctx.route(/cdn\.jsdelivr\.net\/npm\/three@0\.170\.0\/(.*)$/, (route) => {
+      const m = route.request().url().match(/three@0\.170\.0\/(.*)$/);
+      route.fulfill({ path: path.join(process.env.THREE_DIR, m[1]), contentType: 'application/javascript' });
+    });
+  }
+  const page = await ctx.newPage();
+  const SIM = !!process.env.SIM;
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); else if (/destruct/i.test(m.text())) console.log('  page:', m.text()); });
   page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(1, 4).join(' | ')));
@@ -41,11 +57,25 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
     if (!soak) { m.spiders.clear(); m.spiders.update = () => {}; }
     document.querySelector('#hud').style.visibility = 'hidden';
   }, want.includes('soak'));
-  const shot = async (name) => { await page.screenshot({ path: path.join(OUT, name + '.png') }); console.log('  shot', name); };
-  const wait = (ms) => page.waitForTimeout(ms);
+  if (SIM) await page.evaluate(() => { window.__mech.skipRender = true; window.__mech.fixedDt = 1 / 60; });
+  const shot = async (name) => {
+    if (process.env.NOSHOT) return;
+    if (SIM) {
+      await page.evaluate(() => { window.__mech.skipRender = false; window.__mech.fixedDt = 1e-6; });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    }
+    await page.screenshot({ path: path.join(OUT, name + '.png'), timeout: 180000 });
+    if (SIM) await page.evaluate(() => { window.__mech.skipRender = true; window.__mech.fixedDt = 1 / 60; });
+    console.log('  shot', name);
+  };
+  // Game time: with SIM, wait for the simulation to get there rather than the clock
+  const wait = (ms) => SIM
+    ? page.evaluate((s) => new Promise((res) => { const D = window.__mech.destruct, t1 = D.time + s; const f = () => (D.time >= t1 ? res() : setTimeout(f, 20)); f(); }), ms / 1000)
+    : page.waitForTimeout(ms);
   const info = () => page.evaluate(() => window.__mech.destruct.info());
 
   // Helpers in the page: pick buildings near the plaza, point the camera, cut with a beam
+  await page.evaluate(async () => { window.WEAPONS = (await import(new URL('js/weapons.js', document.baseURI).href)).WEAPONS; });
   await page.evaluate(() => {
     const m = window.__mech, D = m.destruct, W = m.world, M = D.M, V = m.P.pos.constructor;
     window.T = {
@@ -100,11 +130,22 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
         return s.count;
       },
       blast(x, y, z, r, p) { return D.blast(new V(x, y, z), r, p); },
+      /** A real weapon's explosion (weapons.js: its crater size, splash and fx) */
+      explode(x, y, z, kind, nx = 0, ny = 0, nz = 0) { return m.weapons.explode(new V(x, y, z), window.WEAPONS[kind], 1.2, nx || ny || nz ? new V(nx, ny, nz) : null); },
       bodies() {
         return D.physics.bodies.filter((b) => b.cells > 50).map((b) => ({
           cells: b.cells, y: +b.x.y.toFixed(1), v: +b.v.length().toFixed(2), w: +b.w.length().toFixed(2), sleep: b.sleeping,
           tilt: +(Math.acos(Math.min(1, Math.abs(b.R[4]))) * 57.3).toFixed(1), lean: [+b.R[1].toFixed(2), +b.R[7].toFixed(2)],
+          hinge: b.hinge ? +(b.hinge.ang * 57.3).toFixed(1) : undefined,
         }));
+      },
+      /** The structure of owner o: cells left and the top of what still stands (m) */
+      left(o) {
+        const s = o.struct;
+        if (!s || s.dead) return { dead: true };
+        const g = s.g;
+        for (let y = g.ny - 1; y >= 0; y--) for (let c = 0; c < g.nxz; c++) if (g.mat[c + g.nxz * y] >= 3) return { count: s.count, top: +(g.ys[y + 1] / M).toFixed(1) };
+        return { count: 0 };
       },
     };
   });
@@ -175,6 +216,66 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
     console.log('  ', JSON.stringify(r));
     await wait(2500);
     await shot('destruct_props');
+  }
+
+  if (run('needle')) {
+    console.log('needle: heavy missiles into the south side of the needle just above its lobby; it must fall south');
+    const r = await page.evaluate(() => {
+      const m = window.__mech, D = m.destruct, M = D.M;
+      const o = D.city.owners.find((q) => q.kind === 'needle'), B = o.box, cx = (B[0] + B[3]) / 2, cz = (B[2] + B[5]) / 2;
+      window.Ndl = { o, cx, cz };
+      m.cam.free = { pos: [cx + 420 * M, 140 * M, cz + 120 * M], look: [cx, 110 * M, cz + 110 * M], fov: 60 };
+      const s = D.activate(o), y = 13 * M, rr = 11.4 * M;
+      for (const [dx, dy] of [[0, 0], [-4, 0], [4, 0], [-8, 2], [8, 2], [0, 4], [-4, 6], [4, 6]]) {
+        const a = Math.PI / 2 + (dx * M) / rr;
+        T.explode(cx + Math.cos(a) * rr, y + dy * M, cz + Math.sin(a) * rr, 'heavyPod', Math.cos(a), 0, Math.sin(a));
+      }
+      return { cells: s.count };
+    });
+    console.log('  ', JSON.stringify(r));
+    for (let k = 0; k < 8; k++) {
+      await wait(2000);
+      await shot(`destruct_needle_${k}`);
+      console.log('   ', JSON.stringify(await page.evaluate(() => {
+        const D = window.__mech.destruct, M = D.M, b = D.physics.bodies.filter((q) => q.cells > 2000).sort((p, q) => q.cells - p.cells)[0];
+        // Where the biggest piece's center has gone, from the needle's axis (m): south is +z
+        return { left: T.left(Ndl.o), big: b && { cells: b.cells, dx: +((b.x.x - Ndl.cx) / M).toFixed(1), y: +(b.x.y / M).toFixed(1), dz: +((b.x.z - Ndl.cz) / M).toFixed(1), hinge: b.hinge ? +(b.hinge.ang * 57.3).toFixed(1) : null }, hinges: D.stats.hinges, breaks: D.stats.hingeBreaks };
+      })));
+    }
+    console.log('  ', JSON.stringify(await info()));
+  }
+
+  if (run('row')) {
+    console.log('row: the ground storey of a building flush between two others shot out; it must drop between them');
+    const r = await page.evaluate(() => {
+      const m = window.__mech, D = m.destruct, M = D.M, p = m.P.pos;
+      const bl = D.city.owners.filter((o) => o.kind === 'building' && o.box && o.box[4] - o.box[1] > 25 * M && o.box[4] - o.box[1] < 60 * M)
+        .sort((a, b) => Math.hypot(a.box[0] - p.x, a.box[2] - p.z) - Math.hypot(b.box[0] - p.x, b.box[2] - p.z));
+      const along = (a, b) => Math.min(a.box[5], b.box[5]) - Math.max(a.box[2], b.box[2]) > 5 * M && b.box[4] > a.box[4] * 0.6;
+      const o = bl.slice(0, 300).find((a) => bl.some((b) => b !== a && Math.abs(b.box[3] - a.box[0]) < 1e-3 * M && along(a, b)) && bl.some((b) => b !== a && Math.abs(b.box[0] - a.box[3]) < 1e-3 * M && along(a, b)));
+      window.Row = { o };
+      const s = D.activate(o), B = o.box;
+      m.cam.free = { pos: [(B[0] + B[3]) / 2 + 10 * M, B[4] * 0.6, B[5] + (B[4] - B[1]) * 1.4], look: [(B[0] + B[3]) / 2, (B[4] - B[1]) * 0.4, (B[2] + B[5]) / 2], fov: 55 };
+      for (let x = B[0]; x <= B[3]; x += 0.5 * M) for (let z = B[2]; z <= B[5]; z += 0.5 * M) for (let y = 2.2 * M; y < 6 * M; y += 0.6 * M) D.damageSphere(s, x, y, z, 0.6 * M, 9999, { chunks: 0 });
+      return { h: +((B[4] - B[1]) / M).toFixed(1), w: +((B[3] - B[0]) / M).toFixed(1) };
+    });
+    console.log('  ', JSON.stringify(r));
+    for (let k = 0; k < 6; k++) { await wait(1000); await shot(`destruct_row_${k}`); console.log('   ', JSON.stringify(await page.evaluate(() => ({ left: T.left(Row.o), bodies: T.bodies().slice(0, 3) })))); }
+  }
+
+  if (run('corner')) {
+    console.log('corner: bazookas into the base of a building\'s street corner; the corner above breaks away');
+    const r = await page.evaluate(() => {
+      const m = window.__mech, D = m.destruct, M = D.M;
+      const o = T.near('building', 30, 80, 600).find((q) => (q.box[3] - q.box[0]) > 20 * M && (q.box[5] - q.box[2]) > 20 * M);
+      window.Cor = { o };
+      const s = D.activate(o), B = o.box, x = B[3], z = B[5];
+      m.cam.free = { pos: [x + 45 * M, (B[4] - B[1]) * 0.55, z + 55 * M], look: [x - 5 * M, (B[4] - B[1]) * 0.35, z - 5 * M], fov: 55 };
+      for (const [dx, dz, h] of [[-3, 0, 3], [0, -3, 3], [-9, 0, 4], [0, -9, 4], [-4, 0, 9], [0, -4, 9]]) T.explode(x + dx * M, h * M, z + dz * M, 'bazooka', dz ? 1 : 0, 0, dx ? 1 : 0);
+      return { h: +((B[4] - B[1]) / M).toFixed(1), cells: s.count };
+    });
+    console.log('  ', JSON.stringify(r));
+    for (let k = 0; k < 5; k++) { await wait(1000); await shot(`destruct_corner_${k}`); console.log('   ', JSON.stringify(await page.evaluate(() => ({ left: T.left(Cor.o), bodies: T.bodies().slice(0, 3), chunks: window.__mech.destruct.stats.chunks })))); }
   }
 
   if (run('play')) {

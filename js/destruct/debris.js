@@ -30,7 +30,7 @@ export class Debris {
     this.env = env;
     this.cap = cap;
     this.n = 0;
-    this.d = new Float32Array(cap * 16); // pos 3, vel 3, rot 3, spin 3, life, max, rest, size
+    this.d = new Float32Array(cap * 16); // pos 3, vel 3, rot 3, spin 3, life, max, rest, drawn (its matrix is up to date)
     this.size = new Float32Array(cap * 3);
     const atlas = interiorAtlas().map.clone();
     const R = cellRect(CELL.rubble);
@@ -64,7 +64,7 @@ export class Debris {
     d[o + 6] = Math.random() * 6.3; d[o + 7] = Math.random() * 6.3; d[o + 8] = Math.random() * 6.3;
     const sp = 2 + Math.random() * 9;
     d[o + 9] = (Math.random() - 0.5) * sp; d[o + 10] = (Math.random() - 0.5) * sp; d[o + 11] = (Math.random() - 0.5) * sp;
-    d[o + 12] = life * (0.7 + Math.random() * 0.6); d[o + 13] = d[o + 12]; d[o + 14] = 0;
+    d[o + 12] = life * (0.7 + Math.random() * 0.6); d[o + 13] = d[o + 12]; d[o + 14] = 0; d[o + 15] = 0;
     // Shape by material: rocks for masonry, shards of glass, splinters of wood, rods of steel
     const name = M ? M.name : 'concrete', r = () => 0.6 + Math.random() * 0.8;
     let sx = size * r(), sy = size * r(), sz = size * r();
@@ -115,11 +115,13 @@ export class Debris {
       } else {
         d[o + 12] -= dt;
         // Settled chunks fall again when the floor under them goes
-        if (Math.random() < dt * 2 && !env.solid(d[o], d[o + 1] - this.size[i * 3 + 1] * 0.6, d[o + 2]) && d[o + 1] - this.size[i * 3 + 1] > env.ground(d[o], d[o + 2]) + 0.05) d[o + 14] = 0;
+        if (Math.random() < dt * 2 && !env.solid(d[o], d[o + 1] - this.size[i * 3 + 1] * 0.6, d[o + 2]) && d[o + 1] - this.size[i * 3 + 1] > env.ground(d[o], d[o + 2]) + 0.05) { d[o + 14] = 0; d[o + 15] = 0; }
         if (d[o + 12] <= 0) d[o + 13] = 0;
       }
       if (d[o + 13] <= 0) continue;
       const fade = resting ? Math.min(1, d[o + 12] / 2.5) : 1;
+      // Lying still at full size where it was drawn last frame: nothing to update
+      if (visible === i && d[o + 15] && d[o + 14] > 0 && fade === 1) { visible++; continue; }
       _e.set(d[o + 6], d[o + 7], d[o + 8]);
       _q.setFromEuler(_e);
       _s.set(this.size[i * 3] * fade, this.size[i * 3 + 1] * fade, this.size[i * 3 + 2] * fade);
@@ -127,6 +129,7 @@ export class Debris {
       if (visible !== i) {
         // Pack live chunks to the front so the instance count stays tight
         d.copyWithin(visible * 16, o, o + 16);
+        d[visible * 16 + 15] = 0;
         this.size.copyWithin(visible * 3, i * 3, i * 3 + 3);
         this.cols.copyWithin(visible * 3, i * 3, i * 3 + 3);
         d[o + 13] = 0;
@@ -135,6 +138,7 @@ export class Debris {
         this.mesh.instanceColor.needsUpdate = true;
       }
       this.mesh.setMatrixAt(visible, _m);
+      d[visible * 16 + 15] = d[visible * 16 + 14] > 0 && fade === 1 ? 1 : 0;
       visible++;
     }
     this.n = visible;

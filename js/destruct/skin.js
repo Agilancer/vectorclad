@@ -121,10 +121,28 @@ export function makeLut(g) {
 }
 function minGap(l) { let m = Infinity; for (let i = 1; i < l.length; i++) m = Math.min(m, l[i] - l[i - 1]); return m; }
 
-/** A 2-channel cell texture: R 255 where the cell has not been destroyed, G scorch */
-export function makeMask(g) {
+/**
+ * A 2-channel cell texture: R 255 where the cell has not been destroyed, G scorch. cut: for a
+ * piece broken off a structure, the cells that stayed behind (GONE in its grid): it carries a
+ * clip of the parent's skin, and what of that was backed by empty cells beside them, with
+ * nothing solid of the piece's own next to them, must not show.
+ */
+export function makeMask(g, cut = null) {
   const data = new Uint8Array(g.N * 2);
   for (let i = 0; i < g.N; i++) data[i * 2] = g.mat[i] === GONE ? 0 : 255;
+  if (cut) {
+    const { nx, ny, nz, nxz, mat } = g;
+    const solid = (j, x, y, z) => (x > 0 && mat[j - 1] >= SOLID) || (x < nx - 1 && mat[j + 1] >= SOLID) || (z > 0 && mat[j - nx] >= SOLID) || (z < nz - 1 && mat[j + nx] >= SOLID) || (y > 0 && mat[j - nxz] >= SOLID) || (y < ny - 1 && mat[j + nxz] >= SOLID);
+    for (const i of cut) {
+      const y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      for (let k = 0; k < 6; k++) {
+        const X = x + (k === 0 ? -1 : k === 1 ? 1 : 0), Z = z + (k === 2 ? -1 : k === 3 ? 1 : 0), Y = y + (k === 4 ? -1 : k === 5 ? 1 : 0);
+        if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
+        const j = X + nx * (Z + nz * Y);
+        if (mat[j] < GONE && data[j * 2] && !solid(j, X, Y, Z)) data[j * 2] = 0;
+      }
+    }
+  }
   const tex = new THREE.Data3DTexture(data, g.nx, g.nz, g.ny);
   tex.format = THREE.RGFormat;
   tex.type = THREE.UnsignedByteType;

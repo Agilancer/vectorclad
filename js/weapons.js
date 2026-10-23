@@ -802,10 +802,10 @@ export class WeaponSystem {
     this.fx.explosion(pos, scale, { normal });
     this.sound.explosion(pos, scale);
     this.world.damageRadius(pos, def.splash || 4, def.dmg);
-    // A crater in whatever it went off against, a little into the surface
+    // A crater in whatever it went off against, a little into the surface (twice the old size)
     const D = this.world.destruct;
     if (D) {
-      const R = ((def.splash || 4) * 0.3) / D.M;
+      const R = ((def.splash || 4) * 0.6) / D.M;
       _p.copy(pos);
       if (normal) _p.addScaledVector(normal, -R * D.M * 0.25);
       D.blast(_p, R, 90 + def.dmg * 2.6);
@@ -830,7 +830,7 @@ export class WeaponSystem {
         if (hit.target) W_.damage(hit.target, b.def.dmg, hit.point);
         else {
           // Bolts blow fist-sized... mech-fist-sized holes
-          if (W_.destruct) W_.destruct.bullet(hit, { radius: 1.45, power: 150, dir: b.dir, speed: 9, chunks: 8 });
+          if (W_.destruct) W_.destruct.bullet(hit, { radius: 2.2, power: 150, dir: b.dir, speed: 9, chunks: 10 });
           if (hit.normal.y > 0.9 && !hit.struct) fx.scorch(hit.point.x, hit.point.z, 2.2, hit.point.y + 0.03);
         }
       } else b.pos.addScaledVector(b.dir, step);
@@ -857,7 +857,7 @@ export class WeaponSystem {
         if (Math.random() < 0.4) fx.smoke.emit(hit.point.x, hit.point.y, hit.point.z, rand(-1, 1), rand(1, 3), rand(-1, 1), 1, 0.6, 2.2, 0.55, 0.52, 0.48, 0.5, 0.6, 0.58, 0.55, 0, 1.5, 0.3);
         if (hit.target) W_.damage(hit.target, t.def.dmg, hit.point);
         // Every round takes its own bite out of what it hits
-        else if (W_.destruct) W_.destruct.bullet(hit, { radius: 0.65 + t.def.dmg * 0.035, power: 45 + t.def.dmg * 6, dir: t.dir, speed: 7, chunks: 3 });
+        else if (W_.destruct) W_.destruct.bullet(hit, { radius: (0.65 + t.def.dmg * 0.035) * 1.5, power: 45 + t.def.dmg * 6, dir: t.dir, speed: 7, chunks: 4 });
       } else t.pos.addScaledVector(t.dir, step);
       if (hit || t.age > t.life) {
         this.scene.remove(t.obj);
