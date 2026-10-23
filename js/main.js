@@ -184,7 +184,7 @@ async function init() {
   hud = new HUD({ touch: isTouch });
   mech = new Mech(mats, fx.glowTex);
   METERS = MECH_HEIGHT_M / measureMech();
-  $('#load-msg').textContent = 'Building Lower Manhattan…';
+  $('#load-msg').textContent = 'Building Port Meridian…';
   await new Promise((r) => setTimeout(r, 30));
   world = new World(scene, mats, fx, sound, { M: 1 / METERS, cityTex: tex.city }, {
     onHit: () => hud.hit(false),
