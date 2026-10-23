@@ -1,10 +1,12 @@
 # VECTORCLAD
 
 A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
-loose in Lower Manhattan. The mech walks, boost-dashes, jump-jets, and fires beam
-rifles, cannons and full missile salvos. Everything is procedural geometry: the
-mech and its weapons are textured from two sheets in `textures/`, and the city
-from twelve more in `textures/city-src/`. There is no build step.
+loose in a Lower Manhattan overrun by spider-frames, six-legged machines that
+climb the towers and swarm in growing waves. The mech walks, boost-dashes,
+jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
+procedural geometry: the mech and its weapons are textured from two sheets in
+`textures/`, the city from twelve more in `textures/city-src/`, and the spiders
+from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
 
@@ -109,7 +111,6 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
 - **Street life:** streetlights, traffic signals, subway entrances, street trees, steam stacks and vents, and parked cars (many of them cabs).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
 - **Scenery:** Jersey City and Brooklyn skylines across the rivers, a suspension bridge, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
-- **Targets:** drones patrol the streets and avenues; target boards stand on plazas, sidewalks and rooftops.
 
 All city surfaces sample three texture atlases (`textures/city-facade.jpg`,
 `city-surface.jpg`, `city-ground.jpg`) through a shader that tiles inside one atlas
@@ -117,6 +118,89 @@ cell with `textureGrad`, so the whole city is merged into a few dozen meshes.
 `tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
 source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
+
+## Spider-frames
+
+The enemies are six-legged spider machines cut from the spider texture sheets.
+They are weak alone (one beam rifle bolt, one missile or a short burst drops
+most of them; the big Lancers and Bombardiers take two bolts) but come in waves
+that keep growing:
+
+- **Waves:** wave *n* sends 6 + 6*n* spiders, in packs, with up to 6 + 5*n*
+  alive at once (64 at most). Packs spawn out of sight, 75 to 230 units away, on
+  walls and roofs, and the gap between packs shrinks each wave. New kinds join as
+  the waves go on, and a Broodmother leads every fifth wave. Clearing a wave
+  patches 30% of the mech's armor.
+- **Variants:** each kind has its own palette, proportions, tactics and weapon.
+  Every one of them has the same glowing red eyes.
+
+| Variant | Palette | From wave | What it does |
+| --- | --- | --- | --- |
+| **Stalker** | Gunmetal, red glow | 1 | The all-rounder. Crawls the towers, leaps between perches, fires plasma bursts, and charges a red laser from its perch. |
+| **Skitterer** | Rust, toxic green glow | 1 | Small, fast and fragile. Rushes the mech in packs of two to four along streets and walls, pounces on it from up to 60 units away (even off a wall), and bursts on contact. It also bursts when shot, hurting anything nearby, mech and spiders alike. |
+| **Weaver** | Bone white, cyan glow | 2 | Long-legged with a long abdomen; leaps the most. Spits pairs of web globs that slow the mech and its boost regen for about three seconds. Dashing tears free faster. |
+| **Lancer** | Blue steel, violet glow | 3 | Big and slow, with a dorsal lance over its head. Climbs high and perches far off (55 to 170 units), then charges a heavy violet beam for 1.7 seconds. Takes two rifle bolts. |
+| **Bombardier** | Brass, orange glow | 4 | Bulbous mortar sac. Stays on rooftops and lobs shells at where the mech is heading. A pulsing orange ring marks each landing spot. Takes two rifle bolts. |
+| **Broodmother** | Near black, magenta glow | Every 5th wave | A boss two and a half times a stalker's size with 320 HP. Fires five-bolt fans and sets down pairs of skitterers every seven to ten seconds. |
+
+- **Weapons:** plasma bolts are led at the mech. Lasers show a flickering aiming
+  line while they charge, lock just before they fire, then burn along that line,
+  so a dash at the right moment dodges them. Fire rates rise with each wave.
+- **Armor:** the mech has 1000 AP, regenerating after four seconds out of
+  contact. The raised shield turns away hits from the front. Hits flash the
+  screen edges and show arcs around the reticle pointing at the shooter. At 0 AP
+  the frame is destroyed; **Redeploy** starts again from wave 1.
+
+### How they move
+
+Locomotion follows how real spiders, and the procedural spider rigs built on
+them, move:
+
+- **Surfaces:** each spider rides a surface with its own up vector: the street,
+  a wall or a roof. Two rays ahead, low and high, find a wall in the way, and the
+  spider tips up onto it (an inside edge). When the ground runs out under the
+  next step, a ray back under the body finds the far side of the roof edge or
+  building corner, and the spider wraps over it (an outside edge). With nothing
+  to hold, it falls.
+- **Feet:** each foot stays planted in world space until it strays too far from
+  its rest spot, then steps. A ray from the hip toward the rest spot finds the
+  foothold, so feet reach onto a wall or around a corner before the body does.
+  A foot only steps if the new hold is closer to where it wants to be.
+- **Gait:** the legs step in an alternating tripod: front and back on one side
+  with the middle on the other, so three feet are always down. Each leg is a
+  two-bone IK chain with the knee thrown high and outward.
+- **Jumps:** spiders leap between buildings, from roofs and from walls, after
+  checking that the arc is clear. They crouch, fly a ballistic arc, turn their
+  undersides to the landing surface in the air, grab on with every foot at once,
+  and leave a silk dragline behind.
+- **Behavior:** they climb to perches that can see the mech and fire from there,
+  rear up to aim, leap to new perches, or drop to the street and rush in. How far
+  they like to perch, how often they leap and how long they stay depend on the
+  variant: lancers and bombardiers keep to high perches, and skitterers never
+  perch at all.
+
+### Building them from the sheets
+
+`tools/build_spider_atlas.py` traces the parts out of the source sheets along
+the dark gaps around each piece (each part is picked by a point inside it),
+packs them into `textures/spider.jpg`, writes a glow map of only the lit red
+tubes and slits to `textures/spider-glow.jpg`, and records each part's rectangle
+and outline in `js/spiderParts.js`. In `js/spiders.js`, the outlines become
+extruded plates with the art mapped onto them: curved blades for the upper legs,
+striped claws for the lower legs (each crossed with a second plate so it has
+body from any angle), the skull face, brow, fangs and spine crest. The ribbed
+dome and the slit plate are wrapped onto the abdomen and the carapace. The eyes
+are additive glow points.
+
+Palette swaps happen per spider in the shader. Each instance carries a tint for
+the bare metal, an accent that replaces the red paint (picked out by how much
+redder a texel is than its green and blue), and a glow color for the lit tubes.
+So every variant shares the same atlas and the same instanced meshes. Variants
+also differ in leg length, abdomen shape and size, and lancers carry an extra
+dorsal lance plate.
+
+Every spider part is an `InstancedMesh` shared by the whole swarm, so 64 spiders
+cost about fifteen draw calls.
 
 ## Design notes
 
@@ -170,15 +254,18 @@ in the hangar settings.
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, waterfront, distant scenery |
 | `js/cityTiles.js` | Generated: atlas layouts and tile positions for the city |
-| `js/world.js` | Sky, lights, spatial collision grid, raycasts, target drones and boards |
+| `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
+| `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
-| `js/ui.js` | HUD and hangar menu |
-| `js/main.js` | Renderer, world scale, player physics, camera, game loop |
+| `js/ui.js` | HUD (armor, waves, damage indicators) and hangar menu |
+| `js/main.js` | Renderer, world scale, player physics and armor, camera, game loop, game over |
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
 | `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases |
+| `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
 directions by its normal and maps it into the region chosen for that direction,

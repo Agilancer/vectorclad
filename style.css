@@ -110,7 +110,18 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .unit-name { font-size: 13px; letter-spacing: 0.3em; color: var(--fg); }
 .score { display: flex; align-items: baseline; gap: 10px; background: var(--panel); padding: 5px 12px; border-left: 3px solid var(--signal); }
 .score b { font-size: 20px; color: var(--fg); }
+.tally { display: flex; gap: 6px; }
+.score.wave { border-left-color: var(--alert); }
+.score small { font-size: 12px; color: var(--alert); letter-spacing: 0.06em; }
 #btn-hangar { pointer-events: auto; }
+
+#boss-bar {
+  position: absolute; left: 50%; top: max(60px, calc(env(safe-area-inset-top, 0px) + 52px)); transform: translateX(-50%);
+  width: min(420px, 70vw); display: grid; gap: 4px; justify-items: center;
+}
+#boss-bar .label { color: #ff4aa0; letter-spacing: 0.3em; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
+#boss-bar i { display: block; width: 100%; height: 6px; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 74, 160, 0.5); }
+#boss-bar b { display: block; height: 100%; width: 100%; background: #ff2a8a; transition: width 0.15s; }
 
 #reticle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 #lock-zone {
@@ -183,6 +194,26 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .gauge.hot .gauge-bar i { background: var(--alert); }
 #overheat { display: none; margin-top: 4px; font-size: 12px; letter-spacing: 0.2em; color: var(--alert); font-weight: 700; animation: blink 0.5s steps(2) infinite; }
 .gauge.hot #overheat { display: block; }
+.gauge.armor { border-left-color: var(--fg); }
+.gauge.armor .gauge-bar i { background: var(--fg); transition: width 0.15s; }
+.gauge.armor.low { border-left-color: var(--alert); }
+.gauge.armor.low .gauge-bar i { background: var(--alert); }
+.gauge.armor.low #ap-txt { color: var(--alert); animation: blink 0.6s steps(2) infinite; }
+.gauge.armor.struck { background: rgba(224, 57, 47, 0.35); }
+
+/* Damage: red edges, and arcs around the reticle pointing at the shooter */
+#dmg-vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 9; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(224, 57, 47, 0) 50%, rgba(224, 57, 47, 0.38) 82%, rgba(150, 10, 10, 0.75) 100%);
+}
+#dmg-dirs { position: absolute; left: 50%; top: 50%; }
+.dmg-dir { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.dmg-dir i {
+  position: absolute; left: -150px; top: -150px; width: 300px; height: 300px; border-radius: 50%;
+  border: 7px solid transparent; border-top-color: rgba(255, 60, 48, 0.95);
+  filter: drop-shadow(0 0 6px rgba(255, 40, 30, 0.9));
+}
+.dmg-dir.blocked i { border-top-color: rgba(125, 255, 182, 0.9); filter: drop-shadow(0 0 6px rgba(125, 255, 182, 0.7)); }
 @keyframes blink { 50% { opacity: 0.2; } }
 .readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .readouts > div { background: var(--panel); padding: 6px 8px; display: grid; }
@@ -227,6 +258,21 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   font-size: 11px; color: var(--dim); background: var(--panel); padding: 4px 10px; white-space: nowrap;
   transition: opacity 1s;
 }
+
+/* ---------- game over ---------- */
+#gameover {
+  position: fixed; inset: 0; z-index: 30;
+  display: grid; place-items: center;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  background: radial-gradient(ellipse at center, rgba(70, 8, 6, 0.35), rgba(13, 15, 18, 0.88));
+}
+.over-card { width: min(460px, 100%); display: grid; gap: 14px; background: var(--panel); padding: 20px 22px 22px; }
+.over-card .stripe { width: 120px; background: repeating-linear-gradient(135deg, var(--alert) 0 12px, #1b1c1f 12px 24px); }
+.over-card .eyebrow { color: var(--alert); }
+.over-card h2 { margin: 0; font-size: clamp(30px, 6vw, 44px); letter-spacing: 0.03em; }
+.over-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.over-stats > div { background: rgba(255, 255, 255, 0.05); padding: 8px 10px; display: grid; gap: 2px; }
+.over-stats b { font-size: 26px; font-weight: 400; }
 
 /* ---------- intro ---------- */
 #intro {
@@ -375,6 +421,7 @@ body.touch .score { padding: 3px 10px; }
   .readouts b { font-size: 15px; }
   .unit-name { display: none; }
   .score b { font-size: 16px; }
+  .score small { display: none; }
 }
 @media (max-height: 500px) {
   .tbtns { grid-template-columns: repeat(3, 54px); gap: 6px; }
@@ -388,7 +435,7 @@ body.touch .score { padding: 3px 10px; }
   .hh-row h2 { font-size: 20px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #overheat, .lock.new { animation: none; }
+  #overheat, .lock.new, .gauge.armor.low #ap-txt { animation: none; }
 }
 
 /* ---------------------------------------------------------------------------

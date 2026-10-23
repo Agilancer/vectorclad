@@ -1,10 +1,8 @@
 import * as THREE from './three.js';
-import { chamferBox, mesh, canvasTexture } from './atlas.js';
+import { canvasTexture } from './atlas.js';
 import { City } from './city.js';
 
 const V3 = THREE.Vector3;
-const rand = (a, b) => a + Math.random() * (b - a);
-const _v = new V3();
 const _n = new V3();
 
 export const SUN_DIR = new V3(-0.5, 0.66, 0.42).normalize();
@@ -83,124 +81,6 @@ function padTexture() {
 }
 
 // ---------------------------------------------------------------------------
-// Targets
-// ---------------------------------------------------------------------------
-
-let droneGeo;
-function buildDrone(mats) {
-  const g = new THREE.Group();
-  if (!droneGeo) {
-    droneGeo = {
-      body: new THREE.SphereGeometry(1.1, 20, 14),
-      ring: new THREE.TorusGeometry(1.55, 0.16, 8, 28),
-      eye: new THREE.SphereGeometry(0.34, 12, 8),
-      pod: new THREE.CylinderGeometry(0.28, 0.28, 0.9, 10),
-    };
-  }
-  const shell = new THREE.MeshStandardMaterial({ color: 0x8f949c, roughness: 0.35, metalness: 0.7, emissive: 0x000000 });
-  const body = new THREE.Mesh(droneGeo.body, shell);
-  body.castShadow = true;
-  g.add(body);
-  const ring = new THREE.Mesh(droneGeo.ring, mats.hazard);
-  ring.rotation.x = Math.PI / 2;
-  ring.castShadow = true;
-  g.add(ring);
-  const eye = new THREE.Mesh(droneGeo.eye, mats.redGlow);
-  eye.position.z = 0.95;
-  g.add(eye);
-  for (const s of [-1, 1]) {
-    const pod = new THREE.Mesh(droneGeo.pod, shell);
-    pod.rotation.x = Math.PI / 2;
-    pod.position.set(s * 1.55, 0, 0);
-    g.add(pod);
-  }
-  return { group: g, flashMats: [shell], radius: 1.9 };
-}
-
-function buildBoard(mats) {
-  const g = new THREE.Group();
-  const boardMat = mats.board.clone();
-  const board = mesh(chamferBox(4.2, 4.2, 0.35, 0.5), boardMat);
-  board.position.y = 5.2;
-  g.add(board);
-  const back = new THREE.MeshStandardMaterial({ color: 0x5c5f66, roughness: 0.5, metalness: 0.6, emissive: 0x000000 });
-  for (const s of [-1, 1]) {
-    const leg = mesh(new THREE.BoxGeometry(0.3, 5.2, 0.3), back);
-    leg.position.set(s * 1.4, 2.6, -0.25);
-    g.add(leg);
-  }
-  const base = mesh(chamferBox(4.4, 0.6, 1.8, 0.2), back);
-  base.position.set(0, 0.3, -0.2);
-  g.add(base);
-  return { group: g, flashMats: [back, boardMat], radius: 2.8, center: new V3(0, 5.2, 0) };
-}
-
-class Target {
-  constructor(world, type) {
-    this.world = world;
-    this.type = type;
-    const built = type === 'drone' ? buildDrone(world.tmats) : buildBoard(world.tmats);
-    this.group = built.group;
-    this.radius = built.radius;
-    this.flashMats = built.flashMats;
-    this.offset = built.center || new V3();
-    this.maxHp = type === 'drone' ? 45 : 70;
-    this.hp = this.maxHp;
-    this.alive = true;
-    this.flash = 0;
-    this.pos = new V3();
-    this.vel = new V3();
-    this._prev = new V3();
-    this.t = Math.random() * 100;
-    world.scene.add(this.group);
-  }
-
-  /** Drones patrol a stretch of open street between the towers */
-  patrol(a, b, height) {
-    this.a = a.clone(); this.b = b.clone();
-    this.len = a.distanceTo(b);
-    this.s = Math.random() * this.len;
-    this.dir = Math.random() < 0.5 ? 1 : -1;
-    this.speed = rand(5, 11);
-    this.height = height;
-    this.update(0);
-  }
-
-  place(pos, face) {
-    this.group.position.copy(pos);
-    this.group.rotation.y = face;
-    this.update(0);
-  }
-
-  update(dt) {
-    this.t += dt;
-    if (this.type === 'drone') {
-      this.s += this.dir * this.speed * dt;
-      if (this.s > this.len) { this.s = this.len; this.dir = -1; }
-      if (this.s < 0) { this.s = 0; this.dir = 1; }
-      const f = this.s / this.len;
-      const sway = Math.sin(this.t * 0.7) * 3;
-      _v.subVectors(this.b, this.a).normalize();
-      this.group.position.set(
-        this.a.x + (this.b.x - this.a.x) * f - _v.z * sway,
-        this.height + Math.sin(this.t * 1.3) * 1.2,
-        this.a.z + (this.b.z - this.a.z) * f + _v.x * sway,
-      );
-      this.group.rotation.y = Math.atan2(_v.x * this.dir, _v.z * this.dir);
-      this.group.children[1].rotation.z += dt * 2;
-    }
-    this._prev.copy(this.pos);
-    this.pos.copy(this.offset).applyQuaternion(this.group.quaternion).add(this.group.position);
-    if (dt > 0) this.vel.subVectors(this.pos, this._prev).divideScalar(dt);
-    else this.vel.set(0, 0, 0);
-    if (this.flash > 0) {
-      this.flash = Math.max(0, this.flash - dt * 6);
-      for (const m of this.flashMats) m.emissive.setScalar(this.flash * 0.9);
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // World
 // ---------------------------------------------------------------------------
 
@@ -213,8 +93,8 @@ export class World {
     this.sound = sound;
     this.cb = callbacks;
     this.M = M;
-    this.targets = [];
-    this.respawns = [];
+    this.targets = [];   // anything weapons can lock and hit: spiders, filled in by SpiderSwarm
+    this.spiders = null;
 
     scene.add(makeSky());
     scene.fog = new THREE.Fog(0xc4ccd2, 260, 2600);
@@ -250,20 +130,6 @@ export class World {
     pad.renderOrder = 2;
     scene.add(pad);
 
-    // Target materials
-    const boardTex = canvasTexture(256, (g, s) => {
-      g.fillStyle = '#efe9dc'; g.fillRect(0, 0, s, s);
-      const rings = ['#d8322b', '#efe9dc', '#d8322b', '#efe9dc', '#1f1f22'];
-      rings.forEach((c, i) => { g.fillStyle = c; g.beginPath(); g.arc(s / 2, s / 2, s * 0.45 * (1 - i * 0.19), 0, Math.PI * 2); g.fill(); });
-      g.strokeStyle = '#1f1f22'; g.lineWidth = 6; g.strokeRect(3, 3, s - 6, s - 6);
-    });
-    this.tmats = {
-      board: new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.7, emissive: 0x000000 }),
-      hazard: new THREE.MeshStandardMaterial({ color: 0xf2b632, roughness: 0.5, metalness: 0.3 }),
-      redGlow: new THREE.MeshBasicMaterial({ color: 0xff2a3a, toneMapped: false }),
-    };
-
-    this.spawnTargets();
   }
 
   // ---- spatial grid ------------------------------------------------------------
@@ -302,45 +168,6 @@ export class World {
           fn(c);
         }
       }
-    }
-  }
-
-  // ---- targets -------------------------------------------------------------------
-
-  spawnTargets() {
-    for (let i = 0; i < 12; i++) {
-      const t = new Target(this, 'drone');
-      this.placeTarget(t, this.spawn, true);
-      this.targets.push(t);
-    }
-    for (let i = 0; i < 12; i++) {
-      const t = new Target(this, 'board');
-      this.placeTarget(t, this.spawn, true);
-      this.targets.push(t);
-    }
-  }
-
-  placeTarget(t, around, first) {
-    const city = this.city;
-    if (t.type === 'drone') {
-      // A stretch of street or avenue near the player, high enough to clear the traffic lights
-      const lanes = city.lanes.filter((l) => {
-        const d = _v.copy(around).sub(l.a).projectOnVector(_n.subVectors(l.b, l.a)).add(l.a).distanceTo(around);
-        return d < 260;
-      });
-      const l = lanes.length ? lanes[Math.floor(Math.random() * lanes.length)] : city.lanes[0];
-      const span = rand(60, 160), dir = _n.subVectors(l.b, l.a).normalize();
-      const along = Math.max(0, Math.min(l.a.distanceTo(l.b) - span, _v.copy(around).sub(l.a).dot(dir) + rand(-140, 60)));
-      const a = l.a.clone().addScaledVector(dir, along), b = a.clone().addScaledVector(dir, span);
-      t.patrol(a, b, rand(11, 46));
-    } else {
-      const used = this.targets.filter((o) => o !== t && o.type === 'board').map((o) => o.group.position);
-      const spots = city.spots.filter((s) => {
-        const d = s.pos.distanceTo(around);
-        return d > (first ? 20 : 45) && d < 300 && !used.some((p) => p.distanceTo(s.pos) < 6);
-      });
-      const s = spots.length ? spots[Math.floor(Math.random() * spots.length)] : city.spots[0];
-      t.place(s.pos, Math.atan2(around.x - s.pos.x, around.z - s.pos.z));
     }
   }
 
@@ -388,10 +215,11 @@ export class World {
 
   /**
    * Ray against targets (spheres), colliders (AABBs, walked through a grid with a
-   * 2D DDA) and the ground or water. Returns { dist, point, normal, target } or null.
+   * 2D DDA) and the ground or water. Returns { dist, point, normal, target, collider }
+   * or null; collider is the box that was hit, if any.
    */
   raycast(o, d, maxDist, { targets = true, pad = 0 } = {}) {
-    let best = maxDist, normal = null, target = null;
+    let best = maxDist, normal = null, target = null, collider = null;
     if (targets) {
       for (const t of this.targets) {
         if (!t.alive) continue;
@@ -404,7 +232,7 @@ export class World {
         let tt = -b - Math.sqrt(disc);
         if (tt < 0) tt = c < 0 ? 0 : -1;
         if (tt >= 0 && tt < best) {
-          best = tt; target = t;
+          best = tt; target = t; collider = null;
           normal = _n.set(o.x + d.x * tt - t.pos.x, o.y + d.y * tt - t.pos.y, o.z + d.z * tt - t.pos.z).normalize().clone();
         }
       }
@@ -427,6 +255,7 @@ export class World {
             best = hit.t;
             target = c.ref && c.ref.alive ? c.ref : null;
             normal = hit.n;
+            collider = c;
           }
         }
       } else if ((sx > 0 && i >= this.gw) || (sx < 0 && i < 0) || (sz > 0 && j >= this.gh) || (sz < 0 && j < 0)) break;
@@ -440,10 +269,10 @@ export class World {
       let tg = -o.y / d.y;
       const px = o.x + d.x * tg, pz = o.z + d.z * tg;
       if (px < B.minX - 30 || px > B.maxX + 30 || pz > B.maxZ + 30) tg = (this.city.L.water - o.y) / d.y;
-      if (tg >= 0 && tg < best) { best = tg; target = null; normal = new V3(0, 1, 0); }
+      if (tg >= 0 && tg < best) { best = tg; target = null; collider = null; normal = new V3(0, 1, 0); }
     }
     if (!normal) return null;
-    return { dist: best, point: new V3().copy(o).addScaledVector(d, best), normal, target };
+    return { dist: best, point: new V3().copy(o).addScaledVector(d, best), normal, target, collider };
   }
 
   rayBox(o, d, c, best) {
@@ -468,23 +297,13 @@ export class World {
   damage(t, amount, point) {
     if (!t || !t.alive) return false;
     if (t.kind === 'car') return this.city.damageCar(t, amount, point);
-    t.hp -= amount;
-    t.flash = 1;
     this.cb.onHit && this.cb.onHit(t, point);
-    if (t.hp <= 0) {
-      t.alive = false;
-      t.group.visible = false;
-      this.fx.explosion(t.pos, t.type === 'drone' ? 1.3 : 1.6);
-      this.sound.explosion(t.pos, 1.4);
-      this.respawns.push({ t, time: rand(6, 10) });
-      this.cb.onKill && this.cb.onKill(t);
-      return true;
-    }
-    return false;
+    return this.spiders.damage(t, amount, point);
   }
 
   damageRadius(point, radius, amount) {
-    for (const t of this.targets) {
+    // A copy: kills drop targets from the list
+    for (const t of [...this.targets]) {
       if (!t.alive) continue;
       const d = t.pos.distanceTo(point) - t.radius;
       if (d < radius) this.damage(t, amount * (1 - Math.max(0, d) / radius) * 0.85 + amount * 0.15, t.pos);
@@ -498,20 +317,6 @@ export class World {
   }
 
   update(dt, player, ctx) {
-    for (const t of this.targets) if (t.alive) t.update(dt);
-    for (let i = this.respawns.length - 1; i >= 0; i--) {
-      const r = this.respawns[i];
-      r.time -= dt;
-      if (r.time <= 0) {
-        this.respawns.splice(i, 1);
-        const t = r.t;
-        t.hp = t.maxHp;
-        t.alive = true;
-        t.group.visible = true;
-        this.placeTarget(t, player, false);
-        this.fx.flash(t.pos, 6, 0x9fd0ff, 0.3);
-      }
-    }
     this.city.update(dt, Object.assign({ player }, ctx));
     // Keep the shadow frustum centered on the player, far enough back to catch the tall towers
     this.sun.position.copy(player).addScaledVector(SUN_DIR, 700);
