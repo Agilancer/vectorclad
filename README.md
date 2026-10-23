@@ -102,7 +102,8 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Streets and sidewalks draw on ten ground kits (tactile, crisp, cobble, ruin, faded, redcurb, hazard, buslane, grime, fresh), picked by how worn the pavement is in each part of town:
     - A smooth wear field over the city leaves about half the intersections clean, a quarter worn and a quarter broken.
     - Clean streets get fresh asphalt, crisp lane lines, double yellows and crosswalks; worn and broken ones get faded and cracked paint, stained or broken slabs, and cracked patches and potholes laid over the asphalt in soft-edged rounds.
-    - Each avenue segment, cross street and sidewalk picks its own tile, so the paving changes block by block. The original asphalt and slab tiles stay in the clean mix.
+    - Each road keeps one asphalt per wear level along its whole length, laid in world space and mirrored at the tile edges, so it has no seams. Avenues run unbroken through the intersections, and the surface only changes where the wear does. The asphalt is drawn from plain tiles without painted lines and close in tone.
+    - Each sidewalk picks its own tile, so the paving changes block by block. The original slab tiles stay in the clean mix.
     - Manholes, sidewalk covers and grates, tree pits under the street trees, and the starting plaza's paving (setts, fan cobbles, herringbone brick or pavers) come from the kits too.
 - **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters (one around the starting plaza, one to the southeast):
   - Walk-ups with storefronts and cornices; prewar mid-rises with setbacks.

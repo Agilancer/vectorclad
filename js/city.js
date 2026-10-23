@@ -80,8 +80,6 @@ const G = {
   roofMetal: ['roof40', 'roof42'],
   ac: ['roof20', 'roof21', 'roof22'],
   skylight: ['roof13', 'roof14', 'roof15'],
-  asphalt: ['asphB00', 'asphB01', 'asphB02', 'asphB04', 'asphB30', 'asphB32', 'asphB33', 'asphB34', 'asphB40', 'asphB42',
-    'asphalt00', 'asphalt02', 'asphalt04', 'asphalt10', 'asphalt14', 'asphalt50'],
   slab: ['paveB00', 'paveB01', 'paveB03', 'paveB30', 'paveB33', 'paveA00', 'paveA02', 'paveA03', 'paveA05', 'paveB25'],
   plaza: ['paveB32', 'paveB04', 'paveB11', 'paveB13', 'paveB15', 'paveA13', 'paveA22', 'paveB23'],
   grass: ['grass00', 'grass01', 'grass02', 'grass03', 'grass11', 'grass14', 'grass15', 'grass23', 'grass34', 'grass35', 'grass40', 'planter00', 'planter02', 'planter22'],
@@ -100,6 +98,14 @@ const KIT_STYLE = {
   deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone'],
   far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine'],
 };
+
+// Road asphalt for clean, worn and broken streets: plain enough to repeat without a pattern
+// showing, with no painted lines, and close in tone so neighboring roads meet quietly
+const ASPHALT = [
+  ['asphB00', 'asphalt00', 'asphalt14', 'tactile0', 'buslane4', 'buslane73'],
+  ['cobble41', 'fresh3', 'asphB33', 'asphalt10'],
+  ['asphB01', 'asphalt04', 'asphalt10', 'fresh3'],
+];
 
 // Ground kits for clean, worn and broken pavement
 const GROUND_WEAR = [
@@ -185,12 +191,13 @@ function atlasShader(sh) {
   sh.fragmentShader = sh.fragmentShader
     .replace('#include <common>', '#include <common>\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
     .replace('#include <map_fragment>', /* glsl */`
-      vec2 tuv = fract(vTUv);
+      // Mode 3 mirrors the tile at every edge, so tiles whose edges don't match show no seam
+      vec2 tuv = vMode > 2.5 ? 1.0 - abs(1.0 - mod(vTUv, 2.0)) : fract(vTUv);
       vec4 sampledDiffuseColor = textureGrad(map, vCell.xy + tuv * vCell.zw, dFdx(vTUv) * vCell.zw, dFdy(vTUv) * vCell.zw);
       float atlasLum = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
       float atlasAlpha = 1.0;
       if (vMode > 0.5 && vMode < 1.5) atlasAlpha = smoothstep(0.075, 0.16, atlasLum);
-      else if (vMode > 1.5) atlasAlpha = 1.0 - smoothstep(0.42, 0.47, length(tuv - 0.5));
+      else if (vMode > 1.5 && vMode < 2.5) atlasAlpha = 1.0 - smoothstep(0.42, 0.47, length(tuv - 0.5));
       diffuseColor *= sampledDiffuseColor;
       diffuseColor.a *= atlasAlpha;`);
 }
@@ -645,15 +652,17 @@ export class City {
     // Wear: broad patches of worn and broken pavement, so streets weather by neighborhood
     const spots = Array.from({ length: 9 }, () => [L.x0 + rg() * (L.x1 - L.x0), L.zN + rg() * (L.z1 - L.zN), m(100 + rg() * 180), 0.3 + rg() * 0.45]);
     this.wear = (x, z) => clamp(0.12 + spots.reduce((w, [sx, sz, R, k]) => w + k * Math.exp(-((x - sx) ** 2 + (z - sz) ** 2) / (R * R)), 0), 0, 1);
-    const patch = (x0, z0, x1, z1, rot, holes = true) => {
-      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-      const t = this.groundTile('asphalt', cx, cz, G.asphalt), ox = rg() * 7;
+    // Each road keeps one asphalt per wear band, laid in world space along the road and mirrored at
+    // the tile edges, so its segments join without a seam and the surface changes only with the wear
+    const road = () => ({ t: ASPHALT.map((a) => pick(rg, a)), ox: rg() * 7 });
+    const patch = (R, x0, z0, x1, z1, rot, holes = true) => {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, w = this.wear(cx, cz);
+      const t = R.t[w < 0.4 ? 0 : w < 0.7 ? 1 : 2], ox = R.ox;
       // Kit asphalt repeats at 1.6 times its painted size, coarser but less repetitive; the original tiles every 5 m
       const [tw, th] = PANELS[t] ? tileMeters(t).map((v) => m(v * 1.6)) : [m(5), m(5)];
-      this.flat(this.groundBuf(t), t, x0, z0, x1, z1, 0, (x, z) => (rot ? [z / tw + ox, x / th] : [x / tw + ox, -z / th]));
+      this.flat(this.groundBuf(t), t, x0, z0, x1, z1, 0, (x, z) => (rot ? [z / tw + ox, x / th] : [x / tw + ox, -z / th]), 3);
       // Cracked patches and potholes where the street is worn, clear of the crossings: the
       // tiled asphalt stays even, and the damage lies over it in soft-edged rounds
-      const w = this.wear(cx, cz);
       if (!holes || w < 0.4) return;
       const n = Math.round(((x1 - x0) * (z1 - z0)) / m(9) ** 2 * (w - 0.4) * 2);
       for (let i = 0; i < n; i++) {
@@ -666,16 +675,18 @@ export class City {
         this.flat(this.groundBuf(h, true), h, x - s / 2, z - s / 2, x + s / 2, z + s / 2, m(0.01), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s], 2);
       }
     };
-    // Avenue segments between cross streets, cross-street segments between avenues, and intersection squares
+    // Avenues run unbroken through the intersections; cross streets meet them at the crosswalks
     for (const a of L.aves) {
+      const R = road();
       for (let i = 0; i < L.sts.length; i++) {
         const s = L.sts[i], n = L.sts[i + 1];
-        patch(a.x0, s.z0, a.x1, s.z1, false, false);
-        if (n) patch(a.r0, s.z1, a.r1, n.z0, true);
+        patch(R, a.x0, s.z0, a.x1, s.z1, true, false);
+        if (n) patch(R, a.r0, s.z1, a.r1, n.z0, true);
       }
     }
     for (const s of L.sts) {
-      for (let i = 0; i < L.aves.length - 1; i++) patch(L.aves[i].x1, s.r0, L.aves[i + 1].x0, s.r1, false);
+      const R = road();
+      for (let i = 0; i < L.aves.length - 1; i++) patch(R, L.aves[i].x1, s.r0, L.aves[i + 1].x0, s.r1, false);
     }
     // Beyond the north edge: more road surface under the distant city
     this.flat(this.buf('ground', 'far'), 'asphB01', L.x0 - L.prom, L.zN - m(2600), L.x1 + L.prom, L.zN + L.stWalk, 0, (x, z) => [x / m(60), -z / m(60)], 0, [0.7, 0.7, 0.72]);
