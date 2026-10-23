@@ -6,7 +6,8 @@ const $ = (s) => document.querySelector(s);
 const _v = new THREE.Vector3();
 
 export class HUD {
-  constructor() {
+  constructor({ touch = false } = {}) {
+    this.shieldHint = touch ? 'HOLD L' : 'RMB';
     this.el = {
       score: $('#score'), boostBar: $('#boost-bar'), boostTxt: $('#boost-txt'), gauge: $('.gauge.boost'),
       armor: $('.gauge.armor'), apBar: $('#ap-bar'), apTxt: $('#ap-txt'), wave: $('#wave'), hostiles: $('#hostiles'),
@@ -136,7 +137,7 @@ export class HUD {
       let cls = 'wrow';
       if (s.kind === 'missile') cls += ' missile';
       if (s.reload != null) cls += ' reloading';
-      let ammo = s.kind === 'shield' ? 'RMB' : `${s.ammo}/${s.max}`;
+      let ammo = s.kind === 'shield' ? this.shieldHint : `${s.ammo}/${s.max}`;
       let frac = s.kind === 'shield' ? 1 : s.ammo / s.max;
       if (s.reload != null) { ammo = 'RELOAD'; frac = s.reload; }
       if (s.charge != null) { ammo = s.charge >= 1 ? 'FIRING' : 'CHARGE'; frac = Math.min(1, s.charge); }
@@ -213,7 +214,8 @@ export class HUD {
 // ---------------------------------------------------------------------------
 
 export class Hangar {
-  constructor({ loadout, settings, onChange, onSettings, sound }) {
+  constructor({ loadout, settings, onChange, onSettings, sound, touch = false }) {
+    this.touch = touch;
     this.loadout = loadout;
     this.settings = settings;
     this.onChange = onChange;
@@ -264,7 +266,7 @@ export class Hangar {
       const [wid, skinId] = L.slots[slot.id] || [null, 'white'];
       const card = div(`slot-card${wid ? ' filled' : ''}`);
       const head = div('hsec-title');
-      head.innerHTML = `<h3>${slot.label}</h3><span class="hint">${slot.key}</span>`;
+      head.innerHTML = `<h3>${slot.label}</h3><span class="hint">${this.touch ? slot.touch : slot.key}</span>`;
       card.appendChild(head);
       const chips = div('chips');
       chips.appendChild(chip('None', !wid, () => this.setSlot(slot.id, null, skinId)));

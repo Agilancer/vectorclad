@@ -124,9 +124,10 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 #boss-bar b { display: block; height: 100%; width: 100%; background: #ff2a8a; transition: width 0.15s; }
 
 #reticle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+/* Diameter 2 x LockOn.radius (0.36 of half the screen height) in js/weapons.js */
 #lock-zone {
   position: absolute; left: 50%; top: 50%;
-  width: 72vh; height: 72vh;
+  width: 36vh; height: 36vh;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   border: 1px dashed var(--hud-dim);
@@ -247,7 +248,9 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .wrow.missile .meter i { background: var(--alert); }
 
 #toast {
-  position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+  /* Never higher than 12px under the boss bar, which matters on short landscape phones */
+  position: absolute; left: 50%; top: max(22%, calc(env(safe-area-inset-top, 0px) + 96px)); transform: translateX(-50%);
+  width: max-content; max-width: calc(100vw - 32px); text-align: center; padding-left: 0.3em;
   font-size: 22px; font-weight: 700; letter-spacing: 0.3em; color: var(--signal);
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
   opacity: 0; transition: opacity 0.3s;
@@ -281,6 +284,9 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
   background: linear-gradient(90deg, rgba(13, 15, 18, 0.92) 0%, rgba(13, 15, 18, 0.6) 55%, rgba(13, 15, 18, 0.1) 100%);
   overflow-y: auto;
+  /* As a scroller it escapes the page's touch-action: none. iOS ignores user-scalable=no, and a pinch
+     here would leave the game zoomed with nothing left that can pinch back out. */
+  touch-action: pan-y;
 }
 .intro-card { width: min(640px, 100%); justify-self: start; margin-left: max(0px, 6vw); display: grid; gap: 16px; padding-block: 24px; }
 .intro-card .stripe { width: 120px; }
@@ -396,7 +402,11 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 #t-dash { grid-area: dash; }
 .t-menu { position: absolute; top: max(52px, calc(env(safe-area-inset-top, 0px) + 44px)); right: max(16px, env(safe-area-inset-right, 0px)); }
 
+/* --hud-side: how far the weapon list reaches in from the left edge. Centered HUD text stays inside it. */
+body.touch { --hud-side: calc(max(16px, env(safe-area-inset-left, 0px)) + 176px + 12px); }
 body.touch #help-hint, body.touch #btn-hangar, body.touch .controls { display: none; }
+body.touch #toast { max-width: calc(100vw - 2 * var(--hud-side)); font-size: 16px; letter-spacing: 0.2em; padding-left: 0.2em; }
+body.touch #boss-bar { width: min(420px, calc(100vw - 2 * var(--hud-side))); }
 body:not(.touch) .touch-note { display: none; }
 body.touch .hud-right {
   bottom: auto; right: auto;
@@ -416,12 +426,15 @@ body.touch .score { padding: 3px 10px; }
   .controls { grid-template-columns: 1fr; }
   .intro-card { margin-left: 0; }
   #intro { background: rgba(13, 15, 18, 0.82); }
-  #hangar { top: auto; height: 62%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }
   .hud-left { width: 180px; }
   .readouts b { font-size: 15px; }
   .unit-name { display: none; }
   .score b { font-size: 16px; }
   .score small { display: none; }
+}
+/* Bottom-sheet hangar on narrow upright screens; landscape phones keep the side panel. Matches hangarSheet in js/main.js. */
+@media (max-width: 720px) and (orientation: portrait) {
+  #hangar { top: auto; height: 62%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }
 }
 @media (max-height: 500px) {
   .tbtns { grid-template-columns: repeat(3, 54px); gap: 6px; }
@@ -535,7 +548,7 @@ body.touch .score { padding: 3px 10px; }
   .title-tag { font-size: 10px; padding-block: 0 calc(12px + env(safe-area-inset-bottom, 0px)); }
 }
 
-/* Rotate overlay: phones held upright. Matches portraitPhone in js/title/title.js. */
+/* Rotate overlay: phones held upright. Matches portraitPhone in js/title/title.js (main.js pauses on it too). */
 #rotate { display: none; }
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
   #rotate {
