@@ -93,7 +93,7 @@ const pick = (r, a) => a[Math.floor(r() * a.length)];
 
 // Panel kits that suit each kind of building (repeats weight the pick)
 const KIT_STYLE = {
-  walkup: ['brick', 'brick', 'limestone', 'masonry'],
+  walkup: ['brick', 'limestone', 'masonry', 'sandstone', 'travertine', 'ivory'],
   prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete', 'masonry', 'travertine', 'ivory', 'sandstone'],
   modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches', 'seaglass', 'silver', 'azure', 'travertine', 'masonry', 'sandstone'],
   office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass'],
@@ -360,7 +360,7 @@ export class City {
   layout() {
     const m = (x) => this.m(x);
     const L = (this.L = {
-      blockW: m(120), blockD: m(64), aveW: m(28), aveWalk: m(5), stW: m(18), stWalk: m(4), curb: m(0.2),
+      blockW: m(120), blockD: m(64), aveW: m(28), aveWalk: m(5), stW: m(22), stWalk: m(4), curb: m(0.2),
       prom: m(32), water: -m(3),
     });
     const NX = 10, NZ = 10, NORTH = 2; // two extra rows of blocks north continue the city past the barrier
@@ -857,13 +857,14 @@ export class City {
         }
       }
     }
-    // Cross streets: one way with a dashed line, or two way with a double yellow
+    // Cross streets: four lanes, one way with dashed dividers, or two way split by a double yellow
     for (const s of L.sts) {
-      const cz = (s.r0 + s.r1) / 2, two = (s.k + 20) % 3 === 0;
+      const cz = (s.r0 + s.r1) / 2, lane = (s.r1 - s.r0) / 4, two = (s.k + 20) % 3 === 0;
       for (let i = 0; i < L.aves.length - 1; i++) {
         const x0 = L.aves[i].x1 + m(8), x1 = L.aves[i + 1].x0 - m(8);
-        const t = two ? this.groundTile('yellow', (x0 + x1) / 2, cz, ['asphB11']) : this.groundTile('lane', (x0 + x1) / 2, cz, ['asphB12']);
-        this.roadLine(t, false, cz, x0, x1, y);
+        const dash = this.groundTile('lane', (x0 + x1) / 2, cz, ['asphB12']);
+        this.roadLine(two ? this.groundTile('yellow', (x0 + x1) / 2, cz, ['asphB11']) : dash, false, cz, x0, x1, y);
+        for (const off of [-1, 1]) this.roadLine(dash, false, cz + off * lane, x0, x1, y);
       }
       for (const a of L.aves) {
         for (const [xc0, xc1] of [[a.x0, a.r0], [a.r1, a.x1]]) {
@@ -886,7 +887,7 @@ export class City {
           if (z > L.z1) continue;
           const t = this.groundTile('round', x, z, G.manholeRound);
           this.flat(this.groundBuf(t, true), t, x - w / 2, z - w / 2, x + w / 2, z + w / 2, y, (xx, zz) => [(xx - x + w / 2) / w, (z + w / 2 - zz) / w], 2);
-          if (r() < 0.09 && s.k >= 0) this.steam.push({ pos: new V3(x, 0, z), t: r() * 3, stack: false });
+          if (r() < 0.02 && s.k >= 0) this.steam.push({ pos: new V3(x, 0, z), t: r() * 3, stack: false });
         }
       }
     }
@@ -919,7 +920,7 @@ export class City {
       else if (type) this.towerBlock(B, t, type);
       else if (t > 0.62 && this.r() < 0.8) {
         const q = this.r();
-        this.towerBlock(B, t, q < 0.38 ? 'glass' : q < 0.52 ? 'deco' : q < 0.7 ? 'prism' : q < 0.86 ? 'twist' : 'stack');
+        this.towerBlock(B, t, q < 0.38 ? 'glass' : q < 0.46 ? 'deco' : q < 0.66 ? 'prism' : q < 0.86 ? 'twist' : 'stack');
       } else this.mixedBlock(B, t);
     }
   }
@@ -1449,7 +1450,9 @@ export class City {
     }
     this.building({
       x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: (F && F.solid) || 'walls05',
-      tiers, roof: { tile: pick(this.r, G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 },
+      tiers,
+      // A third of them are topped with a crown instead of rooftop plant
+      ...(r() < 0.35 ? { crown: (T) => this.crown(T) } : { roof: { tile: pick(this.r, G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 } }),
     });
   }
 
@@ -1460,8 +1463,8 @@ export class City {
     const tile = F ? F.bay : pick(r, G.officeStone);
     const [, thm] = tileMeters(tile), th = m(thm);
     const band = { tile: pick(r, G.stone), h: m(9) };
-    // Wedding-cake setbacks: a broad base, then tiers stepping in toward a slim shaft
-    const plan = r() < 0.5 ? [6, 4, 8, 4] : [5, 4, 4, 6, 3];
+    // A broad base and a couple of shallow setbacks up to the crown
+    const plan = r() < 0.5 ? [7, 10] : [6, 6, 8];
     const scale = (thm === 12 ? 1 : 12 / thm) * (0.55 + t * 0.45);
     let fp = { ...f }, y = y0 + band.h;
     const tiers = [];
@@ -1470,7 +1473,7 @@ export class City {
       const k = Math.max(2, Math.round(n * scale));
       y += k * th;
       tiers.push({ ...fp, y1: y, tile, F, band: i === 0 ? band : null });
-      const step = i === 0 ? 0.16 : 0.12;
+      const step = i === 0 ? 0.12 : 0.08;
       fp = this.inset(fp, Math.min(fp.x1 - fp.x0, fp.z1 - fp.z0) * step, { n: true, s: true, e: true, w: true });
     });
     const tint = this.tint(0.05);
@@ -1480,16 +1483,25 @@ export class City {
     });
   }
 
-  /** A deco crown: a copper pyramid with a spire, or a steel lattice lantern around a needle */
+  /** A tower crown: a glass wedge, a glowing halo over a glass drum, or a steel lattice lantern around a needle */
   crown(T) {
     const m = (x) => this.m(x), sb = this.buf('surface', this.cur), r = this.r;
     const cx = (T.x0 + T.x1) / 2, cz = (T.z0 + T.z1) / 2, W = T.x1 - T.x0, D = T.z1 - T.z0;
-    if (r() < 0.5) {
-      const roofH = Math.max(W, D) * 0.9;
-      this.pyramid(sb, pick(r, ['roof42', 'roof43']), T.x0, T.z0, T.x1, T.z1, T.y1, T.y1 + roofH, m(4), [0.9, 0.9, 0.92]);
-      this.collide(T.x0 + W * 0.2, T.y1, T.z0 + D * 0.2, T.x1 - W * 0.2, T.y1 + roofH * 0.55, T.z1 - D * 0.2, { building: true });
-      const sh = m(30);
-      this.prop('cone4', cx, T.y1 + roofH + sh / 2 - m(2), cz, m(1.4), sh, m(1.4), [0.62, 0.6, 0.5], Math.PI / 4);
+    const q = r();
+    if (q < 0.35) return this.wedge(T, pick(r, G.officeGlass), Math.max(W, D) * (0.5 + r() * 0.3), r() < 0.5);
+    if (q < 0.7) {
+      // Halo: a glass drum on the roof, and a ring of light held above it on four struts
+      this.flat(sb, 'roof04', T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / m(6), -z / m(6)]);
+      const dr = Math.min(W, D) * 0.3, dh = Math.min(W, D) * 0.35, glass = pick(r, G.officeGlass);
+      this.prismSeg(cx, cz, 10, dr, dr * 0.8, 0, T.y1, T.y1 + dh, glass, m(6), m(6), { top: 'roof04' });
+      this.collide(cx - dr, T.y1, cz - dr, cx + dr, T.y1 + dh, cz + dr, { building: true });
+      const R = Math.min(W, D) * 0.48, yr = T.y1 + dh + m(8), glow = pick(r, [[0.35, 1.5, 1.6], [1.6, 0.9, 0.3], [1.5, 0.35, 0.9]]);
+      for (let k = 0; k < 4; k++) {
+        const a = Math.PI / 4 + (k * Math.PI) / 2;
+        this.strut('pole', new V3(cx + Math.cos(a) * R * 0.9, T.y1, cz + Math.sin(a) * R * 0.9), new V3(cx + Math.cos(a) * R, yr, cz + Math.sin(a) * R), m(0.35), [0.3, 0.31, 0.33], this.cur);
+      }
+      this.prop('torus', cx, yr, cz, R, R, R, glow, 0, Math.PI / 2);
+      this.prop('torus', cx, yr + m(5), cz, R * 0.7, R * 0.7, R * 0.7, glow, 0, Math.PI / 2);
       return;
     }
     // Lattice lantern: truss cards around a glass drum, a needle through the middle
@@ -1504,6 +1516,33 @@ export class City {
     const sh = h * 2.4;
     this.prop('cyl6', cx, T.y1 + h * 0.8 + sh / 2, cz, m(0.8), sh, m(0.8), [0.75, 0.77, 0.8]);
     this.prop('sphere', cx, T.y1 + h * 0.8 + sh, cz, m(0.9), m(0.9), m(0.9), [1.4, 0.25, 0.2]);
+  }
+
+  /**
+   * A glass wedge roof over footprint T: flat at one edge, rising by h to the opposite edge
+   * (across z, or across x when alongX)
+   */
+  wedge(T, tile, h, alongX) {
+    const b = this.bufFor(tile), c = cell(tile), [twm, thm] = tileMeters(tile), tw = this.m(twm), th = this.m(thm);
+    const { x0, x1, z0, z1 } = T, y = T.y1, o = { ao: false };
+    if (alongX) {
+      // Low at x0, high at x1
+      const L = Math.hypot(x1 - x0, h);
+      this.quad(b, [[x0, y, z0], [x0, y, z1], [x1, y + h, z1], [x1, y + h, z0]], [-h / L, (x1 - x0) / L, 0],
+        [[0, 0], [(z1 - z0) / tw, 0], [(z1 - z0) / tw, L / th], [0, L / th]], c, WHITE);
+      this.wall(b, tile, x1, z1, x1, z0, y, y + h, tw, th, o);
+      this.skew(b, tile, x1, z0, x0, z0, y, y + h, y, y, tw, th);
+      this.skew(b, tile, x0, z1, x1, z1, y, y, y, y + h, tw, th);
+    } else {
+      // Low at z0, high at z1
+      const L = Math.hypot(z1 - z0, h);
+      this.quad(b, [[x1, y, z0], [x0, y, z0], [x0, y + h, z1], [x1, y + h, z1]], [0, (z1 - z0) / L, -h / L],
+        [[0, 0], [(x1 - x0) / tw, 0], [(x1 - x0) / tw, L / th], [0, L / th]], c, WHITE);
+      this.wall(b, tile, x0, z1, x1, z1, y, y + h, tw, th, o);
+      this.skew(b, tile, x1, z1, x1, z0, y, y + h, y, y, tw, th);
+      this.skew(b, tile, x0, z0, x0, z1, y, y, y, y + h, tw, th);
+    }
+    this.collide(x0, y, z0, x1, y + h * 0.5, z1, { building: true });
   }
 
   /** Four-sided pyramid with planar-mapped faces */

@@ -134,7 +134,7 @@ built entirely from the city texture sheets. The mech stands 40 ft (12.2 m) tall
 measures the top of its head in the idle stance and sets the world scale from
 that (about 1.71 m per game unit), and the city is laid out in real meters.
 
-- **Street grid:** 100 ft avenues with four one-way lanes and 60 ft cross streets, on long east-west blocks.
+- **Street grid:** 28 m avenues and 22 m cross streets, both four lanes wide, on long east-west blocks. Avenues run one way; cross streets alternate between one way and two way with a double yellow.
   - Crosswalks, stop bars, lane arrows, "don't block the box" junctions and manholes are keyed out of the asphalt sheets.
   - Sidewalks are raised with granite curbs and rounded corners.
   - Streets and sidewalks draw on ten ground kits (tactile, crisp, cobble, ruin, faded, redcurb, hazard, buslane, grime, fresh), picked by how worn the pavement is in each part of town:
@@ -144,10 +144,11 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
     - Manholes, sidewalk covers and grates, tree pits under the street trees, and the starting plaza's paving (setts, fan cobbles, herringbone brick or pavers) come from the kits too.
 - **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters (one around the starting plaza, one to the southeast):
   - Walk-ups with storefronts and cornices; prewar mid-rises with setbacks.
-  - Glass office slabs and towers with mechanical penthouses.
+  - Glass office slabs and towers with mechanical penthouses; a third of the towers wear a crown instead.
   - Twisting towers, whose square floors turn a quarter turn or so on the way up, and tapering octagonal and hexagonal towers with spires.
   - Stacked towers of shifted boxes that swing from side to side and hang out over the sidewalks, alternating two facades.
-  - Art deco setback towers, crowned with a copper pyramid or a steel lattice lantern around a needle.
+  - Stone setback towers with a couple of shallow steps.
+  - Crowns: a sloped glass wedge, a glowing halo ring held on struts over a glass drum, or a steel lattice lantern around a needle.
   - Signature blocks: the observation needle (the city's landmark, a tapering concrete shaft with a flared pod, a glass viewing ring and a beaconed mast), twin towers on a podium joined by a sky bridge, a gate building whose bridge of floors spans a plaza the mech can walk through, and a stepped ziggurat with a garden and trees on every terrace.
   - Roofs carry gardens, steel tanks, masts, solar panels, billboards and helipads. About half the walk-ups and prewar buildings also carry an old timber water tower on braced steel legs.
   - Big screens for made-up brands hang over the streets on some tall buildings.
@@ -163,7 +164,7 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - An elevated expressway runs along the east waterfront: four lanes on girders and hammerhead piers, with lamps along its barriers. At the south end a ramp brings it down to the esplanade.
   - Both decks clear the mech (17 m up), so it can walk under them, and both are solid: jump up onto either, or walk up the highway ramp, and walk along the top. Railings and barriers keep it on unless it jumps them. Spiders perch on them like roofs.
 - **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
-- **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, steam vents, and parked cars (the teal ones are taxis).
+- **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, the odd steam vent, and parked cars (the teal ones are taxis).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
   - Running into a tree rips it out of the ground, leaving a stump, and it tumbles and rolls away. Walk or dash into a fallen tree to kick it along.
   - Any shot, blast or beam that hits a tree knocks it loose and sets it burning, and so do spider fire, a Scorcher's flames and the burning ground they leave. A burning tree chars and drops its leaves, and sets alight any tree it rolls into.
