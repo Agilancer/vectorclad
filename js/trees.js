@@ -380,6 +380,16 @@ export class Trees {
     return touching;
   }
 
+  /** Whether any of a fallen tree's contact spheres is inside the mech's cylinder */
+  touchesMech(t, P) {
+    for (const [h, r] of t.spheres) {
+      const c = this.axisPoint(t, h, _p);
+      if (c.y + r <= P.y || c.y - r >= P.y + MECH_H) continue;
+      if (Math.hypot(c.x - P.x, c.z - P.z) < MECH_R + r) return true;
+    }
+    return false;
+  }
+
   step(t, dt, ctx) {
     const n = Math.max(1, Math.ceil(dt / SUBSTEP)), h = dt / n;
     let touching = false;
@@ -421,11 +431,15 @@ export class Trees {
   update(dt, ctx) {
     if (!this.world) return;
     const P = ctx.player, mv = ctx.vel;
-    // The mech rips out any standing tree it walks into
+    // The mech rips out any standing tree it walks into, and wakes any fallen one it touches
+    // (the kick itself happens in collide(), which only runs for trees that are awake)
     const struck = [];
     if (P) {
       this.world.queryTrees(P.x - 6, P.z - 6, P.x + 6, P.z + 6, (t) => {
-        if (t.loose) return;
+        if (t.loose) {
+          if (t.asleep && this.touchesMech(t, P)) this.wake(t);
+          return;
+        }
         const d = Math.hypot(t.base.x - P.x, t.base.z - P.z);
         if (d > MECH_R + t.trunkR + t.canopyR * 0.5) return;
         if (P.y > t.base.y + t.canopyY + t.canopyR * 0.7 || P.y + MECH_H < t.base.y) return;
