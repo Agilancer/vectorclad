@@ -5,7 +5,7 @@ loose in a Lower Manhattan overrun by spider-frames, six-legged machines that
 climb the towers and swarm in growing waves. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from twelve more in `textures/city-src/`, and the spiders
+`textures/`, the city from twenty-two more in `textures/city-src/`, and the spiders
 from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
@@ -106,18 +106,34 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Art deco "wedding cake" towers with copper pyramid crowns.
   - A Woolworth-style gothic tower and a One WTC-style tapered landmark.
   - Party walls are brick, but buildings taller than their neighbors get windows on every side.
+  - Many facades are composed from ten panel kits (steel, precast, graphite, brick, concrete, limestone, teal glass, aluminum, navy, and a sheet of whole facades):
+    - Each building picks one kit and one window bay, so its floors line up.
+    - Piers frame the corners and split long sides into evenly sized groups of bays.
+    - Offices and towers get a louvered mechanical floor every 40 to 85 m and under each setback, and their penthouses wear the kit's louvers.
+    - Walk-ups and prewar buildings draw from the brick, limestone, precast and concrete kits, art deco towers from limestone and brick, and offices and towers from the glass and metal ones.
 - **Open spaces:** a starting plaza with a red cube and planters, a park with a fountain, and a small green.
 - **Waterfront:** an esplanade with railings on three sides. North of the playable area the city carries on past a barricade.
 - **Street life:** streetlights, traffic signals, subway entrances, street trees, steam stacks and vents, and parked cars (many of them cabs).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
 - **Scenery:** Jersey City and Brooklyn skylines across the rivers, a suspension bridge, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
 
-All city surfaces sample three texture atlases (`textures/city-facade.jpg`,
-`city-surface.jpg`, `city-ground.jpg`) through a shader that tiles inside one atlas
-cell with `textureGrad`, so the whole city is merged into a few dozen meshes.
+All city surfaces sample four texture atlases (`textures/city-facade.jpg`,
+`city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`) through a shader that tiles
+inside one atlas cell with `textureGrad`, so the whole city is merged into a few dozen
+meshes. Each vertex carries its cell's rectangle, so cells can be any size.
 `tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
 source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
+
+The panel kits (`steel.jpg` through `swatches.jpg` in `textures/city-src/`) are
+sheets of loose panels on dark gutters. `python3 tools/build_city_atlas.py --segment
+<review dir>` cuts them out along the gutter network (it needs OpenCV), writes each
+panel's rectangle to `tools/city-panels.json`, and draws numbered sheets into the
+review directory. The last field of each panel is its role, picked by hand: `B` window
+bay, `P` pier, `S` solid wall, `V` vent, `x` unused. Roles carry over when the sheets
+are cut again. The normal build packs every panel in use into `city-panels.jpg` at its
+own aspect ratio, scaled to a common texel density from each kit's measured floor
+height.
 
 ## Spider-frames
 
@@ -253,7 +269,7 @@ in the hangar settings.
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, waterfront, distant scenery |
-| `js/cityTiles.js` | Generated: atlas layouts and tile positions for the city |
+| `js/cityTiles.js` | Generated: atlas layouts, tile positions, and the facade panels and kits for the city |
 | `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
@@ -264,7 +280,8 @@ in the hangar settings.
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
 | `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
-| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases |
+| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade panel kits |
+| `tools/city-panels.json` | Each kit panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six

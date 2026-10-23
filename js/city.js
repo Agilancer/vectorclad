@@ -1,5 +1,5 @@
 import * as THREE from './three.js';
-import { ATLASES, TILES } from './cityTiles.js';
+import { ATLASES, TILES, PANELS, KITS } from './cityTiles.js';
 import { canvasTexture } from './atlas.js';
 
 // ---------------------------------------------------------------------------
@@ -11,8 +11,10 @@ import { canvasTexture } from './atlas.js';
 // so the mech stands 40 ft tall.
 //
 // Geometry is merged per material and per chunk. Every surface samples one of
-// three texture atlases through a shader that tiles inside an atlas cell, so
-// the whole city draws in a few dozen calls.
+// four texture atlases through a shader that tiles inside an atlas cell, so
+// the whole city draws in a few dozen calls. Many facades are composed from
+// panel kits: piers, runs of window bays and louvered vent floors cut from one
+// family of materials.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -34,14 +36,22 @@ function mulberry(seed) {
 // ---------------------------------------------------------------------------
 
 const cellCache = new Map();
+/** Where a tile sits in its atlas: corner (u, v) and size (w, h) in texture coordinates */
 function cell(name) {
   let c = cellCache.get(name);
   if (c) return c;
-  const t = TILES[name];
-  if (!t) throw new Error(`Unknown city tile ${name}`);
-  const A = ATLASES[t[0]];
-  const col = t[1] % A.cols, row = Math.floor(t[1] / A.cols);
-  c = { atlas: t[0], u: (col * A.cell + A.pad) / A.w, v: 1 - (row * A.cell + A.pad + A.content) / A.h, aspect: t[2] };
+  const p = PANELS[name];
+  if (p) {
+    // A facade panel: its own rectangle in the panel atlas
+    const A = ATLASES.panels;
+    c = { atlas: 'panels', u: p[0] / A.w, v: 1 - (p[1] + p[3]) / A.h, w: p[2] / A.w, h: p[3] / A.h };
+  } else {
+    const t = TILES[name];
+    if (!t) throw new Error(`Unknown city tile ${name}`);
+    const A = ATLASES[t[0]];
+    const col = t[1] % A.cols, row = Math.floor(t[1] / A.cols);
+    c = { atlas: t[0], u: (col * A.cell + A.pad) / A.w, v: 1 - (row * A.cell + A.pad + A.content) / A.h, w: A.content / A.w, h: A.content / A.h, aspect: t[2] };
+  }
   cellCache.set(name, c);
   return c;
 }
@@ -78,8 +88,20 @@ const G = {
 };
 const pick = (r, a) => a[Math.floor(r() * a.length)];
 
+// Panel kits that suit each kind of building (repeats weight the pick)
+const KIT_STYLE = {
+  walkup: ['brick', 'brick', 'brick', 'limestone'],
+  prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete'],
+  modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches'],
+  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches'],
+  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum'],
+  deco: ['limestone', 'limestone', 'brick'],
+  far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches'],
+};
+
 // World size of one repeat of a tile, in meters: [width, height]
 function tileMeters(name) {
+  if (PANELS[name]) return [PANELS[name][4], PANELS[name][5]];
   if (name.startsWith('office')) return [12, 12];
   if (name.startsWith('facade')) return [7.2, 7.2];
   if (name.startsWith('shop')) {
@@ -95,26 +117,25 @@ function tileMeters(name) {
 
 // ---------------------------------------------------------------------------
 // Materials: atlas sampling with fract() inside a cell and textureGrad() so
-// mip selection stays continuous across tile repeats.
+// mip selection stays continuous across tile repeats. Each vertex carries its
+// cell's rectangle, so cells can be any size.
 //   aMode 0: opaque   1: paint keyed off the asphalt   2: round cut-out
 // ---------------------------------------------------------------------------
 
-function atlasMaterial(key, tex, o = {}) {
-  const A = ATLASES[key];
+function atlasMaterial(tex, o = {}) {
   const m = new THREE.MeshStandardMaterial({
     map: tex, vertexColors: true, roughness: o.roughness ?? 0.85, metalness: o.metalness ?? 0,
     alphaTest: o.decal ? 0.5 : 0, polygonOffset: !!o.decal, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
   });
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uCellSize = { value: new THREE.Vector2(A.content / A.w, A.content / A.h) };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 aCell;\nattribute float aMode;\nvarying vec2 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
+      .replace('#include <common>', '#include <common>\nattribute vec4 aCell;\nattribute float aMode;\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCell = aCell; vTUv = uv; vMode = aMode;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec2 uCellSize;\nvarying vec2 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
+      .replace('#include <common>', '#include <common>\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
       .replace('#include <map_fragment>', /* glsl */`
         vec2 tuv = fract(vTUv);
-        vec4 sampledDiffuseColor = textureGrad(map, vCell + tuv * uCellSize, dFdx(vTUv) * uCellSize, dFdy(vTUv) * uCellSize);
+        vec4 sampledDiffuseColor = textureGrad(map, vCell.xy + tuv * vCell.zw, dFdx(vTUv) * vCell.zw, dFdy(vTUv) * vCell.zw);
         float atlasLum = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
         float atlasAlpha = 1.0;
         if (vMode > 0.5 && vMode < 1.5) atlasAlpha = smoothstep(0.075, 0.16, atlasLum);
@@ -128,7 +149,7 @@ function atlasMaterial(key, tex, o = {}) {
         .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.65, glassAmt);');
     }
   };
-  m.customProgramCacheKey = () => `atlas-${key}-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}`;
+  m.customProgramCacheKey = () => `atlas-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}`;
   return m;
 }
 
@@ -144,7 +165,7 @@ class Buf {
   }
   v(x, y, z, nx, ny, nz, r, g, b, u, v, c, mode) {
     this.pos.push(x, y, z); this.nor.push(nx, ny, nz); this.col.push(r, g, b);
-    if (this.t) { this.uv.push(u, v); this.cell.push(c.u, c.v); this.mode.push(mode); }
+    if (this.t) { this.uv.push(u, v); this.cell.push(c.u, c.v, c.w, c.h); this.mode.push(mode); }
     return this.n++;
   }
   geometry() {
@@ -154,7 +175,7 @@ class Buf {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     if (this.t) {
       g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-      g.setAttribute('aCell', new THREE.Float32BufferAttribute(this.cell, 2));
+      g.setAttribute('aCell', new THREE.Float32BufferAttribute(this.cell, 4));
       g.setAttribute('aMode', new THREE.Float32BufferAttribute(this.mode, 1));
     }
     g.setIndex(this.n > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
@@ -199,10 +220,11 @@ export class City {
     this.bufs = new Map();
     this.meshes = [];
     this.mats = {
-      facade: atlasMaterial('facade', tex.facade, { roughness: 0.75, glass: true }),
-      surface: atlasMaterial('surface', tex.surface, { roughness: 0.85 }),
-      ground: atlasMaterial('ground', tex.ground, { roughness: 0.92 }),
-      decal: atlasMaterial('ground', tex.ground, { roughness: 0.6, decal: true }),
+      facade: atlasMaterial(tex.facade, { roughness: 0.75, glass: true }),
+      panels: atlasMaterial(tex.panels, { roughness: 0.75, glass: true }),
+      surface: atlasMaterial(tex.surface, { roughness: 0.85 }),
+      ground: atlasMaterial(tex.ground, { roughness: 0.92 }),
+      decal: atlasMaterial(tex.ground, { roughness: 0.6, decal: true }),
       props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.15 }),
     };
     this.layout();
@@ -259,6 +281,9 @@ export class City {
     if (!b) { b = new Buf(mat !== 'props'); b.mat = mat; this.bufs.set(key, b); }
     return b;
   }
+
+  /** The current chunk's buffer for the atlas a wall tile lives in */
+  bufFor(tile) { return this.buf(cell(tile).atlas, this.cur); }
 
   chunkOf(x, z) {
     const C = this.m(280);
@@ -562,7 +587,20 @@ export class City {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
     const streets = { n: front === 'n', s: front === 's', e: ends.e, w: ends.w };
     const tint = this.tint(style === 'office' ? 0.05 : 0.08);
-    if (style === 'walkup') {
+    if (style === 'walkup' && r() < 0.25) {
+      // Brick and limestone bays over a storefront
+      const F = this.kitFacade(pick(r, KIT_STYLE.walkup), x1 - x0);
+      const [, bh] = tileMeters(F.bay);
+      const n = Math.max(1, Math.round((10 + r() * 12) / bh));
+      const groundTile = r() < 0.25 ? pick(r, G.doors) : pick(r, G.ground);
+      const [, gh] = tileMeters(groundTile);
+      this.building({
+        x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
+        tiers: [{ x0, x1, z0, z1, y1: y0 + m(gh + n * bh), tile: F.bay, F, band: { tile: groundTile, h: m(gh) } }],
+        roof: { tile: pick(r, G.roof), waterTower: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        cornice: r() < 0.8,
+      });
+    } else if (style === 'walkup') {
       const useOne = r() < 0.6;
       const upper = useOne ? pick(r, G.walkupUpper) : pick(r, G.walkupBrick);
       const [, uh] = tileMeters(upper);
@@ -577,16 +615,17 @@ export class City {
         cornice: r() < 0.8,
       });
     } else if (style === 'prewar') {
-      const tile = pick(r, r() < 0.8 ? G.prewar : G.officeStone);
+      const F = r() < 0.55 ? this.kitFacade(pick(r, KIT_STYLE.prewar), x1 - x0) : null;
+      const tile = F ? F.bay : pick(r, r() < 0.8 ? G.prewar : G.officeStone);
       const [, th] = tileMeters(tile);
-      const n = Math.max(3, Math.round((3 + r() * 5 + t * 7) * 7.2 / th));
+      const n = Math.max(F ? 2 : 3, Math.round((3 + r() * 5 + t * 7) * 7.2 / th));
       const band = r() < 0.6 ? { tile: pick(r, G.ground), h: m(4.5) } : { tile: pick(r, G.stone), h: m(6), stone: true };
       const h0 = band.h + m(n * th);
-      const tiers = [{ x0, x1, z0, z1, y1: y0 + h0, tile, band }];
-      if (n > 7 && r() < 0.6) {
-        const k = 2 + Math.floor(r() * 3), i = m(3 + r() * 3);
+      const tiers = [{ x0, x1, z0, z1, y1: y0 + h0, tile, F, band }];
+      if ((F ? n * th > 55 : n > 7) && r() < 0.6) {
+        const k = F ? Math.max(1, Math.round((14 + r() * 16) / th)) : 2 + Math.floor(r() * 3), i = m(3 + r() * 3);
         const sb = this.inset({ x0, x1, z0, z1 }, i, streets);
-        if (sb) tiers.push({ ...sb, y1: y0 + h0 + m(k * th), tile });
+        if (sb) tiers.push({ ...sb, y1: y0 + h0 + m(k * th), tile, F });
       }
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), tiers,
@@ -594,14 +633,17 @@ export class City {
         cornice: true,
       });
     } else if (style === 'modern' || style === 'office') {
-      const tile = style === 'modern' ? pick(r, G.modern) : pick(r, r() < 0.75 ? G.officeGlass : G.officePanel);
+      const F = r() < 0.75 ? this.kitFacade(pick(r, KIT_STYLE[style]), x1 - x0) : null;
+      const tile = F ? F.bay : style === 'modern' ? pick(r, G.modern) : pick(r, r() < 0.75 ? G.officeGlass : G.officePanel);
       const [, th] = tileMeters(tile);
-      const n = Math.max(3, Math.round((style === 'modern' ? 30 + r() * 30 : 45 + r() * 50 + t * 60) / th));
+      const n = Math.max(F ? 2 : 3, Math.round((style === 'modern' ? 30 + r() * 30 : 45 + r() * 50 + t * 60) / th));
       const band = { tile: r() < 0.5 ? 'facade12' : pick(r, G.ground), h: r() < 0.5 ? m(7.2) : m(4.5) };
+      // Kit facades may get a vent floor every 40-70 m and a crown
+      const S = F ? this.kitStack(F, y0 + band.h, n, { every: Math.max(3, Math.round((40 + r() * 30) / th)), crown: r() < 0.5 }) : { y: y0 + band.h + m(n * th) };
       this.building({
-        x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.panel),
-        tiers: [{ x0, x1, z0, z1, y1: y0 + band.h + m(n * th), tile, band }],
-        roof: { tile: pick(r, G.roof), mech: pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
+        x0, x1, z0, z1, y0, streets, tint, party: (F && F.solid) || pick(r, G.panel),
+        tiers: [{ x0, x1, z0, z1, y1: S.y, tile, F, bands: S.bands, band }],
+        roof: { tile: pick(r, G.roof), mech: (F && F.vent) || pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
       });
     }
   }
@@ -624,7 +666,7 @@ export class City {
    */
   building(o) {
     const m = (x) => this.m(x), r = this.r;
-    const fb = this.buf('facade', this.cur), sb = this.buf('surface', this.cur);
+    const sb = this.buf('surface', this.cur);
     let ylo = o.y0;
     o.tiers.forEach((T, ti) => {
       // Towers that rise above the neighborhood get windows on every side
@@ -640,13 +682,14 @@ export class City {
           if (T.band && ti === 0) {
             const bt = T.band.tile, [bw, bh] = tileMeters(bt);
             const isFacade = !bt.startsWith('walls');
-            this.wall(isFacade ? fb : sb, bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
+            this.wall(this.bufFor(bt), bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
             y += T.band.h;
           }
-          this.wall(fb, T.tile, ax, az, bx, bz, y, T.y1, m(tw), m(th), { snapU: true, tint: o.tint, base: o.y0 });
+          if (T.F) this.kitWall(T.F, ax, az, bx, bz, y, T.y1, { tint: o.tint, base: o.y0, bands: T.bands });
+          else this.wall(this.bufFor(T.tile), T.tile, ax, az, bx, bz, y, T.y1, m(tw), m(th), { snapU: true, tint: o.tint, base: o.y0 });
         } else {
-          const [pw] = tileMeters(o.party);
-          this.wall(sb, o.party, ax, az, bx, bz, ylo, T.y1, m(pw), m(pw), { tint: o.tint, base: o.y0 });
+          const [pw, ph] = tileMeters(o.party);
+          this.wall(this.bufFor(o.party), o.party, ax, az, bx, bz, ylo, T.y1, m(pw), m(ph), { tint: o.tint, base: o.y0 });
         }
       }
       // Roof (or setback terrace)
@@ -680,11 +723,10 @@ export class City {
       // Mechanical penthouse wrapped in louvers
       const i = Math.min(W, D) * 0.22;
       const h = m(12);
-      const [mw] = tileMeters(R.mech);
-      const fb = this.buf('facade', this.cur);
+      const [mw, mh] = tileMeters(R.mech);
       const x0 = T.x0 + i, x1 = T.x1 - i, z0 = T.z0 + i, z1 = T.z1 - i;
       for (const [ax, az, bx, bz] of [[x0, z1, x1, z1], [x1, z0, x0, z0], [x1, z1, x1, z0], [x0, z0, x0, z1]]) {
-        this.wall(fb, R.mech, ax, az, bx, bz, y, y + h, m(mw), h, { snapU: true, ao: false });
+        this.wall(this.bufFor(R.mech), R.mech, ax, az, bx, bz, y, y + h, m(mw), m(mh), { snapU: true, ao: false });
       }
       this.flat(sb, 'roof04', x0, z0, x1, z1, y + h, (x, z) => [x / m(6), -z / m(6)]);
       this.collide(x0, y, z0, x1, y + h, z1, { building: true });
@@ -731,6 +773,106 @@ export class City {
     this.collide(x - R, y, z - R, x + R, y + legs + H + m(1.7), z + R, { building: true });
   }
 
+  // ---- facades from panel kits ------------------------------------------------
+
+  /**
+   * Pick a facade from a panel kit: one window bay used throughout (so floors line up),
+   * a pier for the corners and between groups of bays, a solid panel and a vent.
+   * maxW: the narrowest street side in units, so bays and piers fit it.
+   */
+  kitFacade(kit, maxW) {
+    const r = this.r, K = KITS[kit], wm = maxW / this.M;
+    const fit = (list, w) => list.filter((n) => tileMeters(n)[0] <= w);
+    const bays = fit(K.bays, wm * 0.8);
+    const F = { kit, bay: bays.length ? pick(r, bays) : K.bays.reduce((a, b) => (tileMeters(a)[0] < tileMeters(b)[0] ? a : b)), group: 0 };
+    const piers = fit(K.piers, Math.min(5, wm * 0.2));
+    if (piers.length && r() < 0.85) {
+      F.pier = pick(r, piers);
+      // Bays between divider piers; 0 keeps piers to the corners
+      F.group = r() < 0.45 ? 0 : 1 + Math.floor(r() * 4);
+    }
+    F.solid = K.solids.length ? pick(r, K.solids) : F.pier;
+    // Vent floors: prefer louvers about a storey tall
+    const vents = K.vents.filter((n) => tileMeters(n)[1] > 2.4 && tileMeters(n)[1] < 6.5);
+    F.vent = vents.length ? pick(r, vents) : K.vents.length ? pick(r, K.vents) : null;
+    if (F.vent) F.ventH = clamp(tileMeters(F.vent)[1], 3, 6);
+    return F;
+  }
+
+  /**
+   * Stack n repeats of a facade's bay up from y. Optionally a vent floor every `every`
+   * repeats, one on top (a mechanical floor under a setback) and a solid crown band.
+   * Returns the top and the bands as [y0, y1, tile, fit]; a fitted band scales its tile
+   * to the band's height, the others show a slice of it.
+   */
+  kitStack(F, y, n, o = {}) {
+    const m = (x) => this.m(x), bh = m(tileMeters(F.bay)[1]), bands = [];
+    const band = (h, tile, fit) => { bands.push([y, y + h, tile, fit]); y += h; };
+    for (let i = 1; i <= n; i++) {
+      y += bh;
+      if (F.vent && o.every && i % o.every === 0 && i < n) band(m(F.ventH), F.vent, true);
+    }
+    if (F.vent && o.ventTop) band(m(F.ventH), F.vent, true);
+    if (F.solid && o.crown) band(m(1.8), F.solid, false);
+    return { y, bands };
+  }
+
+  /**
+   * One side of a building from its kit facade, a to b (left to right seen from outside),
+   * y0..y1: piers at the corners and between groups of bays, every column tiling up the
+   * floors, with full-width bands (vents, crown) cutting across. o: { tint, base, bands }
+   */
+  kitWall(F, ax, az, bx, bz, y0, y1, o = {}) {
+    const m = (x) => this.m(x), len = Math.hypot(bx - ax, bz - az);
+    if (len < 1e-3 || y1 - y0 < 1e-3) return;
+    const [bw0, bh] = tileMeters(F.bay).map(m);
+    const [pw, ph] = F.pier ? tileMeters(F.pier).map(m) : [0, 0];
+    // Bays and divider piers: the bay count whose natural widths come closest to the side
+    let n = Math.max(1, Math.round(len / bw0)), d = 0, piers = 0;
+    if (F.pier && len > 2 * pw + bw0 * 0.6) {
+      piers = 2;
+      const div = (k) => (F.group ? Math.ceil(k / F.group) - 1 : 0);
+      let best = Infinity;
+      for (let k = 1; k <= Math.ceil(len / bw0) + 1; k++) {
+        const err = Math.abs(len - k * bw0 - (div(k) + 2) * pw);
+        if (err < best) { best = err; n = k; }
+      }
+      d = div(n);
+      // Too squeezed: drop the dividers
+      if ((len - (d + 2) * pw) / n < bw0 * 0.6) { d = 0; n = Math.max(1, Math.round((len - 2 * pw) / bw0)); }
+    }
+    const bw = (len - (d + piers) * pw) / n;
+    // Spread the bays over g groups, symmetric about the middle where the counts allow
+    const g = d + 1, sizes = new Array(g).fill(Math.floor(n / g));
+    let rem = n % g;
+    if (rem % 2 && g % 2) { sizes[d / 2]++; rem--; }
+    for (let i = Math.floor(g / 2) - 1; i >= 0 && rem >= 2; i--, rem -= 2) { sizes[i]++; sizes[g - 1 - i]++; }
+    if (rem) sizes[Math.floor(d / 2)]++;
+    // Vertical spans between the bands
+    const spans = [];
+    let y = y0;
+    for (const [ya, yb] of o.bands || []) { if (ya > y) spans.push([y, Math.min(ya, y1)]); y = Math.max(y, yb); }
+    if (y < y1) spans.push([y, y1]);
+    const dx = (bx - ax) / len, dz = (bz - az) / len, wo = { tint: o.tint, base: o.base, snapU: true };
+    let s = 0;
+    const column = (tile, w, k, th) => {
+      const x0 = ax + dx * s, z0 = az + dz * s;
+      s += w;
+      for (const [ya, yb] of spans) this.wall(this.bufFor(tile), tile, x0, z0, ax + dx * s, az + dz * s, ya, yb, w / k, th, wo);
+    };
+    if (piers) column(F.pier, pw, 1, ph);
+    sizes.forEach((k, i) => {
+      if (i) column(F.pier, pw, 1, ph);
+      column(F.bay, k * bw, k, bh);
+    });
+    if (piers) column(F.pier, pw, 1, ph);
+    for (const [ya, yb, tile, fit] of o.bands || []) {
+      if (ya >= y1) continue;
+      const [tw, th] = tileMeters(tile).map(m), k = fit ? (yb - ya) / th : 1;
+      this.wall(this.bufFor(tile), tile, ax, az, bx, bz, ya, Math.min(yb, y1), tw * k, th * k, wo);
+    }
+  }
+
   // ---- towers ----------------------------------------------------------------
 
   towerBlock(B, t, kind) {
@@ -758,28 +900,35 @@ export class City {
 
   glassTower(f, streets, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
-    const tile = pick(r, G.officeGlass), th = m(12);
+    // Most towers are composed from a kit, the rest wrapped in one curtain-wall tile
+    const F = r() < 0.7 ? this.kitFacade(pick(r, KIT_STYLE.tower), Math.min(f.x1 - f.x0, f.z1 - f.z0)) : null;
+    const tile = F ? F.bay : pick(r, G.officeGlass), th = m(tileMeters(tile)[1]);
     const band = { tile: 'facade12', h: m(7.2) };
     let tiers = [], fp = { ...f }, y = y0 + band.h;
-    const total = Math.round((120 + t * 150 + r() * 40) / 12);
-    const nt = 1 + Math.floor(r() * 3);
+    const total = Math.round(m(120 + t * 150 + r() * 40) / th);
+    const nt = 1 + Math.floor(r() * 3), every = Math.max(4, Math.round(m(55 + r() * 30) / th));
     let left = total;
-    for (let i = 0; i < nt && fp; i++) {
-      const n = i === nt - 1 ? left : Math.max(4, Math.round(left * (0.45 + r() * 0.2)));
+    for (let i = 0; i < nt && fp && left > 0; i++) {
+      const last = i === nt - 1;
+      const n = last ? left : Math.min(left, Math.max(4, Math.round(left * (0.45 + r() * 0.2))));
       left -= n;
-      y += n * th;
-      tiers.push({ ...fp, y1: y, tile, band: i === 0 ? band : null });
+      // Kit towers get a mechanical floor under each setback and every so often up the shaft
+      const S = F ? this.kitStack(F, y, n, { every, ventTop: !last && left > 0, crown: last || left <= 0 }) : { y: y + n * th };
+      y = S.y;
+      tiers.push({ ...fp, y1: y, tile, F, bands: S.bands, band: i === 0 ? band : null });
       fp = this.inset(fp, m(4 + r() * 4), { n: true, s: true, e: true, w: true });
     }
     this.building({
-      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: 'walls05',
-      tiers, roof: { tile: pick(this.r, G.roof), mech: pick(this.r, G.mech), ac: 2 },
+      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: (F && F.solid) || 'walls05',
+      tiers, roof: { tile: pick(this.r, G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 },
     });
   }
 
   decoTower(f, streets, t, kind) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
-    const tile = kind === 'woolworth' ? 'facade25' : pick(r, G.officeStone);
+    // Half the deco towers are composed from a stone or brick kit, with bays narrow enough for the upper tiers
+    const F = kind === 'deco' && r() < 0.5 ? this.kitFacade(pick(r, KIT_STYLE.deco), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.5) : null;
+    const tile = F ? F.bay : kind === 'woolworth' ? 'facade25' : pick(r, G.officeStone);
     const [, thm] = tileMeters(tile), th = m(thm);
     const band = { tile: pick(r, G.stone), h: m(9) };
     // Wedding-cake setbacks: a broad base, then tiers stepping in toward a slim shaft
@@ -791,7 +940,7 @@ export class City {
       if (!fp) return;
       const k = Math.max(2, Math.round(n * scale));
       y += k * th;
-      tiers.push({ ...fp, y1: y, tile, band: i === 0 ? band : null });
+      tiers.push({ ...fp, y1: y, tile, F, band: i === 0 ? band : null });
       const step = i === 0 ? 0.16 : 0.12;
       fp = this.inset(fp, Math.min(fp.x1 - fp.x0, fp.z1 - fp.z0) * step, { n: true, s: true, e: true, w: true });
     });
@@ -1103,7 +1252,9 @@ export class City {
     const skyline = (x0, x1, z0, z1, n, hmin, hmax) => {
       for (let i = 0; i < n; i++) {
         const w = m(30 + r() * 50), d = m(30 + r() * 40), x = x0 + r() * (x1 - x0), z = z0 + r() * (z1 - z0);
-        const tile = pick(r, r() < 0.7 ? G.officeGlass : G.prewar), [tw, th] = tileMeters(tile);
+        const q = r();
+        const tile = q < 0.4 ? pick(r, G.officeGlass) : q < 0.6 ? pick(r, G.prewar) : pick(r, KITS[pick(r, KIT_STYLE.far)].bays);
+        const [tw, th] = tileMeters(tile);
         const h = m(hmin + Math.pow(r(), 2) * (hmax - hmin));
         this.cur = 'far';
         this.building({
