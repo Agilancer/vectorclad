@@ -1,5 +1,13 @@
 // Synthesized sound effects. Nothing is loaded from disk; every sound is
-// built from oscillators and filtered noise when it plays.
+// built from oscillators and filtered noise when it plays. The soundtrack is in music.js.
+
+let shared = null;
+/** The page's one AudioContext, shared with music.js (which needs it on iOS). */
+export function audioContext() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!shared && AC) shared = new AC();
+  return shared;
+}
 
 export class Sound {
   constructor() {
@@ -15,9 +23,9 @@ export class Sound {
       if (this.ctx.state !== 'running') this.ctx.resume();
       return;
     }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    const ctx = (this.ctx = new AC());
+    const ctx = (this.ctx = audioContext());
+    if (!ctx) return;
+    if (ctx.state !== 'running') ctx.resume();
     this.master = ctx.createGain();
     this.master.gain.value = this.enabled ? this.volume : 0;
     const comp = ctx.createDynamicsCompressor();
@@ -163,6 +171,24 @@ export class Sound {
     this.noiseHit({ type: 'bandpass', freq: 3200, q: 2, peak: 0.25, decay: 0.18, pos });
     this.tone({ type: 'square', freq: 180, freqEnd: 60, peak: 0.12, decay: 0.2, pos });
   }
+  // Trees. A blast can fell a dozen at once, so these are gated like the spider sounds.
+  treeSnap(pos) {
+    if (!this.gate('treeSnap', 0.06, pos)) return;
+    // The trunk splitting at the roots: a dry crack over a woody thump
+    this.noiseHit({ type: 'bandpass', freq: 2800, freqEnd: 700, q: 1.4, peak: 0.4, decay: 0.16, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 700, freqEnd: 120, peak: 0.35, decay: 0.45, pos });
+    this.tone({ type: 'triangle', freq: 150, freqEnd: 50, peak: 0.2, decay: 0.3, pos });
+  }
+  treeThud(pos, k = 1) {
+    if (!this.gate('treeThud', 0.08, pos)) return;
+    this.tone({ type: 'sine', freq: 110, freqEnd: 45, peak: 0.28 * k, decay: 0.25, pos });
+    this.noiseHit({ type: 'lowpass', freq: 600, freqEnd: 150, peak: 0.22 * k, decay: 0.25, pos });
+  }
+  ignite(pos) {
+    if (!this.gate('ignite', 0.1, pos)) return;
+    // Leaves going up: a rising whoosh
+    this.noiseHit({ type: 'bandpass', freq: 400, freqEnd: 1600, q: 0.7, peak: 0.35, attack: 0.05, decay: 0.8, pos });
+  }
   servo(pos) {
     this.tone({ type: 'sawtooth', freq: 260, freqEnd: 420, peak: 0.035, attack: 0.03, decay: 0.25, pos });
   }
@@ -275,6 +301,80 @@ export class Sound {
     this.tone({ type: 'sawtooth', freq: 655, freqEnd: 120, peak: 0.14 * k, attack: 0.1, decay: 1.0, pos });
     this.tone({ type: 'square', freq: 310, freqEnd: 55, peak: 0.06 * k, attack: 0.05, decay: 1.2, pos });
     this.noiseHit({ type: 'bandpass', freq: 1400, freqEnd: 300, q: 3, peak: 0.35 * k, attack: 0.06, decay: 1.1, pos });
+  }
+  // Scorpions
+  scorpionHiss(pos) {
+    if (!this.gate('hiss', 0.4, pos, 0.04)) return;
+    this.noiseHit({ type: 'bandpass', freq: 4200, freqEnd: 2600, q: 1.5, peak: 0.28, attack: 0.05, decay: 0.7, pos });
+    this.tone({ type: 'sawtooth', freq: 180, freqEnd: 90, peak: 0.1, attack: 0.04, decay: 0.6, pos });
+  }
+  scorpionRage(pos) {
+    if (!this.gate('rage', 0.4, pos, 0.04)) return;
+    this.tone({ type: 'sawtooth', freq: 420, freqEnd: 140, peak: 0.2, attack: 0.05, decay: 0.8, pos });
+    this.tone({ type: 'square', freq: 210, freqEnd: 70, peak: 0.1, attack: 0.05, decay: 0.9, pos });
+    this.noiseHit({ type: 'bandpass', freq: 900, freqEnd: 300, q: 2, peak: 0.35, attack: 0.04, decay: 0.8, pos });
+  }
+  clawOpen(pos) {
+    if (!this.gate('copen', 0.08, pos)) return;
+    this.tone({ type: 'square', freq: 700, freqEnd: 1100, peak: 0.04, decay: 0.12, pos });
+    this.noiseHit({ type: 'highpass', freq: 3000, peak: 0.06, decay: 0.08, pos });
+  }
+  clawSnap(pos) {
+    if (!this.gate('snap', 0.06, pos)) return;
+    this.tone({ type: 'triangle', freq: 2400, freqEnd: 900, peak: 0.12, decay: 0.06, pos });
+    this.noiseHit({ type: 'bandpass', freq: 3200, q: 3, peak: 0.3, decay: 0.07, pos });
+  }
+  clawHit(pos) {
+    if (!this.gate('chit', 0.06, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 1800, q: 2, peak: 0.4, decay: 0.16, pos });
+    this.tone({ type: 'triangle', freq: 1300, freqEnd: 600, peak: 0.12, decay: 0.2, pos });
+  }
+  stingCharge(pos, dur) {
+    if (!this.gate('scharge', 0.12, pos)) return;
+    this.tone({ type: 'sawtooth', freq: 500, freqEnd: 1900, peak: 0.06, attack: dur * 0.9, decay: 0.05, pos });
+    this.noiseHit({ type: 'bandpass', freq: 2500, freqEnd: 5200, q: 4, peak: 0.08, attack: dur * 0.9, decay: 0.05, pos });
+  }
+  stingWhip(pos) {
+    if (!this.gate('whip', 0.08, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 600, freqEnd: 3800, q: 1.5, peak: 0.3, attack: 0.02, decay: 0.18, pos });
+  }
+  stingHit(pos) {
+    if (!this.gate('shit', 0.06, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 1200, q: 1.5, peak: 0.45, decay: 0.22, pos });
+    this.tone({ type: 'sawtooth', freq: 900, freqEnd: 220, peak: 0.12, decay: 0.3, pos });
+    this.tone({ type: 'sine', freq: 140, freqEnd: 55, peak: 0.3, decay: 0.25, pos });
+  }
+  burrow(pos, k = 1) {
+    if (!this.gate('burrow', 0.3, pos, 0.04)) return;
+    this.noiseHit({ type: 'lowpass', freq: 380, freqEnd: 160, peak: 0.45 * k, attack: 0.05, decay: 0.45, pos });
+    this.tone({ type: 'sine', freq: 55, freqEnd: 38, peak: 0.25 * k, attack: 0.05, decay: 0.4, pos });
+  }
+  erupt(pos) {
+    if (!this.gate('erupt', 0.1, pos, 0.03)) return;
+    this.noiseHit({ type: 'lowpass', freq: 1400, freqEnd: 180, peak: 0.6, decay: 0.5, pos });
+    this.tone({ type: 'sine', freq: 90, freqEnd: 35, peak: 0.45, decay: 0.4, pos });
+    this.scorpionHiss(pos);
+  }
+  scrape(pos) {
+    if (!this.gate('scrape', 0.25, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 2600, freqEnd: 1500, q: 6, peak: 0.22, attack: 0.02, decay: 0.45, pos });
+    this.tone({ type: 'sawtooth', freq: 1900, freqEnd: 1300, peak: 0.04, decay: 0.4, pos });
+  }
+  flame(pos) {
+    if (!this.gate('flame', 0.11, pos)) return;
+    this.noiseHit({ type: 'lowpass', freq: 900, freqEnd: 500, peak: 0.3, attack: 0.03, decay: 0.16, pos });
+    this.noiseHit({ type: 'bandpass', freq: 2200, q: 1, peak: 0.08, attack: 0.03, decay: 0.14, pos });
+  }
+  zap(pos) {
+    if (!this.gate('zap', 0.06, pos)) return;
+    this.noiseHit({ type: 'highpass', freq: 2500, peak: 0.3, decay: 0.22, pos });
+    for (let i = 0; i < 4; i++) this.tone({ type: 'square', freq: 2400 + Math.random() * 2400, freqEnd: 700, peak: 0.05, decay: 0.04, pos, delay: i * 0.04 });
+    this.tone({ type: 'square', freq: 120, freqEnd: 60, peak: 0.08, decay: 0.25, pos });
+  }
+  venomSpit(pos) {
+    if (!this.gate('spit', 0.08, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 1500, freqEnd: 600, q: 2, peak: 0.25, attack: 0.01, decay: 0.18, pos });
+    this.tone({ type: 'sine', freq: 520, freqEnd: 260, peak: 0.07, decay: 0.15, pos });
   }
   playerHit(heavy = 1) {
     if (!this.gate('phit', 0.05)) return;

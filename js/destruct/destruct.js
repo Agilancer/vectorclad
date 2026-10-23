@@ -1154,12 +1154,21 @@ export class Destruction {
     if (!s.body) { const i = this.structs.indexOf(s); if (i >= 0) this.structs.splice(i, 1); }
   }
 
-  /** Spiders standing on a piece that breaks away lose their footing */
+  /** Spiders standing on a piece that breaks away lose their footing, and trees planted on it go with it */
   knockOff(b) {
+    const T = this.world.trees;
+    if (T) {
+      for (const t of T.list) {
+        if (t.loose || t.base.y < 1 || t.base.x < b.min.x || t.base.x > b.max.x || t.base.z < b.min.z || t.base.z > b.max.z) continue;
+        b.toLocal(t.base.x, t.base.y - b.s.cellSize * 0.5, t.base.z, _a);
+        const k = b.s.g.cellAt(_a.x, _a.y, _a.z);
+        if (k >= 0 && b.s.g.mat[k] >= SOLID) T.uproot(t, rand(-1, 1), 0.5, rand(-1, 1), 0.4);
+      }
+    }
     const S = this.spiders;
     if (!S) return;
     for (const sp of S.list) {
-      if (!sp.alive || sp.removed || (sp.state !== 'crawl' && sp.state !== 'perch' && sp.state !== 'emerge' && sp.state !== 'crouch')) continue;
+      if (sp.kind !== 'spider' || !sp.alive || sp.removed || (sp.state !== 'crawl' && sp.state !== 'perch' && sp.state !== 'emerge' && sp.state !== 'crouch')) continue;
       _a.copy(sp.p).addScaledVector(sp.n, -0.3);
       if (_a.x < b.min.x || _a.x > b.max.x || _a.y < b.min.y || _a.y > b.max.y || _a.z < b.min.z || _a.z > b.max.z) continue;
       b.toLocal(_a.x, _a.y, _a.z, _b);
@@ -1520,6 +1529,7 @@ export class Destruction {
     }
     const T2 = performance.now();
     this.debris.update(dt);
+    this.roofTrees(dt);
     this.render(dt);
     const T3 = performance.now();
     // Slow frames, for tuning
@@ -1527,6 +1537,23 @@ export class Destruction {
       this.slow = this.slow || [];
       this.slow.push({ t: +this.time.toFixed(1), ms: +(T3 - T0).toFixed(1), phys: +(T1 - T0).toFixed(1), checks: +(T2 - T1).toFixed(1), draw: +(T3 - T2).toFixed(1), act: +(this.stats.activateMs - act0).toFixed(1), bodies: this.physics.bodies.length });
       if (this.slow.length > 40) this.slow.shift();
+    }
+  }
+
+  /** Trees on roof gardens and terraces fall when the roof under them is shot away */
+  roofTrees(dt) {
+    const T = this.world.trees;
+    if (!T || (this.treeT = (this.treeT || 0) - dt) > 0) return;
+    this.treeT = 0.25;
+    if (!this.roof) this.roof = T.list.filter((t) => t.base.y > 1);
+    for (const t of this.roof) {
+      if (t.loose) continue;
+      for (const s of this.structs) {
+        const B = s.box;
+        if (s.dead || t.base.x < B.min.x || t.base.x > B.max.x || t.base.z < B.min.z || t.base.z > B.max.z || t.base.y < B.min.y || t.base.y > B.max.y + 1) continue;
+        const k = s.g.cellAt(t.base.x, t.base.y - s.cellSize * 0.5, t.base.z);
+        if (k >= 0 && s.g.mat[k] === GONE) T.uproot(t, rand(-1, 1), 0, rand(-1, 1), 0.5);
+      }
     }
   }
 
@@ -1553,6 +1580,13 @@ export class Destruction {
       return k >= 0 && g.mat[k] >= SOLID;
     };
     if (this.spiders) for (const sp of this.spiders.list) if (sp.alive && inside(sp.pos)) this.spiders.damage(sp, 9999, sp.pos);
+    // Trees in its way are torn out and carried along
+    const T = this.world.trees;
+    if (T) {
+      const hits = [];
+      this.world.queryTrees(b.min.x, b.min.z, b.max.x, b.max.z, (t) => { if (!t.loose && (inside(t.A) || inside(t.C))) hits.push(t); });
+      for (const t of hits) { b.pointVel(t.C, _d); T.uproot(t, _d.x, Math.max(1, _d.y), _d.z, 1.5); T.ignite(t); }
+    }
     const P = this.player;
     if (P && P.alive && this.onPlayerHit && speed > 3 * this.M) {
       for (const h of [1.5, 4.5]) {

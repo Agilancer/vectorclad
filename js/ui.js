@@ -292,6 +292,7 @@ export class Hangar {
     const set = section('Settings', '');
     const S = this.settings;
     set.appendChild(toggleRow('Sound', S.sound, (v) => { S.sound = v; this.onSettings(); }));
+    set.appendChild(toggleRow('Music', S.music, (v) => { S.music = v; this.onSettings(); }));
     set.appendChild(toggleRow('Shadows', S.shadows, (v) => { S.shadows = v; this.onSettings(); }));
     set.appendChild(toggleRow('Ink outlines', S.outlines, (v) => { S.outlines = v; this.onSettings(); }));
     set.appendChild(toggleRow('Invert look', S.invert, (v) => { S.invert = v; this.onSettings(); }));

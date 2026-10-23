@@ -26,6 +26,10 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); else if (/destruct/i.test(m.text())) console.log('  page:', m.text()); });
   page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(1, 4).join(' | ')));
   await page.goto(BASE + '/index.html');
+  // The boot screen loads the title theme first and may ask for a click to start audio
+  await page.waitForFunction(() => !document.querySelector('#boot') || !document.querySelector('#boot-start').hidden, null, { timeout: 120000 });
+  if (await page.$('#boot-start:not([hidden])')) await page.click('#boot-start');
+  await page.waitForFunction(() => !document.querySelector('#boot'), null, { timeout: 60000 });
   await page.waitForSelector('#title-start', { timeout: 60000 });
   await page.click('#title-start');
   await page.waitForFunction(() => window.__mech && window.__mech.mode === 'intro', null, { timeout: 120000 }).catch((e) => { console.log(errors.join('\n')); throw e; });
@@ -160,12 +164,13 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
   }
 
   if (run('props')) {
-    console.log('props: blasts at lamps and trees');
+    console.log('props: blasts at lamps and signals');
     const r = await page.evaluate(() => {
-      const lamps = T.near('lamp', 0, 20, 300).slice(0, 3), trees = T.near('tree', 0, 20, 300).slice(0, 3);
-      for (const o of lamps.concat(trees)) { const B = o.box; T.blast((B[0] + B[3]) / 2, B[1] + 1, (B[2] + B[5]) / 2, 1.6, 200); }
-      if (trees[0]) T.look(trees[0], 3, 1.2, 1);
-      return { lamps: lamps.length, trees: trees.length };
+      const lamps = T.near('lamp', 0, 20, 300).slice(0, 3), signals = T.near('signal', 0, 20, 300).slice(0, 2);
+      for (const o of lamps.concat(signals)) { const B = o.box; T.blast((B[0] + B[3]) / 2, B[1] + 1, (B[2] + B[5]) / 2, 1.6, 200); }
+      if (lamps[0]) T.look(lamps[0], 3, 1.2, 1);
+      const D = window.__mech.destruct;
+      return { lamps: lamps.length, signals: signals.length, pieces: D.physics.bodies.length };
     });
     console.log('  ', JSON.stringify(r));
     await wait(2500);

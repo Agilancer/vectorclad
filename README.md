@@ -1,12 +1,13 @@
 # VECTORCLAD
 
 A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
-loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines that
-climb the towers and swarm in growing waves. The mech walks, boost-dashes,
+loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
+that climb the towers and swarm in growing waves, and scorpion-frames that dig up
+out of the streets to claw and sting at it. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
 `textures/`, the city from fifty-two more in `textures/city-src/`, and the spiders
-from ten in `textures/spider-src/`. There is no build step.
+and scorpions from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
 
@@ -19,6 +20,9 @@ npx http-server -p 8080 .
 
 three.js 0.170.0 loads from jsDelivr, so the first load needs a network connection.
 
+Add `?wave=N` to the URL to start the fight at wave N, with every kind that has
+joined by then (every spider and scorpion is in by wave 6).
+
 ## Deploy
 
 `.github/workflows/pages.yml` publishes the game to GitHub Pages on every push to `main`.
@@ -27,7 +31,8 @@ The game is then served at `https://agilancer.github.io/vectorclad/`.
 
 ## Title screen
 
-The game opens on a title screen with the live 3D VECTORCLAD logo (from the
+Before anything else loads, a boot screen downloads the title theme (see Music below).
+Then the game opens on a title screen with the live 3D VECTORCLAD logo (from the
 `vectorclad-brand` kit) while textures and the city load behind it. A tap, click or any
 key fades it out and hands over to the loading screen or, once loading is done, the
 intro card. The game doesn't start rendering until the title is gone, so the two never
@@ -42,6 +47,33 @@ The logo files live in `js/title/`. `logo.js` and `wordmark-data.js` are copied 
 brand kit; regenerate them there rather than editing them here. The title's three.js
 add-ons (bloom, post-processing) load through the import map in `index.html`, which
 points `three` at the same 0.170.0 build as `js/three.js`; keep the two versions in sync.
+
+## Music
+
+The soundtrack is eight songs by THEDEMONMECHANIZEDMACHINEDESTROYER in `audio/music/`.
+**Vectors** is the title theme. `js/boot.js` downloads it before the title screen or the
+game start loading, and it plays on the title screen. Getting past the title lowers the
+music to 55% over about a second, so the sound effects sit on top of it. After Vectors the
+other seven (**Oh No, Robot Insects**, **Sentient Plague**, **They Came From the Sky!** and
+**Vectors II** to **V**) play in a shuffled order, then Vectors again, then the seven in a
+new order, for as long as the game runs. Each song downloads in full while the one before it plays (from 30 seconds in, so it
+doesn't slow the texture download), and the music pauses while the tab is hidden. The
+hangar has a Music toggle next to Sound.
+
+Browsers don't play audio until the player taps, clicks or presses a key. When the browser
+blocks autoplay, which is usual on a first visit, the boot screen shows "Tap to power up"
+once Vectors has loaded, and the music and title start on that tap. On iOS, which ignores
+`audio.volume`, the music goes through a Web Audio gain node that it shares with the
+sound effects (`audioContext()` in `js/audio.js`).
+
+The masters are 48 kHz WAVs kept outside the repo. To re-encode them as 160 kbps MP3s:
+
+```sh
+pip install lameenc
+python tools/build_music.py "F:/! THEDEMONMECHANIZEDMACHINEDESTROYER"
+```
+
+The song list is at the top of `js/music.js`.
 
 ## Controls
 
@@ -61,6 +93,10 @@ points `three` at the same 0.170.0 build as `js/three.js`; keep the two versions
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
 | Camera zoom | Mouse wheel | |
 
+Dashing and jump-jetting draw on one boost gauge. A full gauge holds about nine
+seconds of dash and refills in about three once the mech is back on the ground. If
+it runs dry the boosters overheat and stay off until the gauge is back to 40.
+
 The lock-on button holds one target. Aimed weapons lead it, the arms track it,
 the camera keeps it in view, and single missiles go to it first. When it is
 destroyed the lock moves to the next target in view.
@@ -73,7 +109,7 @@ their missiles almost straight up so they arc over the ground in front of the fe
 
 The hangar sets the loadout for six hardpoints (both hands, both shoulders, both
 legs), a frame paint scheme, and one of eight colorways per weapon. It has five
-presets and settings for sound, shadows, ink outlines, look sensitivity, inverted
+presets and settings for sound, music, shadows, ink outlines, look sensitivity, inverted
 look and render resolution. The loadout and settings are saved in `localStorage`
 under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 
@@ -129,6 +165,8 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
 - **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
 - **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, steam vents, and parked cars (the teal ones are taxis).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
+  - Running into a tree rips it out of the ground, leaving a stump, and it tumbles and rolls away. Walk or dash into a fallen tree to kick it along.
+  - Any shot, blast or beam that hits a tree knocks it loose and sets it burning, and so do spider fire, a Scorcher's flames and the burning ground they leave. A burning tree chars and drops its leaves, and sets alight any tree it rolls into.
 - **Scenery:** skylines on the far shores of both rivers, uptown towers to the north led by a twisting supertall, and out in the harbor a lighthouse on a rocky islet and a line of wind turbines whose rotors turn.
   - A suspension bridge across the east river: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
   - A cable-stayed bridge across the west river, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
@@ -185,9 +223,9 @@ outlines, so the deck always passes through the opening under the crossbeam.
 
 Everything the mech can shoot in the playable city can be shot apart: buildings and towers,
 their cornices, penthouses, billboards, solar panels and the old timber water towers on the
-walk-up and prewar roofs, street trees, lamp posts, signals, kiosks, subway entrances, the El
-and the elevated highway. (The bridges and the distant skylines stay whole.) It lives in
-`js/destruct/`.
+walk-up and prewar roofs, lamp posts, signals, kiosks, subway entrances, the El and the
+elevated highway. (The bridges and the distant skylines stay whole; trees have their own
+physics in `js/trees.js`.) It lives in `js/destruct/`.
 
 - **Hits carve cells.** A structure stays part of the city's merged meshes until something
   hits it. Then it is voxelized into cells of about half a meter (up to 1.25 m for the
@@ -239,8 +277,9 @@ and the elevated highway. (The bridges and the distant skylines stay whole.) It 
     cluster around the impact, so a falling tower's far end may survive as one big block
     leaning on the street.
   - **What they hit.** Pieces carve whatever they land on, which can bring that down too.
-    They crush cars, lamp posts and spiders, and hurt the mech. Spiders on a piece that
-    breaks away fall off it.
+    They crush cars, lamp posts, spiders and scorpions, tear out trees, and hurt the mech.
+    Spiders on a piece that breaks away fall off it, and roof-garden trees topple when the
+    roof under them goes. Loose trees roll on broken floors and against standing walls.
 - **Rubble and dust:** up to 2,400 tumbling chunks (900 on touch devices), shaped by
   material: rocks, glass shards, timber splinters and steel rods. Collapses throw out dust
   surges, and straining levels groan and shed grit before they go.
@@ -259,11 +298,11 @@ They are weak alone (one beam rifle bolt, one missile or a short burst drops
 most of them; the big Lancers and Bombardiers take two bolts) but come in waves
 that keep growing:
 
-- **Waves:** wave *n* sends 6 + 6*n* spiders, in packs, with up to 6 + 5*n*
-  alive at once (64 at most). Packs spawn out of sight, 75 to 230 units away, on
-  walls and roofs, and the gap between packs shrinks each wave. New kinds join as
-  the waves go on, and a Broodmother leads every fifth wave. Clearing a wave
-  patches 30% of the mech's armor.
+- **Waves:** wave *n* sends 6 + 6*n* spiders and [scorpions](#scorpion-frames),
+  in packs, with up to 6 + 5*n* alive at once (64 at most). Spider packs spawn out
+  of sight, 75 to 230 units away, on walls and roofs, and the gap between packs
+  shrinks each wave. New kinds join as the waves go on, and a Broodmother leads
+  every fifth wave. Clearing a wave patches 30% of the mech's armor.
 - **Variants:** each kind has its own palette, proportions, tactics and weapon.
   Every one of them has the same glowing red eyes.
 
@@ -318,10 +357,11 @@ them, move:
 the dark gaps around each piece (each part is picked by a point inside it),
 packs them into `textures/spider.jpg`, writes a glow map of only the lit red
 tubes and slits to `textures/spider-glow.jpg`, and records each part's rectangle
-and outline in `js/spiderParts.js`. In `js/spiders.js`, the outlines become
-extruded plates with the art mapped onto them: curved blades for the upper legs,
-striped claws for the lower legs (each crossed with a second plate so it has
-body from any angle), the skull face, brow, fangs and spine crest. The ribbed
+and outline in `js/spiderParts.js`. In `js/frameParts.js` (shared with the
+scorpions), the outlines become extruded plates with the art mapped onto them:
+curved blades for the upper legs, striped claws for the lower legs (each crossed
+with a second plate so it has body from any angle), the skull face, brow, fangs
+and spine crest. The ribbed
 dome and the slit plate are wrapped onto the abdomen and the carapace. The eyes
 are additive glow points.
 
@@ -334,6 +374,61 @@ dorsal lance plate.
 
 Every spider part is an `InstancedMesh` shared by the whole swarm, so 64 spiders
 cost about fifteen draw calls.
+
+## Scorpion-frames
+
+Eight-legged ground hunters built from the same spider sheets and palette swap,
+running in the same waves. They don't leap or shoot from the rooftops. They dig
+up out of the street, 60 to 200 units away and out of sight, and come straight
+for the mech to fight up close:
+
+- **Pincers:** a claw opens as it winds up, then snaps shut on the mech's hips or
+  torso (12 AP).
+- **Stinger:** the tail cocks back while its venom bulb glows, then whips over the
+  scorpion's head onto the mech (30 AP).
+- **Telegraphs:** every hit is tested against where the rendered pincer or
+  stinger tip actually is, so a dash during the wind-up dodges it. The raised
+  shield turns away strikes from the front, along with the venom, shock and grab
+  that ride on them.
+
+**Weakness:** a scorpion can only climb about 100 ft (30 m) up a wall. Past that
+its grip gives out: it scrabbles at the wall, slips back down and tries again, so
+scorpions chasing a mech up a tower end up lined along the wall at the 100 ft
+mark. They can still climb over buildings shorter than that, but a mech on a
+higher roof, or high in the air, is out of reach of everything but their ranged
+attacks.
+
+| Variant | Palette | From wave | What sets it apart |
+| --- | --- | --- | --- |
+| **Burrower** | Desert tan, amber glow | 1 | Dives into the street and tunnels at the mech, untargetable, straight under buildings, while the street heaves above it. A pulsing ring marks where it will burst out 0.6 seconds later, pincers first (24 AP). |
+| **Prowler** | Black | 2 | Runs dark: its lights go out and neither the lock-on button nor missile locks can find it. It swings wide round the mech to strike from behind, where the shield can't help and its hits do 50% more. Its lights flare whenever it strikes or is hit. |
+| **Berserker** | Dark red | 2 | Tougher (two rifle bolts). Below half its armor it goes berserk: glow flaring and venting red steam, it moves half again as fast and strikes and recovers far quicker. |
+| **Venomtail** | Neon green | 3 | Its sting injects venom that eats 7 AP a second for six seconds and holds off armor regeneration; its pincers inject a little too. Lobs pairs of venom globs from range, or at a mech out of reach. |
+| **Shocktail** | Neon blue | 3 | Its sting shorts out the mech's boost (45 drained, regen stalled). From range, and at a mech out of reach, it charges and arcs jagged lightning from its tail that drains boost too. |
+| **Scorcher** | Neon orange | 4 | Sprays a stream of fire from its tail that drags after the mech's legs, burning it while it stands in the stream and setting the street alight. Burning patches last a few seconds. |
+| **Emperor** | Royal purple, gold trim | 6 | Nearly twice the size of the other scorpions, with 160 HP and hits half again as hard. Its pincer seizes the mech and pins it for 1.8 seconds (dash to break free three times faster) while it reels itself in and stings. Arrives with two escorts. |
+
+### How they're built
+
+`js/scorpions.js` builds scorpions from the spider atlas parts: the thorax plate
+on a flat carapace hull, the ribbed dome stretched into the segmented body with
+the spine plate along its back, femur and tibia plates for the legs and arms,
+heavy hulls for the claw hands, striped claw plates for the fingers and stinger,
+and the glowing turbine disc wrapped onto the venom bulb. The neon kinds use a
+fourth channel on the palette's accent that makes the paint itself glow.
+
+- **Legs:** eight, stepping in alternating tetrapods with knees thrown wide and
+  the body slung low. They share the spiders' surface crawling and foot planting.
+- **Tail:** five segments posed with planar CCD in a plane that turns toward the
+  target. Each joint only curls forward, so the tail arches over the back at
+  rest and whips over the head when it stings. The strike aims at the torso,
+  chest or hips, whichever the stinger can reach.
+- **Pincers:** two-bone arms with the elbows thrown outward. Each hand points its
+  own way, forward at rest and at the mech in a strike, and a hinged finger
+  swings open against a fixed one.
+
+Every part is an `InstancedMesh`, drawn only up to the highest scorpion slot in
+use, so the 24 scorpions that can be alive at once cost about a dozen draw calls.
 
 ## Design notes
 
@@ -386,8 +481,9 @@ in the hangar settings.
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
+| `js/trees.js` | Street and park trees: instanced trunks and leaves, uprooting, rigid-body tumbling and rolling, burning |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
-| `js/world.js` | Sky, lights, spatial collision grid, raycasts (through voxel structures and falling pieces), damage routing |
+| `js/world.js` | Sky, lights, spatial collision grid (colliders and trees), raycasts (through voxel structures and falling pieces), damage routing |
 | `js/destruct/destruct.js` | Destruction: activating structures, damage, structural checks (islands, sections, spans), breaking away, crushing, shattering, rendering budgets |
 | `js/destruct/grid.js` | Voxel grids on lines snapped to the original surfaces, materials, ray marching and push-out |
 | `js/destruct/voxelize.js` | Turns a city owner's recorded volumes into walls, floors, columns, cores and rooms |
@@ -397,9 +493,13 @@ in the hangar settings.
 | `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
 | `js/destruct/textures.js` | Painted atlas for broken materials, office floors, lit ceilings and plaster |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
-| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders and scorpions |
+| `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
+| `js/frameParts.js` | Shared by spiders and scorpions: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, the mech's hit capsule |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
+| `js/music.js` | Soundtrack playlist: title theme, shuffled rotation, volume drop after the title |
+| `js/boot.js` | Entry point: downloads the title theme, then loads the title screen and the game |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
 | `js/ui.js` | HUD (armor, waves, damage indicators) and hangar menu |
 | `js/main.js` | Renderer, world scale, player physics and armor, camera, game loop, game over |
@@ -409,6 +509,7 @@ in the hangar settings.
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade, ground and structure kits |
 | `tools/city-panels.json` | Each facade, ground and structure panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
+| `tools/build_music.py` | Encodes the soundtrack WAVs to the MP3s in `audio/music/` |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
 directions by its normal and maps it into the region chosen for that direction,

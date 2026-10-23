@@ -993,7 +993,7 @@ export class LockOn {
     if (!enabled) { this.locks.length = 0; return; }
     const aspect = camera.aspect;
     const inZone = (t, grace) => {
-      if (!t.alive) return false;
+      if (!t.alive || t.stealth) return false; // a Prowler running dark can't be locked
       const d = t.pos.distanceTo(camera.position);
       if (d > this.range) return false;
       const v = this.screen(camera, t.pos, _t);
