@@ -5,7 +5,7 @@ loose in a Lower Manhattan overrun by spider-frames, six-legged machines that
 climb the towers and swarm in growing waves. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from forty-two more in `textures/city-src/`, and the spiders
+`textures/`, the city from fifty-two more in `textures/city-src/`, and the spiders
 from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
@@ -117,18 +117,26 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
     - Offices and towers get a louvered mechanical floor every 40 to 85 m and under each setback, and their penthouses wear the kit's louvers.
     - Walk-ups draw from the brick, limestone and masonry kits; prewar buildings and art deco towers from the masonry and warm stone kits; offices and towers from the glass, metal and dark stone ones.
 - **Open spaces:** a starting plaza with a red cube and planters, a park with a fountain, and a small green.
-- **Waterfront:** an esplanade with railings on three sides. North of the playable area the city carries on past a barricade.
+- **Elevated structures:** built from ten structure kits (railway, steel truss, overpass, viaduct, interchange, footing, suspension, cable-stay, stonework and industrial).
+  - An elevated railway runs down the avenue beside the starting plaza, after the old Els: double track on a deck carried by lattice girders, on steel bents every 15 m.
+  - An elevated highway runs along the east waterfront, after the FDR Drive: four lanes on girders and hammerhead piers, with lamps along its barriers. At the south end a ramp brings it down to the esplanade.
+  - Both decks clear the mech (17 m up), so it can walk under them, and both are solid: jump up onto either, or walk up the highway ramp, and walk along the top. Railings and barriers keep it on unless it jumps them. Spiders perch on them like roofs.
+- **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the Battery. North of the playable area the city carries on past a barricade.
 - **Street life:** streetlights, traffic signals, subway entrances, street trees, steam stacks and vents, and parked cars (many of them cabs).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
-- **Scenery:** Jersey City and Brooklyn skylines across the rivers, a suspension bridge, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
+- **Scenery:** Jersey City and Brooklyn skylines across the rivers, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
+  - A suspension bridge across the East River: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
+  - A cable-stayed bridge across the Hudson, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
 
-All city surfaces sample five texture atlases (`textures/city-facade.jpg`,
-`city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`, `city-roads.jpg`) through a
-shader that tiles inside one atlas cell with `textureGrad`, so the whole city is merged
-into a few dozen meshes. Each vertex carries its cell's rectangle, so cells can be any
-size. If the facade or ground panels ever outgrow one 4096 px page, the build splits
-them over `city-panels2.jpg` (or `city-roads2.jpg`) and on, keeping each kit on one
-page, and the city gives each page a material.
+All city surfaces sample six texture atlases (`textures/city-facade.jpg`,
+`city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`, `city-roads.jpg`,
+`city-structs.webp`) through a shader that tiles inside one atlas cell with
+`textureGrad`, so the whole city is merged into a few dozen meshes. Each vertex carries
+its cell's rectangle, so cells can be any size. If the facade, ground or structure
+panels ever outgrow one 4096 px page, the build splits them over `city-panels2.jpg`
+(or `city-roads2.jpg`, `city-structs2.webp`) and on, keeping each kit on one page, and
+the city gives each page its materials. The structure atlas is WebP so its see-through
+pieces keep their alpha.
 `tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
 source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
@@ -155,6 +163,18 @@ cover or grate, `T` tree pit and `H` damage (cracks and potholes). The build pac
 into `city-roads.jpg`, and on the way turns crosswalks and lines so their stripes run up
 the tile, crops lines to their paint and covers and pits to their outline, and evens out
 broad stains on the tiled surfaces so they don't show as a checkerboard.
+
+The structure kits (`STRUCT_KITS`) are loose pieces on a charcoal background, cut like
+the facade panels but keeping sparse shapes such as towers, piers and lamp posts. Their
+roles are `D` road deck, `K` track deck, `F` concrete slab, `B` barrier, `G` girder face,
+`C` column, `S` block or pile cap, `L` cable bundle, `T` truss, `R` railing, `U`
+balustrade, `H` hanger, `N` steel bent, `M` lamp post, `P` pier, `W` tower and `Y` pylon.
+Tiles are packed as they are; the rest have the background keyed out into the atlas's
+alpha, so trusses, railings and balustrades draw as see-through cards (and cast
+see-through shadows). Piers, towers and pylons also have their outline traced into
+`OUTLINES` in `js/cityTiles.js`, holes included, and the city extrudes them into solid
+slabs with the piece on both faces. Bridges size their towers and pylons from these
+outlines, so the deck always passes through the opening under the crossbeam.
 
 ## Spider-frames
 
@@ -289,8 +309,8 @@ in the hangar settings.
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
-| `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, waterfront, distant scenery |
-| `js/cityTiles.js` | Generated: atlas layouts, tile positions, and the facade and ground panels and kits for the city |
+| `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
+| `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
 | `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
@@ -301,8 +321,8 @@ in the hangar settings.
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
 | `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
-| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade and ground panel kits |
-| `tools/city-panels.json` | Each facade and ground panel's rectangle on its sheet and its hand-picked role |
+| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade, ground and structure kits |
+| `tools/city-panels.json` | Each facade, ground and structure panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six

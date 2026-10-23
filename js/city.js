@@ -1,5 +1,5 @@
 import * as THREE from './three.js';
-import { ATLASES, TILES, PANELS, KITS, GROUND } from './cityTiles.js';
+import { ATLASES, TILES, PANELS, KITS, GROUND, PARTS, STRUCTS, OUTLINES } from './cityTiles.js';
 import { canvasTexture } from './atlas.js';
 
 // ---------------------------------------------------------------------------
@@ -11,11 +11,12 @@ import { canvasTexture } from './atlas.js';
 // so the mech stands 40 ft tall.
 //
 // Geometry is merged per material and per chunk. Every surface samples one of
-// five texture atlases through a shader that tiles inside an atlas cell, so
+// six texture atlases through a shader that tiles inside an atlas cell, so
 // the whole city draws in a few dozen calls. Many facades are composed from
 // panel kits: piers, runs of window bays and louvered vent floors cut from one
 // family of materials. Streets and sidewalks draw on ground kits picked by how
-// worn the pavement is in each part of town.
+// worn the pavement is in each part of town. An elevated railway, an elevated
+// highway and two bridges are built from structure kits.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -41,11 +42,11 @@ const cellCache = new Map();
 function cell(name) {
   let c = cellCache.get(name);
   if (c) return c;
-  const p = PANELS[name];
+  const p = PANELS[name] || PARTS[name];
   if (p) {
-    // A facade panel: its own rectangle on its page of the panel atlas
+    // A facade, ground or structure panel: its own rectangle on its page of the atlas
     const A = ATLASES[p[0]];
-    c = { atlas: p[0], u: p[1] / A.w, v: 1 - (p[2] + p[4]) / A.h, w: p[3] / A.w, h: p[4] / A.h };
+    c = { atlas: p[0], u: p[1] / A.w, v: 1 - (p[2] + p[4]) / A.h, w: p[3] / A.w, h: p[4] / A.h, aspect: p[3] / p[4] };
   } else {
     const t = TILES[name];
     if (!t) throw new Error(`Unknown city tile ${name}`);
@@ -128,28 +129,35 @@ function tileMeters(name) {
 // mip selection stays continuous across tile repeats. Each vertex carries its
 // cell's rectangle, so cells can be any size.
 //   aMode 0: opaque   1: paint keyed off the asphalt   2: round cut-out
+// Structure cards (trusses, railings) use the alpha in the atlas: o.cut.
 // ---------------------------------------------------------------------------
+
+/** Sample the atlas cell in a shader; shared by the surface and shadow materials */
+function atlasShader(sh) {
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute vec4 aCell;\nattribute float aMode;\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
+    .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCell = aCell; vTUv = uv; vMode = aMode;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
+    .replace('#include <map_fragment>', /* glsl */`
+      vec2 tuv = fract(vTUv);
+      vec4 sampledDiffuseColor = textureGrad(map, vCell.xy + tuv * vCell.zw, dFdx(vTUv) * vCell.zw, dFdy(vTUv) * vCell.zw);
+      float atlasLum = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float atlasAlpha = 1.0;
+      if (vMode > 0.5 && vMode < 1.5) atlasAlpha = smoothstep(0.075, 0.16, atlasLum);
+      else if (vMode > 1.5) atlasAlpha = 1.0 - smoothstep(0.42, 0.47, length(tuv - 0.5));
+      diffuseColor *= sampledDiffuseColor;
+      diffuseColor.a *= atlasAlpha;`);
+}
 
 function atlasMaterial(tex, o = {}) {
   const m = new THREE.MeshStandardMaterial({
     map: tex, vertexColors: true, roughness: o.roughness ?? 0.85, metalness: o.metalness ?? 0,
-    alphaTest: o.decal ? 0.5 : 0, polygonOffset: !!o.decal, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    alphaTest: o.decal || o.cut ? 0.5 : 0, polygonOffset: !!o.decal, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    side: o.cut ? THREE.DoubleSide : THREE.FrontSide, alphaToCoverage: !!o.cut,
   });
   m.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 aCell;\nattribute float aMode;\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCell = aCell; vTUv = uv; vMode = aMode;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
-      .replace('#include <map_fragment>', /* glsl */`
-        vec2 tuv = fract(vTUv);
-        vec4 sampledDiffuseColor = textureGrad(map, vCell.xy + tuv * vCell.zw, dFdx(vTUv) * vCell.zw, dFdy(vTUv) * vCell.zw);
-        float atlasLum = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-        float atlasAlpha = 1.0;
-        if (vMode > 0.5 && vMode < 1.5) atlasAlpha = smoothstep(0.075, 0.16, atlasLum);
-        else if (vMode > 1.5) atlasAlpha = 1.0 - smoothstep(0.42, 0.47, length(tuv - 0.5));
-        diffuseColor *= sampledDiffuseColor;
-        diffuseColor.a *= atlasAlpha;`);
+    atlasShader(sh);
     if (o.glass) {
       // Dark texels are window glass: make them glossy so they pick up the sky
       sh.fragmentShader = sh.fragmentShader
@@ -157,7 +165,15 @@ function atlasMaterial(tex, o = {}) {
         .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.65, glassAmt);');
     }
   };
-  m.customProgramCacheKey = () => `atlas-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}`;
+  m.customProgramCacheKey = () => `atlas-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}-${o.cut ? 1 : 0}`;
+  return m;
+}
+
+/** Shadows for structure cards, so trusses and railings cast their holes */
+function atlasDepthMaterial(tex) {
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5 });
+  m.onBeforeCompile = atlasShader;
+  m.customProgramCacheKey = () => 'atlas-depth';
   return m;
 }
 
@@ -235,18 +251,28 @@ export class City {
       decal: atlasMaterial(tex.ground, { roughness: 0.6, decal: true }),
       props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.15 }),
     };
-    // One material per page of the panel atlas, and a surface and a decal material per page of the road atlas
+    // One material per page of the panel atlas, a surface and a decal material per page of the
+    // road atlas, and a solid and a see-through card material per page of the structure atlas
+    this.depthMats = {};
     for (const k of Object.keys(ATLASES)) {
       if (k.startsWith('panels')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.75, glass: true });
       if (k.startsWith('roads')) {
         this.mats[k] = atlasMaterial(tex[k], { roughness: 0.92 });
         this.mats[`${k}Decal`] = atlasMaterial(tex[k], { roughness: 0.6, decal: true });
       }
+      if (k.startsWith('structs')) {
+        this.mats[k] = atlasMaterial(tex[k], { roughness: 0.8, metalness: 0.1 });
+        this.mats[`${k}Cut`] = atlasMaterial(tex[k], { roughness: 0.7, metalness: 0.2, cut: true });
+        this.depthMats[`${k}Cut`] = atlasDepthMaterial(tex[k]);
+      }
     }
+    this.rs = mulberry(2001); // structures, apart from the layout so neither shifts the other
     this.layout();
     this.buildGround();
     this.buildBlocks();
     this.buildFurniture();
+    this.buildEl();
+    this.buildHighway();
     this.buildWaterfront();
     this.buildScenery();
     this.flush();
@@ -298,8 +324,8 @@ export class City {
     return b;
   }
 
-  /** The current chunk's buffer for the atlas a wall tile lives in */
-  bufFor(tile) { return this.buf(cell(tile).atlas, this.cur); }
+  /** The current chunk's buffer for the atlas a wall tile lives in; cut: its see-through card material */
+  bufFor(tile, cut = false) { return this.buf(cell(tile).atlas + (cut ? 'Cut' : ''), this.cur); }
 
   /** The surface (or decal) buffer for the atlas a ground tile lives in */
   groundBuf(tile, decal = false, chunk = 'all') {
@@ -400,10 +426,15 @@ export class City {
 
   /** Append a unit prop shape with a transform and a flat color */
   prop(shape, x, y, z, sx, sy, sz, color, ry = 0, rx = 0, rz = 0, chunk) {
-    const g = SHAPES[shape];
-    const b = this.buf('props', chunk || this.chunkOf(x, z));
     _q.setFromEuler(new THREE.Euler(rx, ry, rz));
-    _m.compose(_c.set(x, y, z), _q, _s.set(sx, sy, sz));
+    this.propQ(shape, _c.set(x, y, z), _q, _s.set(sx, sy, sz), color, chunk || this.chunkOf(x, z));
+  }
+
+  /** Append a unit prop shape at a position, rotation and scale */
+  propQ(shape, pos, q, scale, color, chunk) {
+    const g = SHAPES[shape];
+    const b = this.buf('props', chunk);
+    _m.compose(pos, q, scale);
     const nm = new THREE.Matrix3().getNormalMatrix(_m);
     const P = g.attributes.position, N = g.attributes.normal, I = g.index;
     const i0 = b.n;
@@ -414,6 +445,141 @@ export class City {
     }
     if (I) for (let i = 0; i < I.count; i++) b.idx.push(i0 + I.getX(i));
     else for (let i = 0; i < P.count; i++) b.idx.push(i0 + i);
+  }
+
+  /** A thin prop shape from a to b (a stay, a hanger), r thick */
+  strut(shape, a, b, r, color, chunk) {
+    const d = new V3().subVectors(b, a), len = d.length();
+    const q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 1, 0), d.divideScalar(len));
+    this.propQ(shape, new V3().addVectors(a, b).multiplyScalar(0.5), q, new V3(r, len, r), color, chunk);
+  }
+
+  // ---- structure pieces --------------------------------------------------------
+
+  /**
+   * A structure box. f: { ns, ew, top, bottom } for the faces facing ±z, ±x, up and down, each
+   * [tile, repeat width, repeat height] in units (0: once across the face), with an optional
+   * fourth entry true to fit whole repeats along a side. Top and bottom repeat along x and z.
+   */
+  sbox(x0, y0, z0, x1, y1, z1, f, tint = WHITE) {
+    const side = (spec, ax, az, bx, bz) => {
+      if (!spec) return;
+      const [t, tw, th, snap] = spec, w = Math.hypot(bx - ax, bz - az);
+      this.wall(this.bufFor(t), t, ax, az, bx, bz, y0, y1, tw || w, th || y1 - y0, { ao: false, tint, snapU: snap });
+    };
+    side(f.ns, x0, z1, x1, z1); side(f.ns, x1, z0, x0, z0);
+    side(f.ew, x1, z1, x1, z0); side(f.ew, x0, z0, x0, z1);
+    const flatFace = (spec, y, up) => {
+      if (!spec) return;
+      const [t, tw, th] = spec, uv = (x, z) => [(x - x0) / (tw || x1 - x0), (z1 - z) / (th || z1 - z0)];
+      if (up) this.flat(this.bufFor(t), t, x0, z0, x1, z1, y, uv, 0, tint);
+      else this.under(this.bufFor(t), t, x0, z0, x1, z1, y, uv, tint);
+    };
+    flatFace(f.top, y1, true);
+    flatFace(f.bottom, y0, false);
+  }
+
+  /** Flat horizontal quad facing down, with uv from a function of (x, z) */
+  under(b, tile, x0, z0, x1, z1, y, uvf, col = WHITE) {
+    const P = [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]];
+    this.quad(b, P, [0, -1, 0], P.map((p) => uvf(p[0], p[2])), cell(tile), col);
+  }
+
+  /**
+   * A vertical quad from a to b whose edges slope: y from ya0 to ya1 at a, yb0 to yb1 at b.
+   * u runs along it every tw, continuing from one quad to the next; v runs up it every th
+   * from each end's bottom edge, or from y = 0 with o.world.
+   */
+  skew(b, tile, ax, az, bx, bz, ya0, ya1, yb0, yb1, tw, th, o = {}) {
+    const dx = bx - ax, dz = bz - az, w = Math.hypot(dx, dz);
+    const ua = (ax * dx + az * dz) / w / tw, ub = ua + w / tw;
+    const v = (y, y0) => (o.world ? y : y - y0) / th;
+    this.quad(b, [[ax, ya0, az], [bx, yb0, bz], [bx, yb1, bz], [ax, ya1, az]], [-dz / w, 0, dx / w],
+      [[ua, v(ya0, ya0)], [ub, v(yb0, yb0)], [ub, v(yb1, yb0)], [ua, v(ya1, ya0)]], cell(tile), o.tint || WHITE);
+  }
+
+  /** A see-through card (a truss, a railing) standing from a to b over y0..y1, repeating every tw (0: once) */
+  card(tile, ax, az, bx, bz, y0, y1, tw = 0) {
+    const w = Math.hypot(bx - ax, bz - az);
+    this.wall(this.bufFor(tile, true), tile, ax, az, bx, bz, y0, y1, tw || w, y1 - y0, { ao: false, snapU: true });
+  }
+
+  /** A lamp post or other piece seen from every side: two cards crossed at (x, z), h tall */
+  crossCard(tile, x, y, z, h) {
+    const w = h * cell(tile).aspect / 2;
+    this.card(tile, x - w, z, x + w, z, y, y + h);
+    this.card(tile, x, z + w, x, z - w, y, y + h);
+  }
+
+  /**
+   * A solid piece (pier, tower, pylon) extruded from its traced outline: w wide and h tall with
+   * its base centered at (x, y, z), d deep, turned by ry. Its faces show the piece and its edges
+   * the side tile, repeating every ts. The side tile must be on the piece's atlas page.
+   */
+  solid(name, side, x, y, z, w, h, d, ry = 0, ts = this.m(4)) {
+    const O = OUTLINES[name], ring = (r) => r.map(([u, v]) => new THREE.Vector2((u - 0.5) * w, v * h));
+    const shape = new THREE.Shape(ring(O[0]));
+    for (const hole of O.slice(1)) shape.holes.push(new THREE.Path(ring(hole)));
+    const g = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false, curveSegments: 1 });
+    g.translate(0, 0, -d / 2);
+    const P = g.attributes.position, N = g.attributes.normal;
+    const b = this.bufFor(name), cp = cell(name), cs = cell(side);
+    const q = new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), ry);
+    const M = new THREE.Matrix4().compose(new V3(x, y, z), q, new V3(1, 1, 1));
+    const p = new V3(), nn = new V3();
+    // The geometry is not indexed, so each triangle has its own vertices and face normal
+    for (let i = 0; i < P.count; i += 3) {
+      const nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), cap = Math.abs(nz) > 0.5;
+      nn.set(nx, ny, nz).applyQuaternion(q);
+      for (let k = i; k < i + 3; k++) {
+        const px = P.getX(k), py = P.getY(k), pz = P.getZ(k);
+        const u = cap ? clamp(px / w + 0.5, 0.002, 0.998) : pz / ts, v = cap ? clamp(py / h, 0.002, 0.998) : (py * nx - px * ny) / ts;
+        p.set(px, py, pz).applyMatrix4(M);
+        b.idx.push(b.v(p.x, p.y, p.z, nn.x, nn.y, nn.z, 1, 1, 1, u, v, cap ? cp : cs, 0));
+      }
+    }
+    g.dispose();
+  }
+
+  /** Where a horizontal line at height v (0..1) crosses a solid piece's outline: sorted u values */
+  outlineCuts(name, v) {
+    const xs = [];
+    for (const r of OUTLINES[name]) {
+      for (let i = 0; i < r.length; i++) {
+        const [ax, ay] = r[i], [bx, by] = r[(i + 1) % r.length];
+        if ((ay <= v) !== (by <= v)) xs.push(ax + (v - ay) / (by - ay) * (bx - ax));
+      }
+    }
+    return xs.sort((a, b) => a - b);
+  }
+
+  /** Width (0..1) of the opening through a piece's middle at height v, or 0 where it is solid */
+  opening(name, v) {
+    const xs = this.outlineCuts(name, v);
+    for (let i = 1; i < xs.length - 1; i += 2) if (xs[i] <= 0.5 && xs[i + 1] >= 0.5) return xs[i + 1] - xs[i];
+    return 0;
+  }
+
+  /** A cable through points pts (V3), r thick, wrapped in a tile repeating every rep along it */
+  cable(tile, pts, r, rep) {
+    const b = this.bufFor(tile), c = cell(tile), sides = 6, rings = [];
+    let s = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const t = new V3().subVectors(pts[Math.min(i + 1, pts.length - 1)], pts[Math.max(i - 1, 0)]).normalize();
+      const u1 = new V3().crossVectors(t, Math.abs(t.y) < 0.95 ? new V3(0, 1, 0) : new V3(1, 0, 0)).normalize();
+      if (i) s += pts[i].distanceTo(pts[i - 1]);
+      rings.push({ p: pts[i], u1, u2: new V3().crossVectors(u1, t), s });
+    }
+    for (let i = 0; i < rings.length - 1; i++) {
+      for (let k = 0; k < sides; k++) {
+        const ids = [[rings[i], k], [rings[i + 1], k], [rings[i + 1], k + 1], [rings[i], k + 1]].map(([R, kk]) => {
+          const a = (kk / sides) * Math.PI * 2, cs = Math.cos(a), sn = Math.sin(a);
+          const nx = R.u1.x * cs + R.u2.x * sn, ny = R.u1.y * cs + R.u2.y * sn, nz = R.u1.z * cs + R.u2.z * sn;
+          return b.v(R.p.x + nx * r, R.p.y + ny * r, R.p.z + nz * r, nx, ny, nz, 1, 1, 1, R.s / rep, (kk / sides) * 0.999, c, 0);
+        });
+        b.idx.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
+      }
+    }
   }
 
   collide(x0, y0, z0, x1, y1, z1, extra) {
@@ -1264,6 +1430,118 @@ export class City {
     }
   }
 
+  // ---- elevated railway and highway ----------------------------------------------
+
+  /**
+   * An elevated railway down an avenue, after the old Els: double track on a deck carried by
+   * lattice girders, on steel bents every 15 m. The deck clears the mech, which can jump up
+   * onto it and walk along it, and spiders perch on it like a roof.
+   */
+  buildEl() {
+    const L = this.L, m = (x) => this.m(x), rs = this.rs, asp = (t) => cell(t).aspect;
+    const R = STRUCTS.railway, T = STRUCTS.steeltruss;
+    const track = pick(rs, R.track), girder = pick(rs, R.girder), col = pick(rs, R.column), bent = pick(rs, R.bent);
+    const lattice = pick(rs, R.truss.concat(T.truss)), rail = pick(rs, R.rail);
+    const a = L.aves[3], cx = (a.r0 + a.r1) / 2, hw = m(5), cw = m(0.4), xc = hw - m(0.7);
+    // Bents carry a cap beam (yb - 1 m to yb), lattice girders (yb to yl) and the deck slab (yl to yt)
+    const yb = m(14.5), yl = m(16.5), yt = m(17), yr = yt + m(1.2);
+    const z0 = L.zN + m(20), z1 = L.z1 - m(14), n = Math.round((z1 - z0) / m(15)), sp = (z1 - z0) / n;
+    const tl = (2 * hw) / asp(track), plate = [girder, m(3), m(3)];
+    for (let i = 0; i < n; i++) {
+      const za = z0 + i * sp, zb = za + sp;
+      this.cur = this.chunkOf(cx, (za + zb) / 2);
+      this.sbox(cx - hw, yl, za, cx + hw, yt, zb, {
+        ew: [girder, (yt - yl) * asp(girder), yt - yl], ns: i === 0 || i === n - 1 ? [girder, 0, 0] : null, bottom: plate,
+      });
+      this.flat(this.bufFor(track), track, cx - hw, za, cx + hw, zb, yt, (x, z) => [(x - cx + hw) / (2 * hw), -z / tl]);
+      for (const s of [-1, 1]) {
+        const x = cx + s * hw;
+        this.card(lattice, x, za, x, zb, yb, yl, (yl - yb) * asp(lattice));
+        this.card(rail, x, za, x, zb, yt, yr, (yr - yt) * asp(rail));
+        // Railings stop the mech walking off; it can jump them
+        this.collide(s < 0 ? x : x - m(0.25), yt, za, s < 0 ? x + m(0.25) : x, yt + m(1.6), zb);
+      }
+      this.collide(cx - hw, yb, za, cx + hw, yt, zb, { building: true });
+    }
+    // Bents: a pair of steel columns under a cap beam, braced by a steel frame
+    for (let i = 0; i <= n; i++) {
+      const z = z0 + i * sp;
+      this.cur = this.chunkOf(cx, z);
+      for (const s of [-1, 1]) {
+        const x = cx + s * xc, face = [col, 0, (2 * cw) / asp(col)];
+        this.sbox(x - cw, 0, z - cw, x + cw, yb - m(1), z + cw, { ns: face, ew: face });
+        this.collide(x - cw, 0, z - cw, x + cw, yb, z + cw);
+      }
+      this.sbox(cx - hw, yb - m(1), z - m(0.45), cx + hw, yb, z + m(0.45), { ns: [girder, m(1) * asp(girder), m(1)], ew: [girder, 0, 0], bottom: plate });
+      this.card(bent, cx - hw, z, cx + hw, z, yb - (2 * hw) / asp(bent), yb);
+    }
+  }
+
+  /**
+   * An elevated highway over the east waterfront, after the FDR Drive: four lanes on a deck
+   * carried by girders on hammerhead piers, with lamps along its barriers. At the south end it
+   * comes down to the esplanade on a ramp the mech can walk up.
+   */
+  buildHighway() {
+    const L = this.L, m = (x) => this.m(x), rs = this.rs, asp = (t) => cell(t).aspect;
+    const K = STRUCTS[pick(rs, ['overpass', 'viaduct'])];
+    const deck = pick(rs, K.deck), barrier = pick(rs, K.barrier), girder = pick(rs, K.girder), pier = pick(rs, K.pier);
+    const slab = K.slab[0], lamp = pick(rs, STRUCTS.industrial.lamp);
+    const cx = L.x1 + m(18), hw = m(9), y0 = L.curb;
+    // Girders (yg to ys) under the deck slab (ys to yt), barriers bh tall, piers every 32 m
+    const yg = m(14.4), ys = m(16.3), yt = m(17), bh = m(1.1), bw = m(0.45), gx = m(5.5), gw = m(0.35);
+    const dl = (2 * hw) / asp(deck), fs = [slab, m(4), m(4)], bs = [barrier, bh * asp(barrier), bh];
+    const zA = L.zN - m(300), zR = L.z1 - m(190), zG = L.z1 - m(40);
+    this.ramp = { z0: zR, z1: zG, x0: cx - hw, x1: cx + hw };
+    const n = Math.round((zR - zA) / m(32)), sp = (zR - zA) / n;
+    const barriers = (za, zb, top) => {
+      for (const s of [-1, 1]) {
+        const x0 = s < 0 ? cx - hw : cx + hw - bw, x1 = x0 + bw;
+        this.sbox(x0, top, za, x1, top + bh, zb, { ew: bs, top: fs });
+        this.collide(x0, top, za, x1, top + m(1.6), zb);
+      }
+    };
+    for (let i = 0; i < n; i++) {
+      const za = zA + i * sp, zb = za + sp;
+      this.cur = this.chunkOf(cx, (za + zb) / 2);
+      this.sbox(cx - hw, ys, za, cx + hw, yt, zb, { ew: fs, bottom: fs, ns: i === 0 ? fs : null });
+      this.flat(this.bufFor(deck), deck, cx - hw, za, cx + hw, zb, yt, (x, z) => [(x - cx + hw) / (2 * hw), -z / dl]);
+      for (const s of [-1, 1]) this.sbox(cx + s * gx - gw, yg, za, cx + s * gx + gw, ys, zb, { ew: [girder, (ys - yg) * asp(girder), ys - yg] });
+      barriers(za, zb, yt);
+      this.collide(cx - hw, yg, za, cx + hw, yt, zb, { building: true });
+      // A pier at the north end of each span, and a lamp over every other span
+      this.solid(pier, slab, cx, y0, za, m(17), yg - y0, m(2.6));
+      this.collide(cx - m(2), 0, za - m(1.3), cx + m(2), yg, za + m(1.3));
+      if (i % 2 === 0) this.crossCard(lamp, cx + (i % 4 ? 1 : -1) * (hw - bw / 2), yt + bh, (za + zb) / 2, m(9));
+    }
+    // The ramp: a filled embankment between retaining walls, collided as a flight of shallow steps
+    const yAt = (z) => y0 + (yt - y0) * (zG - z) / (zG - zR);
+    const nr = Math.ceil((zG - zR) / m(2.5)), sr = (zG - zR) / nr;
+    this.cur = this.chunkOf(cx, zR);
+    this.wall(this.bufFor(slab), slab, cx + hw, zR, cx - hw, zR, 0, yt, m(4), m(4), { ao: false });
+    for (let i = 0; i < nr; i++) {
+      const za = zR + i * sr, zb = za + sr, ya = yAt(za), yb = yAt(zb), xw = cx - hw, xe = cx + hw;
+      this.cur = this.chunkOf(cx, za);
+      const nz = (ya - yb) / sr, nl = Math.hypot(1, nz);
+      this.quad(this.bufFor(deck), [[xw, yb, zb], [xe, yb, zb], [xe, ya, za], [xw, ya, za]], [0, 1 / nl, nz / nl],
+        [[0, -zb / dl], [1, -zb / dl], [1, -za / dl], [0, -za / dl]], cell(deck), WHITE);
+      const sb = this.bufFor(slab), bb = this.bufFor(barrier), u = bh * asp(barrier);
+      this.skew(sb, slab, xw, za, xw, zb, 0, ya, 0, yb, m(4), m(4), { world: true });
+      this.skew(sb, slab, xe, zb, xe, za, 0, yb, 0, ya, m(4), m(4), { world: true });
+      // Barriers: outer and inner faces, and their tops
+      this.skew(bb, barrier, xw, za, xw, zb, ya, ya + bh, yb, yb + bh, u, bh);
+      this.skew(bb, barrier, xw + bw, zb, xw + bw, za, yb, yb + bh, ya, ya + bh, u, bh);
+      this.skew(bb, barrier, xe, zb, xe, za, yb, yb + bh, ya, ya + bh, u, bh);
+      this.skew(bb, barrier, xe - bw, za, xe - bw, zb, ya, ya + bh, yb, yb + bh, u, bh);
+      for (const x of [xw, xe - bw]) {
+        this.quad(sb, [[x, yb + bh, zb], [x + bw, yb + bh, zb], [x + bw, ya + bh, za], [x, ya + bh, za]], [0, 1, 0],
+          [[0, -zb / m(4)], [bw / m(4), -zb / m(4)], [bw / m(4), -za / m(4)], [0, -za / m(4)]], cell(slab), WHITE);
+        this.collide(x, 0, za, x + bw, ya + m(1.6), zb);
+      }
+      this.collide(xw, 0, za, xe, ya, zb);
+    }
+  }
+
   // ---- waterfront and scenery ------------------------------------------------
 
   buildWaterfront() {
@@ -1311,10 +1589,14 @@ export class City {
     const e = m(0.5);
     railRun(X0 + e, L.zN, X0 + e, Z1 - e);
     railRun(X1 - e, L.zN, X1 - e, Z1 - e);
-    railRun(X0 + e, Z1 - e, X1 - e, Z1 - e);
+    this.balustrade(X0 + e, X1 - e, Z1 - e);
     for (let i = 0; i < 26; i++) {
-      const side = r() < 0.5 ? X0 + m(8) : X1 - m(8), z = L.zN + r() * (Z1 - L.zN - m(10));
+      let side = r() < 0.5 ? X0 + m(8) : X1 - m(8);
+      const z = L.zN + r() * (Z1 - L.zN - m(10));
       if (z < L.z0) continue;
+      // Trees under the highway ramp move to the inner edge of the esplanade
+      const R = this.ramp;
+      if (R && side > R.x0 && side < R.x1 && z > R.z0 - m(6) && z < R.z1 + m(6)) side = L.x1 + m(3);
       this.cur = this.chunkOf(side, z);
       this.tree(side, y0, z, 0.9);
     }
@@ -1404,45 +1686,165 @@ export class City {
       const a = -Math.PI / 2 + (i - 3) * 0.32;
       this.prop('cone', sx + Math.sin(a) * m(3), L.water + m(113), sz + Math.cos(a) * m(-3), m(0.5), m(4), m(0.5), green, 0, 0, a, C);
     }
-    // A suspension bridge across the East River
+    // A suspension bridge across the East River, and a cable-stayed one across the Hudson to the north
     this.bridge(L.x1 + L.prom, L.z0 + m(160));
+    this.stayBridge(L.zN + m(60));
   }
 
+  /**
+   * A bridge deck running along x from xa to xb (xa < xb) centered on z, hw wide each way, its top
+   * at yAt(x), in segments so it can rise and fall. o: { deck, fascia, depth, under, barrier,
+   * truss, trussDepth }: the road on top, the fascia tile on its edges (depth deep), the tile
+   * underneath, barrier tile on the edges and an optional stiffening truss card under each edge.
+   */
+  deckRun(xa, xb, z, hw, yAt, o) {
+    const m = (x) => this.m(x), asp = (t) => cell(t).aspect, n = Math.max(1, Math.round((xb - xa) / m(10)));
+    const dl = (2 * hw) / asp(o.deck), bh = m(1), bw = m(0.45), d = o.depth, zs = z - hw, zn = z + hw;
+    const fb = this.bufFor(o.fascia), ub = this.bufFor(o.under), bb = this.bufFor(o.barrier), db = this.bufFor(o.deck);
+    const bu = bh * asp(o.barrier), fu = d * asp(o.fascia);
+    for (let i = 0; i < n; i++) {
+      const x0 = xa + (xb - xa) * i / n, x1 = xa + (xb - xa) * (i + 1) / n, y0 = yAt(x0), y1 = yAt(x1);
+      const s = (y1 - y0) / (x1 - x0), nl = Math.hypot(s, 1);
+      this.quad(db, [[x0, y0, zn], [x1, y1, zn], [x1, y1, zs], [x0, y0, zs]], [-s / nl, 1 / nl, 0],
+        [[1, x0 / dl], [1, x1 / dl], [0, x1 / dl], [0, x0 / dl]], cell(o.deck), WHITE);
+      this.quad(ub, [[x0, y0 - d, zs], [x1, y1 - d, zs], [x1, y1 - d, zn], [x0, y0 - d, zn]], [0, -1, 0],
+        [[x0 / m(4), zs / m(4)], [x1 / m(4), zs / m(4)], [x1 / m(4), zn / m(4)], [x0 / m(4), zn / m(4)]], cell(o.under), WHITE);
+      // Fascia and barriers on both edges: outer faces, inner faces and barrier tops
+      this.skew(fb, o.fascia, x0, zn, x1, zn, y0 - d, y0, y1 - d, y1, fu, d);
+      this.skew(fb, o.fascia, x1, zs, x0, zs, y1 - d, y1, y0 - d, y0, fu, d);
+      this.skew(bb, o.barrier, x0, zn, x1, zn, y0, y0 + bh, y1, y1 + bh, bu, bh);
+      this.skew(bb, o.barrier, x1, zn - bw, x0, zn - bw, y1, y1 + bh, y0, y0 + bh, bu, bh);
+      this.skew(bb, o.barrier, x1, zs, x0, zs, y1, y1 + bh, y0, y0 + bh, bu, bh);
+      this.skew(bb, o.barrier, x0, zs + bw, x1, zs + bw, y0, y0 + bh, y1, y1 + bh, bu, bh);
+      for (const zb of [zs, zn - bw]) {
+        this.quad(ub, [[x0, y0 + bh, zb + bw], [x1, y1 + bh, zb + bw], [x1, y1 + bh, zb], [x0, y0 + bh, zb]], [0, 1, 0],
+          [[x0 / m(4), 0], [x1 / m(4), 0], [x1 / m(4), bw / m(4)], [x0 / m(4), bw / m(4)]], cell(o.under), WHITE);
+      }
+      if (o.truss) {
+        const tb = this.bufFor(o.truss, true), td = o.trussDepth, tu = td * asp(o.truss);
+        for (const zt of [zs, zn]) this.skew(tb, o.truss, x0, zt, x1, zt, y0 - d - td, y0 - d, y1 - d - td, y1 - d, tu, td);
+      }
+    }
+  }
+
+  /** Height (0..1) of the underside of a piece's lowest crossbeam: where its middle first turns solid */
+  crossbeam(name) {
+    for (let v = 0.02; v < 1; v += 0.005) if (!this.opening(name, v)) return v < 0.15 ? 0.5 : v;
+    return 0.5;
+  }
+
+  /** A pile cap in the water under a tower or pylon, from the footing kit */
+  footing(x, z, wx, wz) {
+    const m = (v) => this.m(v), W = this.L.water, F = STRUCTS.footing, cap = pick(this.rs, F.block);
+    this.sbox(x - wx / 2, W - m(4), z - wz / 2, x + wx / 2, W + m(2), z + wz / 2,
+      { ns: [cap, m(6) * cell(cap).aspect, m(6), true], ew: [cap, m(6) * cell(cap).aspect, m(6), true], top: [STRUCTS.suspension.slab[0], m(4), m(4)] });
+  }
+
+  /**
+   * A suspension bridge across the East River: towers from the suspension kit on footings in
+   * the water, a deck stiffened by trusses, main cables over the towers and hangers down to the
+   * deck, and an approach rising from the seawall on piers.
+   */
   bridge(xs, z) {
-    const m = (x) => this.m(x), C = 'bridge', W = this.L.water;
-    const stone = [0.66, 0.6, 0.5], steel = [0.28, 0.3, 0.32];
-    const t1 = xs + m(320), t2 = t1 + m(486), end = t2 + m(330), deck = W + m(40), th = W + m(84), w = m(26);
-    const rampEnd = t1 - m(120), rampLen = Math.hypot(rampEnd - xs, deck - this.L.curb);
-    this.prop('box', (t1 - m(120) + end) / 2, deck, z, end - rampEnd, m(3), w, steel, 0, 0, 0, C);
-    this.prop('box', (xs + rampEnd) / 2, (deck + this.L.curb) / 2, z, rampLen, m(3), w, steel, 0, 0, Math.atan2(deck - this.L.curb, rampEnd - xs), C);
-    for (const tx of [t1, t2]) {
-      this.prop('box', tx, (W + th) / 2, z, m(24), th - W, m(42), stone, 0, 0, 0, C);
-      this.prop('box', tx, deck + m(18), z - m(10), m(24.4), m(30), m(7), [0.18, 0.17, 0.16], 0, 0, 0, C);
-      this.prop('box', tx, deck + m(18), z + m(10), m(24.4), m(30), m(7), [0.18, 0.17, 0.16], 0, 0, 0, C);
-      this.prop('cone4', tx, th + m(4), z, m(18), m(8), m(30), stone, Math.PI / 4, 0, 0, C);
+    const m = (x) => this.m(x), W = this.L.water, rs = this.rs, K = STRUCTS.suspension, asp = (t) => cell(t).aspect;
+    this.cur = 'bridge';
+    const t1 = xs + m(320), t2 = t1 + m(486), end = t2 + m(330), dY = W + m(40), hw = m(9.5);
+    const rampEnd = t1 - m(120), slab = K.slab[0], steel = [0.24, 0.25, 0.27];
+    // Towers: the H tower, tall enough that the deck passes under its lower crossbeam
+    const tower = K.tower.find((t) => OUTLINES[t].length > 1) || K.tower[0];
+    const yB = W + m(2), vc = this.crossbeam(tower), Ht = (dY - yB + m(9)) / vc;
+    const gap = Math.min(this.opening(tower, (dY - yB) / Ht), this.opening(tower, (dY - yB - m(8)) / Ht)) || 0.3;
+    const Wt = Math.max(Ht * asp(tower), (2 * hw + m(3)) / gap), top = yB + Ht - m(2);
+    for (const t of [t1, t2]) {
+      this.footing(t, z, m(18), Wt + m(6));
+      this.solid(tower, slab, t, yB, z, Wt, Ht, m(12), Math.PI / 2, m(6));
     }
-    // Main cables (catenaries) and suspenders as line segments
-    const pts = [], sus = [];
-    const curve = (xa, ya, xb, yb, sag) => {
-      for (let i = 0; i <= 24; i++) {
-        const f = i / 24, x = xa + (xb - xa) * f, y = ya + (yb - ya) * f - sag * 4 * f * (1 - f);
-        pts.push(new V3(x, y, 0));
-      }
-    };
-    curve(rampEnd, deck + m(2), t1, th, m(18));
-    curve(t1, th, t2, th, m(36));
-    curve(t2, th, end, deck + m(2), m(18));
-    const verts = [];
-    for (const dz of [-m(11), m(11)]) {
+    // Deck: the approach rises from the seawall on piers, then runs level over the river
+    const deck = pick(rs, K.deck), o = { deck, fascia: K.barrier[0], depth: m(1.2), under: slab, barrier: pick(rs, K.barrier), truss: pick(rs, K.truss), trussDepth: m(6) };
+    const yAt = (x) => (x < rampEnd ? this.L.curb + (dY - this.L.curb) * (x - xs) / (rampEnd - xs) : dY);
+    this.deckRun(xs, rampEnd, z, hw, yAt, { ...o, truss: null, depth: m(2.5), fascia: slab });
+    this.deckRun(rampEnd, end, z, hw, yAt, o);
+    const pier = pick(rs, STRUCTS.footing.pier);
+    for (let x = xs + m(50); x < rampEnd - m(20); x += m(50)) this.solid(pier, slab, x, W - m(1), z, 2 * hw + m(2), yAt(x) - m(2.5) - W + m(1), m(3), Math.PI / 2);
+    // Anchorages at both ends of the main cables
+    for (const [x0, x1] of [[rampEnd - m(30), rampEnd], [end - m(30), end]]) {
+      this.sbox(x0, W - m(2), z - hw - m(4), x1, dY - m(1.2), z + hw + m(4), { ns: [slab, m(5), m(5)], ew: [slab, m(5), m(5)] });
+    }
+    // Main cables: catenaries from the anchorages over the tower tops, and hangers down to the deck
+    const cableT = pick(rs, K.cable);
+    for (const zc of [z - hw - m(1), z + hw + m(1)]) {
+      const pts = [], hang = [];
+      const curve = (xa, ya, xb, yb, sag) => {
+        for (let i = pts.length ? 1 : 0; i <= 24; i++) {
+          const f = i / 24, p = new V3(xa + (xb - xa) * f, ya + (yb - ya) * f - sag * 4 * f * (1 - f), zc);
+          pts.push(p);
+        }
+      };
+      curve(rampEnd - m(15), dY + m(3), t1, top, m(18));
+      curve(t1, top, t2, top, m(38));
+      curve(t2, top, end - m(15), dY + m(3), m(18));
+      this.sbox(rampEnd - m(20), dY, zc - m(1.5), rampEnd - m(10), dY + m(5), zc + m(1.5), { ns: [slab, m(4), m(4)], ew: [slab, m(4), m(4)], top: [slab, m(4), m(4)] });
+      this.sbox(end - m(20), dY, zc - m(1.5), end - m(10), dY + m(5), zc + m(1.5), { ns: [slab, m(4), m(4)], ew: [slab, m(4), m(4)], top: [slab, m(4), m(4)] });
+      this.cable(cableT, pts, m(0.9), m(8));
       for (let i = 0; i < pts.length - 1; i++) {
-        verts.push(pts[i].x, pts[i].y, z + dz, pts[i + 1].x, pts[i + 1].y, z + dz);
-        if (pts[i].y > deck + m(3) && pts[i].x > rampEnd) sus.push(pts[i].x, pts[i].y, z + dz, pts[i].x, deck, z + dz);
+        const p = pts[i];
+        if (p.y > dY + m(3) && p.x > rampEnd && p.x < end - m(20) && Math.abs(p.x - t1) > m(8) && Math.abs(p.x - t2) > m(8)) hang.push(p);
+      }
+      for (const p of hang) this.prop('pole', p.x, (p.y + dY) / 2, zc, m(0.15), p.y - dY, m(0.15), steel, 0, 0, 0, 'bridge');
+    }
+  }
+
+  /**
+   * A cable-stayed bridge across the Hudson, north of the playable city: A-frame pylons from the
+   * cable-stay kit on footings, fans of stays down to the deck, and approaches on piers.
+   */
+  stayBridge(z) {
+    const L = this.L, m = (x) => this.m(x), W = L.water, rs = this.rs, K = STRUCTS.cablestay, asp = (t) => cell(t).aspect;
+    this.cur = 'bridge';
+    const xs = L.x0 - L.prom, xe = L.x0 - m(640), dY = W + m(30), hw = m(9), run = m(110);
+    const slab = K.slab[0], pylon = K.pylon.find((t) => OUTLINES[t].length > 1) || K.pylon[0];
+    // Up from the Manhattan seawall, level over the river, down to the Jersey shore
+    const yAt = (x) => (x > xs - run ? L.curb + (dY - L.curb) * (xs - x) / run : x < xe + run ? dY * (x - xe) / run : dY);
+    this.deckRun(xe, xs, z, hw, yAt, { deck: pick(rs, K.deck), fascia: pick(rs, K.girder), depth: m(2.5), under: slab, barrier: pick(rs, K.barrier) });
+    const pier = pick(rs, K.pier);
+    for (const x of [xs - m(55), xs - run, xe + run, xe + m(55)]) {
+      this.solid(pier, slab, x, W - m(1), z, 2 * hw + m(2), yAt(x) - m(2.5) - W + m(1), m(3), Math.PI / 2);
+    }
+    // Pylons: the deck passes under the crossbar, the stays fan out from above the opening
+    const yB = W + m(2), vc = this.crossbeam(pylon), Ht = Math.max((dY - yB + m(12)) / vc, m(115));
+    const gap = this.opening(pylon, (dY - yB - m(3)) / Ht) || 0.4;
+    const Wt = Math.max(Ht * asp(pylon), (2 * hw + m(4)) / gap);
+    let vt = vc;
+    for (let v = vc; v < 0.99; v += 0.005) if (this.opening(pylon, v)) vt = v;
+    const stay = [0.78, 0.8, 0.82];
+    for (const xp of [xs - m(170), xe + m(170)]) {
+      this.footing(xp, z, m(14), Wt + m(6));
+      this.solid(pylon, slab, xp, yB, z, Wt, Ht, m(7), Math.PI / 2, m(6));
+      for (let k = 0; k < 8; k++) {
+        const ya = yB + Ht * (Math.max(vt + 0.03, 0.8) + (0.96 - Math.max(vt + 0.03, 0.8)) * (k / 7));
+        for (const dir of [-1, 1]) {
+          const x = xp + dir * m(24 + k * 13);
+          for (const zz of [z - hw + m(0.6), z + hw - m(0.6)]) this.strut('pole', new V3(xp, ya, z), new V3(x, yAt(x), zz), m(0.18), stay, 'bridge');
+        }
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(verts.concat(sus), 3));
-    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x3a3e44 }));
-    this.scene.add(lines);
+  }
+
+  /** A stone balustrade along the water at z from x0 to x1, with pedestals carrying lamps */
+  balustrade(x0, x1, z) {
+    const m = (v) => this.m(v), y0 = this.L.curb, S = STRUCTS.stonework, rs = this.rs;
+    const bal = pick(rs, S.balustrade), ped = pick(rs, S.block), coping = pick(rs, S.barrier), h = m(1.15), pw = m(0.9), ph = m(1.5);
+    const n = Math.round((x1 - x0) / m(16)), sp = (x1 - x0) / n, lamp = [1.2, 1.15, 0.95], post = [0.15, 0.17, 0.18];
+    for (let i = 0; i <= n; i++) {
+      const x = x0 + i * sp;
+      this.cur = this.chunkOf(x, z);
+      this.sbox(x - pw / 2, y0, z - pw / 2, x + pw / 2, y0 + ph, z + pw / 2, { ns: [ped, 0, 0], ew: [ped, 0, 0], top: [coping, pw, pw] });
+      if (i % 2 === 0) {
+        this.prop('pole', x, y0 + ph + m(2), z, m(0.1), m(4), m(0.1), post);
+        this.prop('ico', x, y0 + ph + m(4.1), z, m(0.32), m(0.32), m(0.32), lamp);
+      }
+      if (i < n) this.card(bal, x + pw / 2, z, x + sp - pw / 2, z, y0, y0 + h, h * cell(bal).aspect);
+    }
   }
 
   // ---- finish ----------------------------------------------------------------
@@ -1458,6 +1860,7 @@ export class City {
       mesh.castShadow = !far && !decal && b.mat !== 'ground' && !b.mat.startsWith('roads');
       mesh.receiveShadow = !far;
       mesh.renderOrder = decal ? 1 : 0;
+      if (this.depthMats[b.mat]) mesh.customDepthMaterial = this.depthMats[b.mat];
       mesh.matrixAutoUpdate = false;
       this.scene.add(mesh);
       this.meshes.push(mesh);

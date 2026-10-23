@@ -104,6 +104,22 @@ GROUND_KITS = {
   'fresh':   ('fresh.jpg', ('grid', [(254, 253, 251)], 24, 0.75), 55, 56),                  # clean streets and yellow curbs
 }
 
+# Structure kits: bridges, viaducts, elevated rail and their parts, loose pieces on a
+# charcoal background cut like the facade panels, but keeping sparse shapes (towers,
+# T piers, arches, lamp posts) that the facade cut would drop. key: file
+STRUCT_KITS = {
+  'industrial':  'industrial.jpg',   # bascule machinery, catwalks, stairs, pipes and lamp posts
+  'interchange': 'interchange.jpg',  # curved ramps, barriers, piers and girders
+  'footing':     'footing.jpg',      # caissons, pile caps, piers, abutments and bearings
+  'railway':     'railway.jpg',      # elevated rail: track decks, plate girders, lattice trusses, steel bents
+  'stonework':   'stonework.jpg',    # stone bridge: arches, balustrades, pedestals and niches
+  'overpass':    'overpass.jpg',     # highway decks, barriers, hammerhead piers and girders
+  'cablestay':   'cablestay.jpg',    # A-frame pylons and stay cable fans
+  'suspension':  'suspension.jpg',   # towers, main cables, hangers, anchorages and stiffening trusses
+  'steeltruss':  'steeltruss.jpg',   # trusses, beams, gussets and steel trestle bents
+  'viaduct':     'viaduct.jpg',      # a second highway kit
+}
+
 # Panel roles in tools/city-panels.json; anything else ('x') is unused
 ROLES = {'B': 'bays', 'P': 'piers', 'S': 'solids', 'V': 'vents'}
 # Ground roles: tileable surfaces (asphalt, sidewalk, plaza paving), markings keyed out
@@ -113,6 +129,15 @@ GROUND_ROLES = {'A': 'asphalt', 'W': 'walk', 'Z': 'plaza', 'C': 'crosswalk', 'L'
                 'O': 'round', 'Q': 'square', 'T': 'pit', 'H': 'hole'}
 # Panel atlas pages are at most this big: 4096 px textures work on practically every current device
 PANEL_INSET, PANEL_PAD, PANEL_ATLAS_W, PANEL_ATLAS_H = 3, 8, 4096, 4096
+# Structure roles. Tiles are opaque rectangles laid along a surface: deck and track tops,
+# slab faces, barriers, girder faces, columns, blocks and cable bundles. The rest have the
+# background keyed out: trusses, railings, balustrades, hangers, bents and lamp posts are
+# drawn as see-through cards, and piers, towers and pylons also have their outline
+# traced so they can be extruded into slabs.
+STRUCT_ROLES = {'D': 'deck', 'K': 'track', 'F': 'slab', 'B': 'barrier', 'G': 'girder', 'C': 'column', 'S': 'block',
+                'L': 'cable', 'T': 'truss', 'R': 'rail', 'U': 'balustrade', 'H': 'hanger', 'N': 'bent', 'M': 'lamp',
+                'P': 'pier', 'W': 'tower', 'Y': 'pylon'}
+KEYED, OUTLINED = 'TRUHNMPWY', 'PWY'
 
 def seps(img, n, axis, kind):
     g = np.asarray(img.convert('L'), dtype=np.float32)
@@ -253,8 +278,10 @@ def cut_panels(key):
         else:
             Mr, Mc, fill = separator_masks(img, how)
             xy_cut(Mr, Mc, [0, 0, img.shape[1], img.shape[0]], fill, rects)
+    elif key in STRUCT_KITS:
+        img, rects = net_cut(key, STRUCT_KITS[key], 42, 0, 0.1)
     else:
-        img, rects = net_cut(key)
+        img, rects = net_cut(key, *KITS[key][:3])
     fixes = PANEL_FIXES.get(key, [])
     rects = [r for r in rects if not any(overlap(r, q) for q in fixes)] + fixes
     # A panel mostly covered by a larger (or identical, earlier) one is a duplicate
@@ -265,9 +292,9 @@ def cut_panels(key):
     return img, keep
 
 
-def net_cut(key):
+def net_cut(key, f, thr, bridge, fill=0.5):
+    """fill: the least share of its bounding box a panel fills, to drop specks and slivers"""
     import cv2
-    f, thr, bridge = KITS[key][:3]
     img = cv2.imread(SRC + f)
     g = cv2.GaussianBlur(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (3, 3), 0)
     # Only thick dark runs carry the network, so it can't slip through a thin seam in a frame
@@ -284,7 +311,7 @@ def net_cut(key):
         for k in (np.ones((1, bridge), np.uint8), np.ones((bridge, 1), np.uint8)):
             gut |= cv2.morphologyEx(u, cv2.MORPH_CLOSE, k) > 0
     n, lab, st, _ = cv2.connectedComponentsWithStats((~gut).astype(np.uint8), connectivity=4)
-    rects = [[int(x), int(y), int(x + w), int(y + h)] for x, y, w, h, a in st[1:] if w >= 18 and h >= 18 and a >= 0.5 * w * h]
+    rects = [[int(x), int(y), int(x + w), int(y + h)] for x, y, w, h, a in st[1:] if w >= 18 and h >= 18 and a >= fill * w * h]
     rects = [r for r in rects if not any(o is not r and o[0] <= r[0] and o[1] <= r[1] and o[2] >= r[2] and o[3] >= r[3] for o in rects)]
     core = cv2.erode(gut.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
     dk = g < np.percentile(g[core], 90) + 2
@@ -298,7 +325,7 @@ def segment(review):
     old = json.load(open(PANELS_JSON)) if os.path.exists(PANELS_JSON) else {}
     iou = lambda a, b: overlap(a, b) / (area(a) + area(b) - overlap(a, b))
     out = {}
-    for key in list(KITS) + list(GROUND_KITS):
+    for key in list(KITS) + list(GROUND_KITS) + list(STRUCT_KITS):
         img, rects = cut_panels(key)
         prev = old.get(key, [])
         out[key] = []
@@ -428,18 +455,89 @@ def ground_items(kits):
     return items
 
 
+def key_piece(a, bg):
+    """Alpha for a piece on the sheet's charcoal background: what is clearly lighter than
+    the background, with small dark specks inside the piece kept and stray specks dropped."""
+    import cv2
+    lum = a[..., :3].astype(np.float32) @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    fg = (lum > bg + 9).astype(np.uint8)
+    # Background-colored areas too small to be gaps (shadows in joints, rivet heads) are piece
+    n, lab, st, _ = cv2.connectedComponentsWithStats(1 - fg, connectivity=4)
+    small = np.isin(lab, [i for i in range(1, n) if st[i][4] < 400])
+    fg[small] = 1
+    n, lab, st, _ = cv2.connectedComponentsWithStats(fg, connectivity=8)
+    fg = np.isin(lab, [i for i in range(1, n) if st[i][4] >= 60]).astype(np.float32)
+    return cv2.GaussianBlur(fg, (3, 3), 0)
+
+
+def trace_outline(alpha):
+    """The largest piece's outline and its big holes, as polygons in 0..1 with y up."""
+    import cv2
+    m = (alpha > 0.5).astype(np.uint8)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    m = (lab == 1 + int(np.argmax(st[1:, 4]))).astype(np.uint8)
+    cnts, hier = cv2.findContours(m, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    H, W = m.shape
+    norm = lambda c: [[round(float(x) / W, 4), round(1 - float(y) / H, 4)] for x, y in cv2.approxPolyDP(c, 1.5, True)[:, 0, :]]
+    outer = max(range(len(cnts)), key=lambda i: cv2.contourArea(cnts[i]) if hier[0][i][3] < 0 else -1)
+    holes = [norm(cnts[i]) for i in range(len(cnts)) if hier[0][i][3] == outer and cv2.contourArea(cnts[i]) > 0.02 * W * H]
+    return [norm(cnts[outer])] + holes
+
+
+def struct_items(kits):
+    """Structure pieces at the sheet's own resolution: tiles cropped inside their edges,
+    the rest cut out with alpha, and the solid ones with their outline."""
+    items = []
+    for key, f in STRUCT_KITS.items():
+        im = Image.open(SRC + f).convert('RGB')
+        a = np.asarray(im)
+        g = a.astype(np.float32) @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+        bg = float(np.median(np.concatenate([g[:4].ravel(), g[-4:].ravel(), g[:, :4].ravel(), g[:, -4:].ravel()])))
+        for i, (x0, y0, x1, y1, role) in enumerate(kits[key]):
+            if role not in STRUCT_ROLES: continue
+            it = dict(name=f'{key}{i}', kit=key, role=role)
+            if role in KEYED:
+                # A little of the background around the piece, so its edges key cleanly
+                c = a[max(0, y0 - 3):y1 + 3, max(0, x0 - 3):x1 + 3]
+                alpha = key_piece(c, bg)
+                it['px'] = np.dstack([c, (alpha * 255).astype(np.uint8)])
+                if role in OUTLINED: it['outline'] = trace_outline(alpha)
+            else:
+                k = PANEL_INSET
+                c = a[y0 + k:y1 - k, x0 + k:x1 - k]
+                if role == 'L':
+                    # Cable bundles: the run between the eye ends
+                    w = c.shape[1]
+                    c = c[:, int(w * 0.12):int(w * 0.76)]
+                if role == 'C':
+                    # Columns: the solid shaft, without the background beside it or above a round top
+                    alpha = key_piece(c, bg) > 0.5
+                    H, W = alpha.shape
+                    cols = np.flatnonzero(alpha[H // 4:3 * H // 4].mean(axis=0) > 0.98)
+                    if len(cols) > 4:
+                        c, alpha = c[:, cols[0]:cols[-1] + 1], alpha[:, cols[0]:cols[-1] + 1]
+                        rows = np.flatnonzero(alpha.mean(axis=1) > 0.98)
+                        if len(rows) > 4: c = c[rows[0]:rows[-1] + 1]
+                it['px'] = np.dstack([c, np.full(c.shape[:2], 255, np.uint8)])
+            items.append(it)
+    return items
+
+
 def build_panels():
-    """Pack the facade panels in use into panel atlas pages and the ground panels into
-    road atlas pages, each scaled to its kit's texel density."""
+    """Pack the facade panels in use into panel atlas pages, the ground panels into road
+    atlas pages, each scaled to its kit's texel density, and the structure pieces into
+    structure pages with alpha."""
     kits = json.load(open(PANELS_JSON))
-    facade, ground = facade_items(kits), ground_items(kits)
-    metas = {**pack(facade, list(KITS), 'panels'), **pack(ground, list(GROUND_KITS), 'roads')}
+    facade, ground, struct = facade_items(kits), ground_items(kits), struct_items(kits)
+    metas = {**pack(facade, list(KITS), 'panels'), **pack(ground, list(GROUND_KITS), 'roads'),
+             **pack(struct, list(STRUCT_KITS), 'structs', 'webp')}
     kit_roles = {k: {r: [it['name'] for it in facade if it['kit'] == k and it['role'] == c] for c, r in ROLES.items()} for k in KITS}
     ground_roles = {k: {r: [it['name'] for it in ground if it['kit'] == k and it['role'] == c] for c, r in GROUND_ROLES.items()} for k in GROUND_KITS}
-    return metas, facade + ground, kit_roles, ground_roles
+    struct_roles = {k: {r: [it['name'] for it in struct if it['kit'] == k and it['role'] == c] for c, r in STRUCT_ROLES.items()} for k in STRUCT_KITS}
+    return metas, facade + ground, struct, kit_roles, ground_roles, struct_roles
 
 
-def pack(items, order, prefix):
+def pack(items, order, prefix, fmt='jpg'):
     """Pack the panels into as few pages as fit. A kit's panels share one page, so a
     building or street samples one texture."""
     pad, W = PANEL_PAD, PANEL_ATLAS_W
@@ -462,19 +560,23 @@ def pack(items, order, prefix):
         name = prefix if i == 0 else f'{prefix}{i + 1}'
         on = [it for it in items if it['kit'] in page]
         skyline(on, W, pad)
-        atlas = np.zeros((H, W, 3), np.uint8)
+        atlas = np.zeros((H, W, on[0]['px'].shape[2]), np.uint8)
         for it in on:
             it['atlas'] = name
             h, w = it['px'].shape[:2]
             x, y = it['at']
             atlas[y - pad:y + h + pad, x - pad:x + w + pad] = np.pad(it['px'], ((pad, pad), (pad, pad), (0, 0)), mode='wrap')
-        Image.fromarray(atlas).save(OUT + f'city-{name}.jpg', quality=84, optimize=True, progressive=True)
-        metas[name] = dict(url=f'textures/city-{name}.jpg', w=W, h=H, pad=pad)
+        if fmt == 'webp':
+            # WebP keeps the cut-out pieces' alpha at about the size of a JPEG
+            Image.fromarray(atlas).save(OUT + f'city-{name}.webp', quality=84, alpha_quality=90, method=6)
+        else:
+            Image.fromarray(atlas).save(OUT + f'city-{name}.jpg', quality=84, optimize=True, progressive=True)
+        metas[name] = dict(url=f'textures/city-{name}.{fmt}', w=W, h=H, pad=pad)
         print(name, len(on), 'panels', W, 'x', H, '(' + ', '.join(page) + ')')
     # Drop pages left over from a build that needed more of them
     import glob
-    for f in glob.glob(OUT + f'city-{prefix}*.jpg'):
-        if os.path.basename(f)[5:-4] not in metas: os.remove(f)
+    for f in glob.glob(OUT + f'city-{prefix}*.{fmt}'):
+        if os.path.basename(f)[5:-len(fmt) - 1] not in metas: os.remove(f)
     return metas
 
 
@@ -540,7 +642,7 @@ for name, A in ATLASES.items():
     manifest['atlases'][name] = dict(url=f'textures/city-{name}.jpg', w=W, h=H, cell=cell, pad=pad, content=C, cols=ncols)
     print(name, len(tiles), 'tiles', W, 'x', H)
 
-metas, panels, kit_roles, ground_roles = build_panels()
+metas, panels, parts, kit_roles, ground_roles, struct_roles = build_panels()
 manifest['atlases'].update(metas)
 
 js = '// Generated from the city texture sheets: atlas layouts and where each tile sits.\n'
@@ -566,5 +668,22 @@ js += '// the tile, lines are cropped to their paint, and covers and pits to the
 js += 'export const GROUND = {\n'
 for k, roles in ground_roles.items():
     js += f'  {k}: {{\n' + ''.join(f"    {r}: {json.dumps(names)},\n".replace('"', "'") for r, names in roles.items()) + '  },\n'
+js += '};\n\n'
+js += '// Structure pieces, named <kit><panel number in tools/city-panels.json>: [atlas page,\n'
+js += '// x, y, w, h in the page in pixels]. Cards and solids have the background keyed out.\n'
+js += 'export const PARTS = {\n'
+for it in parts:
+    js += f"  {it['name']}: ['{it['atlas']}', {it['at'][0]}, {it['at'][1]}, {it['px'].shape[1]}, {it['px'].shape[0]}],\n"
+js += '};\n\n'
+js += '// Structure pieces of each kit by role.\n'
+js += 'export const STRUCTS = {\n'
+for k, roles in struct_roles.items():
+    js += f'  {k}: {{\n' + ''.join(f"    {r}: {json.dumps(names)},\n".replace('"', "'") for r, names in roles.items()) + '  },\n'
+js += '};\n\n'
+js += '// Outlines of the solid pieces (piers, towers, pylons): the outline, then its holes,\n'
+js += '// each as [x, y] points across the piece from 0 to 1, y up.\n'
+js += 'export const OUTLINES = {\n'
+for it in parts:
+    if 'outline' in it: js += f"  {it['name']}: {json.dumps(it['outline'], separators=(',', ':'))},\n"
 js += '};\n'
 open(os.path.join(ROOT, 'js', 'cityTiles.js'), 'w').write(js)
