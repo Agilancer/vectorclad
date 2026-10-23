@@ -65,7 +65,8 @@ the camera keeps it in view, and single missiles go to it first. When it is
 destroyed the lock moves to the next target in view.
 
 Missiles lock onto targets inside the dashed circle. A salvo spreads its missiles
-across every lock; with nothing locked they fly to the crosshair.
+across every lock; with nothing locked they fly to the crosshair. Leg pods pop
+their missiles almost straight up so they arc over the ground in front of the feet.
 
 ## Hangar
 

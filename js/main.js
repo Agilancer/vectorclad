@@ -2,7 +2,7 @@ import * as THREE from './three.js';
 import { loadTextures, makeMaterials, applyPaint, PAINTS } from './atlas.js';
 import { FX } from './fx.js';
 import { Sound } from './audio.js';
-import { World, SUN_DIR } from './world.js';
+import { World, SUN_DIR, STEP } from './world.js';
 import { Mech } from './mech.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
@@ -135,7 +135,7 @@ const P = {
   boost: 100, overheat: false, boostDelay: 0,
   jumpT: 0, launchT: 0, landT: 0, airT: 0,
   phase: 0, gaitDir: 1, legYaw: 0,
-  dashing: false, ascending: false,
+  dashing: false, ascending: false, onLip: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
   ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0,
   chest: new V3(),
@@ -292,7 +292,7 @@ function startPlay() {
 /** Fresh frame on the starting plaza, fresh waves */
 function redeploy() {
   deployed = true;
-  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, boost: 100, overheat: false, grounded: true, jumpT: 0, landT: 0 });
+  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
   P.vel.set(0, 0, 0);
   if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
@@ -460,27 +460,50 @@ function updatePlayer(dt, c) {
   if (P.dashing) P.boost -= 26 * dt;
 
   // Integrate
-  const px = P.pos.x, pz = P.pos.z;
+  const prevY = P.pos.y;
   P.pos.addScaledVector(P.vel, dt);
-  // Blocked by a wall: keep only the motion that actually happened (slide along it)
-  if (world.resolve(P.pos, 1.5, 7) && dt > 0) {
-    P.vel.x = (P.pos.x - px) / dt;
-    P.vel.z = (P.pos.z - pz) / dt;
+  // Feet that were within a step of a top last frame can still land on it, however far they fell since
+  const stepY = Math.max(prevY, P.pos.y);
+  // Blocked by a wall: stop the motion into it and slide along it. The push-out never adds
+  // speed, so a frame pushed out of a wall it has sunk into isn't flung away from it.
+  const bx = P.pos.x, bz = P.pos.z;
+  if (world.resolve(P.pos, 1.5, 7, stepY)) {
+    const nx = P.pos.x - bx, nz = P.pos.z - bz, n = Math.hypot(nx, nz);
+    const into = n > 1e-6 ? (P.vel.x * nx + P.vel.z * nz) / n : 0;
+    if (into < 0) { P.vel.x -= (nx / n) * into; P.vel.z -= (nz / n) * into; }
   }
-  const ground = world.groundHeight(P.pos.x, P.pos.z, P.pos.y, 0.9);
-  if (P.pos.y <= ground) {
-    if (!P.grounded) {
-      const impact = -P.vel.y;
-      if (impact > 5) {
-        P.landT = clamp(impact / 45, 0.12, 0.45);
-        shake(null, clamp(impact / 40, 0.15, 0.7));
-        fx.dust(P.pos, clamp(impact / 15, 0.8, 2), 16);
-        sound.footstep(P.pos, 1.4);
-      }
+  let ground = world.groundHeight(P.pos.x, P.pos.z, stepY, 0.9);
+  // Feet just short of a roof with the body over its edge: step up onto the lip, or slip
+  // off it when moving away, instead of dropping past it into the wall
+  const lip = !P.grounded || P.onLip ? world.ledge(P.pos.x, P.pos.z, stepY, 1.5) : null;
+  P.onLip = false;
+  if (lip && lip.top > ground + STEP && P.pos.y <= lip.top + 0.05 && P.vel.y <= 1) {
+    if (P.vel.x * lip.nx + P.vel.z * lip.nz < 0.5) {
+      ground = lip.top;
+      P.onLip = true;
+      const pull = Math.min(lip.dist - 0.8, 6 * dt);
+      P.pos.x -= lip.nx * pull; P.pos.z -= lip.nz * pull;
+    } else {
+      const push = Math.min(1.5 - lip.dist, 6 * dt);
+      P.pos.x += lip.nx * push; P.pos.z += lip.nz * push;
     }
+  }
+  if (P.pos.y <= ground) {
     P.pos.y = ground;
-    P.vel.y = Math.max(0, P.vel.y);
-    P.grounded = true;
+    // Jetting up past a lip only lifts the feet over it: landing there would cut the thrusters mid-climb
+    if (P.grounded || P.vel.y <= 1) {
+      if (!P.grounded) {
+        const impact = -P.vel.y;
+        if (impact > 5) {
+          P.landT = clamp(impact / 45, 0.12, 0.45);
+          shake(null, clamp(impact / 40, 0.15, 0.7));
+          fx.dust(P.pos, clamp(impact / 15, 0.8, 2), 16);
+          sound.footstep(P.pos, 1.4);
+        }
+      }
+      P.vel.y = Math.max(0, P.vel.y);
+      P.grounded = true;
+    }
   } else if (P.grounded && P.pos.y > ground + 0.05) {
     P.grounded = false;
   }

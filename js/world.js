@@ -4,6 +4,8 @@ import { City } from './city.js';
 
 const V3 = THREE.Vector3;
 const _n = new V3();
+// How far below a surface's top the feet can be and still step up onto it
+export const STEP = 0.7;
 
 export const SUN_DIR = new V3(-0.5, 0.66, 0.42).normalize();
 
@@ -178,16 +180,37 @@ export class World {
     let h = 0;
     this.query(x - r, z - r, x + r, z + r, (c) => {
       if (c.walk) return;
-      if (y >= c.max.y - 0.7) h = Math.max(h, c.max.y);
+      if (y >= c.max.y - STEP) h = Math.max(h, c.max.y);
     });
     return h;
   }
 
-  /** Push a vertical cylinder (feet at pos.y, given height) out of colliders in XZ. */
-  resolve(pos, r, height) {
+  /**
+   * The highest top that feet at height y can step onto whose edge lies within r of
+   * (x, z), with (x, z) itself off it. Returns { top, dist, nx, nz }, n pointing from
+   * the edge out to (x, z), or null.
+   */
+  ledge(x, z, y, r) {
+    let best = null;
+    this.query(x - r, z - r, x + r, z + r, (c) => {
+      if (c.walk || y < c.max.y - STEP || (best && c.max.y <= best.top)) return;
+      const dx = x - Math.max(c.min.x, Math.min(x, c.max.x));
+      const dz = z - Math.max(c.min.z, Math.min(z, c.max.z));
+      const d = Math.hypot(dx, dz);
+      if (d < 1e-6 || d >= r) return;
+      best = { top: c.max.y, dist: d, nx: dx / d, nz: dz / d };
+    });
+    return best;
+  }
+
+  /**
+   * Push a vertical cylinder (feet at pos.y, given height) out of colliders in XZ.
+   * Tops within a step of stepY are left alone to be stood on.
+   */
+  resolve(pos, r, height, stepY = pos.y) {
     let hit = false;
     this.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, (c) => {
-      if (c.walk || pos.y >= c.max.y - 0.7 || pos.y + height <= c.min.y) return;
+      if (c.walk || stepY >= c.max.y - STEP || pos.y + height <= c.min.y) return;
       const cx = Math.max(c.min.x, Math.min(pos.x, c.max.x));
       const cz = Math.max(c.min.z, Math.min(pos.z, c.max.z));
       const dx = pos.x - cx, dz = pos.z - cz;
