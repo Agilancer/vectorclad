@@ -10,8 +10,8 @@ import * as THREE from './three.js';
 // and rolls in arcs when the mech kicks it along.
 //
 // Anything that could set a tree alight (bolts, bullets, beams, blasts, spider
-// fire) knocks it loose and sets it burning. A burning tree chars and loses
-// its leaves, and passes the fire to any standing tree it rolls into.
+// and scorpion fire) knocks it loose and sets it burning. A burning tree chars
+// and loses its leaves, and passes the fire to any standing tree it rolls into.
 //
 // Trunks, leaf blobs and stumps are three InstancedMeshes for the whole city.
 // World files the trees on its spatial grid so rays and blasts can find them.

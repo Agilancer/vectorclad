@@ -14,6 +14,7 @@ export class Input {
     this.enabled = true;
     this.touchMode = false;
     this.touch = { move: { x: 0, y: 0 }, fireR: false, fireL: false, fireS: false, jump: false, dash: false };
+    this.touchResets = [];
     this.onMenu = null;
 
     window.addEventListener('keydown', (e) => {
@@ -24,7 +25,7 @@ export class Input {
       this.keys.add(k);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.L = this.mouse.R = this.mouse.M = false; });
+    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.L = this.mouse.R = this.mouse.M = false; this.releaseTouch(); });
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.button === 0) this.mouse.L = true;
@@ -70,6 +71,11 @@ export class Input {
 
   // ---- touch -----------------------------------------------------------------
 
+  /** Let go of the stick and every held button, as if each finger had lifted. */
+  releaseTouch() {
+    for (const release of this.touchResets) release();
+  }
+
   setupTouch(root) {
     const stick = root.querySelector('#stick');
     const knob = root.querySelector('#stick-knob');
@@ -96,12 +102,13 @@ export class Input {
       this.touch.move.x = dx / R;
       this.touch.move.y = -dy / R;
     });
-    const endStick = (e) => {
-      if (e.pointerId !== stickId) return;
+    const releaseStick = () => {
       stickId = null;
       this.touch.move.x = this.touch.move.y = 0;
       stick.classList.remove('on');
     };
+    const endStick = (e) => { if (e.pointerId === stickId) releaseStick(); };
+    this.touchResets.push(releaseStick);
     moveZone.addEventListener('pointerup', endStick);
     moveZone.addEventListener('pointercancel', endStick);
 
@@ -123,12 +130,14 @@ export class Input {
         this.look.y += (e.clientY - ly) * 1.6;
         lx = e.clientX; ly = e.clientY;
       });
-      const up = (e) => {
-        if (e.pointerId !== id) return;
+      const release = () => {
+        if (id === null) return;
         id = null;
         el.classList.remove('held');
         onUp && onUp();
       };
+      const up = (e) => { if (e.pointerId === id) release(); };
+      this.touchResets.push(release);
       el.addEventListener('pointerup', up);
       el.addEventListener('pointercancel', up);
     };

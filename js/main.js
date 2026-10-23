@@ -2,13 +2,13 @@ import * as THREE from './three.js';
 import { loadTextures, makeMaterials, applyPaint, PAINTS } from './atlas.js';
 import { FX } from './fx.js';
 import { Sound } from './audio.js';
-import { World, SUN_DIR } from './world.js';
+import { World, SUN_DIR, STEP } from './world.js';
 import { Mech } from './mech.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
-import { titleDone } from './title/title.js';
+import { titleDone, portraitPhone } from './title/title.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -30,6 +30,7 @@ const HIT_SCALE = 1.5;
 const REGEN_DELAY = 4;
 const REGEN_RATE = 26;
 const SHIELD_ARC = 1.2;
+const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second
 
 // Boost gauge (0-100). Dashes and jump jets burn it at BOOST_DRAIN times their base
 // rates, so a full gauge lasts 2.5x as long; regen is unchanged, so a refill takes
@@ -50,6 +51,10 @@ const store = {
 };
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+// ?wave=N starts the fight at wave N, with every kind that has joined by then
+const START_WAVE = Math.max(1, parseInt(new URLSearchParams(location.search).get('wave'), 10) || 1);
+// The hangar is a bottom sheet rather than a side panel (same query as #hangar in style.css)
+const hangarSheet = matchMedia('(max-width: 720px) and (orientation: portrait)');
 
 // ---------------------------------------------------------------------------
 // Renderer & scene
@@ -140,9 +145,9 @@ const P = {
   boost: 100, overheat: false, boostDelay: 0,
   jumpT: 0, launchT: 0, landT: 0, airT: 0,
   phase: 0, gaitDir: 1, legYaw: 0,
-  dashing: false, ascending: false,
+  dashing: false, ascending: false, onLip: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
-  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0,
+  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0,
   chest: new V3(),
 };
 const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
@@ -184,10 +189,10 @@ async function init() {
   mats = makeMaterials(tex);
   applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
   fx = new FX(scene, { onShake: shake, sound });
-  hud = new HUD();
+  hud = new HUD({ touch: isTouch });
   mech = new Mech(mats, fx.glowTex);
   METERS = MECH_HEIGHT_M / measureMech();
-  $('#load-msg').textContent = 'Building Lower Manhattan…';
+  $('#load-msg').textContent = 'Building Port Meridian…';
   await new Promise((r) => setTimeout(r, 30));
   world = new World(scene, mats, fx, sound, { M: 1 / METERS, cityTex: tex.city }, {
     onHit: () => hud.hit(false),
@@ -208,13 +213,34 @@ async function init() {
       onKill: (s) => {
         hud.hit(true);
         hud.addKill();
-        if (s.boss) { hud.toast('BROODMOTHER DOWN', 2.6); shake(s.pos, 1); }
+        if (s.boss || s.v.elite) { hud.toast(`${s.name} DOWN`, 2.6); shake(s.pos, 1); }
       },
       onPlayerHit: hurt,
       onWeb: (dur) => {
         if (!P.alive) return;
         if (P.webT <= 0) hud.toast('WEBBED · DASH TO BREAK FREE', 1.6);
         P.webT = Math.max(P.webT, dur);
+      },
+      // Scorpion stings and pincers; the raised shield turns these away too
+      onVenom: (dur, from) => {
+        if (!P.alive || mode !== 'play' || shielded(bearingOf(from))) return;
+        if (P.venomT <= 0) hud.toast('VENOM · ARMOR CORRODING', 1.6);
+        P.venomT = Math.max(P.venomT, dur);
+      },
+      onShock: (amount, from) => {
+        if (!P.alive || mode !== 'play' || shielded(bearingOf(from))) return;
+        P.boost = Math.max(0, P.boost - amount);
+        P.boostDelay = Math.max(P.boostDelay, 1.2);
+        hud.toast('SHOCKED · BOOST DRAINED', 1.4);
+        fx.sparksBurst(P.chest, UPV, 16, 0x7fc8ff, 24);
+      },
+      // Returns whether the pincer took hold; a duration of 0 lets go
+      onGrab: (dur, from) => {
+        if (!dur) { P.pinT = 0; return false; }
+        if (!P.alive || mode !== 'play' || shielded(bearingOf(from))) return false;
+        if (P.pinT <= 0) hud.toast('SEIZED · DASH TO BREAK FREE', 1.6);
+        P.pinT = dur;
+        return true;
       },
     },
   });
@@ -239,7 +265,7 @@ async function init() {
   weapons.equip(loadout);
 
   hangar = new Hangar({
-    loadout, settings, sound,
+    loadout, settings, sound, touch: isTouch,
     onChange: () => {
       applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
       weapons.equip(loadout);
@@ -252,10 +278,16 @@ async function init() {
   if (isTouch) {
     document.body.classList.add('touch');
     input.setupTouch($('#touch'));
+    // The canvas never sees a tap under the touch controls, so wake the audio from them
+    $('#touch').addEventListener('pointerdown', () => sound.unlock());
   }
   input.onLockChange = (locked) => {
     if (!locked && mode === 'play' && !input.lockFailed) openHangar();
   };
+  // Pause in the hangar when the game can't be seen: the page goes to the background,
+  // or a phone turns upright and the rotate overlay covers it.
+  document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') openHangar(); });
+  portraitPhone.addEventListener('change', () => { if (portraitPhone.matches && mode === 'play') openHangar(); });
 
   $('#btn-launch').addEventListener('click', () => { sound.unlock(); startPlay(); });
   $('#btn-intro-hangar').addEventListener('click', () => { sound.unlock(); $('#intro').hidden = true; openHangar(); });
@@ -264,6 +296,9 @@ async function init() {
   $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); startPlay(); });
   $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); redeploy(); openHangar(); });
   $('#t-menu').addEventListener('click', () => openHangar());
+  // A tap with a second finger (thumb still on the stick) never becomes a click, so open on touchend.
+  // Cancelling it also keeps the click from landing on the hangar that just opened under the finger.
+  $('#t-menu').addEventListener('touchend', (e) => { e.preventDefault(); openHangar(); });
   canvas.addEventListener('click', () => {
     sound.unlock();
     if (mode === 'play' && !input.locked) input.requestLock();
@@ -297,7 +332,7 @@ function startPlay() {
 /** Fresh frame on the starting plaza, fresh waves */
 function redeploy() {
   deployed = true;
-  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, boost: 100, overheat: false, grounded: true, jumpT: 0, landT: 0 });
+  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
   P.vel.set(0, 0, 0);
   if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
@@ -306,17 +341,22 @@ function redeploy() {
   mech.resetFeet();
   weapons.equip(loadout);
   setHardLock(null);
-  spiders.start();
+  spiders.start(START_WAVE);
   hud.resetKills();
   $('#gameover').hidden = true;
 }
 
-/** A spider hit the mech. from: where the shot came from. */
+/** World bearing from the mech to a point: 0 along +z, clockwise from above */
+const bearingOf = (from) => Math.atan2(from.x - P.pos.x, from.z - P.pos.z);
+/** The raised shield turns away anything coming from within SHIELD_ARC of the way the mech faces */
+const shielded = (bearing) => weapons.shieldUp && Math.abs(wrap(bearing - P.bodyYaw)) < SHIELD_ARC;
+
+/** A spider or scorpion hit the mech. from: where the shot or strike came from. */
 function hurt(amount, from, kind) {
   if (!P.alive || mode !== 'play') return;
   _t.subVectors(from, P.pos);
-  const bearing = Math.atan2(_t.x, _t.z);
-  const blocked = weapons.shieldUp && Math.abs(wrap(bearing - P.bodyYaw)) < SHIELD_ARC;
+  const bearing = bearingOf(from);
+  const blocked = shielded(bearing);
   const dmg = amount * HIT_SCALE * (blocked ? 0.12 : 1);
   P.ap -= dmg;
   P.hurtT = 0;
@@ -329,7 +369,7 @@ function hurt(amount, from, kind) {
     sound.shieldBlock();
     shake(null, 0.06);
   } else {
-    const heavy = kind === 'laser' || kind === 'shell' || kind === 'blast';
+    const heavy = kind === 'laser' || kind === 'shell' || kind === 'blast' || kind === 'sting';
     sound.playerHit(heavy ? 1.3 : 0.8);
     shake(null, heavy ? 0.4 : 0.14);
   }
@@ -344,6 +384,7 @@ function die() {
   setHardLock(null);
   input.exitLock();
   $('#touch').hidden = true;
+  input.releaseTouch();
   fx.explosion(P.chest, 2.2);
   sound.explosion(P.chest, 2);
   shake(null, 1.2);
@@ -359,6 +400,7 @@ function openHangar() {
   mode = 'hangar';
   $('#hangar').hidden = false;
   $('#touch').hidden = true;
+  input.releaseTouch();
   input.exitLock();
   cam.orbit = P.bodyYaw + 0.6;
 }
@@ -394,9 +436,13 @@ function updatePlayer(dt, c) {
   const wishLen = _w.length();
   if (wishLen > 1) _w.divideScalar(wishLen);
 
+  // Seized by an Emperor's pincer: pinned in place. Dashing tears free three times faster.
+  if (P.pinT > 0) P.pinT = Math.max(0, P.pinT - dt * (playing && c.dash ? 3 : 1));
+  const pinned = P.pinT > 0;
+
   // Boost / dash
   const canBoost = P.boost > 0 && !P.overheat;
-  if (playing && c.dashPressed && canBoost && P.boost > 6 * BOOST_DRAIN) {
+  if (playing && c.dashPressed && canBoost && P.boost > 6 * BOOST_DRAIN && !pinned) {
     sound.boostIgnite();
     P.boost -= 6 * BOOST_DRAIN;
     const dir = wishLen > 0.1 ? _t.copy(_w).normalize() : _t.copy(_f);
@@ -413,7 +459,7 @@ function updatePlayer(dt, c) {
       fx.smoke.emit(P.pos.x + Math.cos(a) * 1.6, P.pos.y + 1 + Math.random() * 5, P.pos.z + Math.sin(a) * 1.6, 0, -0.5, 0, 0.9, 1.2, 2.2, 0.9, 0.95, 1, 0.55, 0.85, 0.9, 1, 0, 1, 0);
     }
   }
-  const maxSpeed = (P.dashing ? 36 : 7.5) * (webbed ? 0.45 : 1);
+  const maxSpeed = (P.dashing ? 36 : 7.5) * (webbed ? 0.45 : 1) * (pinned ? 0 : 1);
   const accel = P.grounded ? (P.dashing ? 70 : 30) : (P.dashing ? 45 : 14);
   const target = _t.set(0, 0, 0);
   if (wishLen > 0.08) target.copy(_w).multiplyScalar(maxSpeed);
@@ -435,7 +481,7 @@ function updatePlayer(dt, c) {
   P.landT = Math.max(0, P.landT - dt);
   if (P.grounded) {
     P.airT = 0;
-    if (playing && c.jumpPressed && P.jumpT <= 0 && P.landT <= 0.05) { P.jumpT = 0.13; sound.servo(P.pos); }
+    if (playing && c.jumpPressed && P.jumpT <= 0 && P.landT <= 0.05 && !pinned) { P.jumpT = 0.13; sound.servo(P.pos); }
     if (P.jumpT > 0) {
       P.jumpT -= dt;
       if (P.jumpT <= 0) {
@@ -465,27 +511,50 @@ function updatePlayer(dt, c) {
   if (P.dashing) P.boost -= 26 * BOOST_DRAIN * dt;
 
   // Integrate
-  const px = P.pos.x, pz = P.pos.z;
+  const prevY = P.pos.y;
   P.pos.addScaledVector(P.vel, dt);
-  // Blocked by a wall: keep only the motion that actually happened (slide along it)
-  if (world.resolve(P.pos, 1.5, 7) && dt > 0) {
-    P.vel.x = (P.pos.x - px) / dt;
-    P.vel.z = (P.pos.z - pz) / dt;
+  // Feet that were within a step of a top last frame can still land on it, however far they fell since
+  const stepY = Math.max(prevY, P.pos.y);
+  // Blocked by a wall: stop the motion into it and slide along it. The push-out never adds
+  // speed, so a frame pushed out of a wall it has sunk into isn't flung away from it.
+  const bx = P.pos.x, bz = P.pos.z;
+  if (world.resolve(P.pos, 1.5, 7, stepY)) {
+    const nx = P.pos.x - bx, nz = P.pos.z - bz, n = Math.hypot(nx, nz);
+    const into = n > 1e-6 ? (P.vel.x * nx + P.vel.z * nz) / n : 0;
+    if (into < 0) { P.vel.x -= (nx / n) * into; P.vel.z -= (nz / n) * into; }
   }
-  const ground = world.groundHeight(P.pos.x, P.pos.z, P.pos.y, 0.9);
-  if (P.pos.y <= ground) {
-    if (!P.grounded) {
-      const impact = -P.vel.y;
-      if (impact > 5) {
-        P.landT = clamp(impact / 45, 0.12, 0.45);
-        shake(null, clamp(impact / 40, 0.15, 0.7));
-        fx.dust(P.pos, clamp(impact / 15, 0.8, 2), 16);
-        sound.footstep(P.pos, 1.4);
-      }
+  let ground = world.groundHeight(P.pos.x, P.pos.z, stepY, 0.9);
+  // Feet just short of a roof with the body over its edge: step up onto the lip, or slip
+  // off it when moving away, instead of dropping past it into the wall
+  const lip = !P.grounded || P.onLip ? world.ledge(P.pos.x, P.pos.z, stepY, 1.5) : null;
+  P.onLip = false;
+  if (lip && lip.top > ground + STEP && P.pos.y <= lip.top + 0.05 && P.vel.y <= 1) {
+    if (P.vel.x * lip.nx + P.vel.z * lip.nz < 0.5) {
+      ground = lip.top;
+      P.onLip = true;
+      const pull = Math.min(lip.dist - 0.8, 6 * dt);
+      P.pos.x -= lip.nx * pull; P.pos.z -= lip.nz * pull;
+    } else {
+      const push = Math.min(1.5 - lip.dist, 6 * dt);
+      P.pos.x += lip.nx * push; P.pos.z += lip.nz * push;
     }
+  }
+  if (P.pos.y <= ground) {
     P.pos.y = ground;
-    P.vel.y = Math.max(0, P.vel.y);
-    P.grounded = true;
+    // Jetting up past a lip only lifts the feet over it: landing there would cut the thrusters mid-climb
+    if (P.grounded || P.vel.y <= 1) {
+      if (!P.grounded) {
+        const impact = -P.vel.y;
+        if (impact > 5) {
+          P.landT = clamp(impact / 45, 0.12, 0.45);
+          shake(null, clamp(impact / 40, 0.15, 0.7));
+          fx.dust(P.pos, clamp(impact / 15, 0.8, 2), 16);
+          sound.footstep(P.pos, 1.4);
+        }
+      }
+      P.vel.y = Math.max(0, P.vel.y);
+      P.grounded = true;
+    }
   } else if (P.grounded && P.pos.y > ground + 0.05) {
     P.grounded = false;
   }
@@ -581,7 +650,7 @@ const _ndc = new V3();
 function lockCandidates() {
   const out = [];
   for (const t of world.targets) {
-    if (!t.alive || t.pos.distanceTo(P.pos) > 460) continue;
+    if (!t.alive || t.stealth || t.pos.distanceTo(P.pos) > 460) continue;
     _ndc.copy(t.pos).project(camera);
     if (_ndc.z > 1) continue;
     const r = Math.hypot(_ndc.x * camera.aspect, _ndc.y);
@@ -623,7 +692,8 @@ function pressLock() {
 function updateHardLock() {
   const t = hard.target;
   if (!t) return;
-  if (!t.alive) {
+  // Lost when it dies, burrows out of sight, or goes dark
+  if (!t.alive || t.stealth || !world.targets.includes(t)) {
     // Roll onto the next target in view, if any
     const c = lockCandidates();
     setHardLock(c.length ? c[0].t : null);
@@ -672,13 +742,13 @@ function updateCamera(dt, speed) {
     camera.position.copy(camPos);
     const look = _t.set(P.pos.x, P.pos.y + cam.lookY, P.pos.z);
     // Shift the mech left of center while a side panel covers the right
-    const panelOpen = mode === 'hangar' && window.innerWidth > 720;
+    const panelOpen = mode === 'hangar' && !hangarSheet.matches;
     const introOpen = mode === 'intro' && window.innerWidth > 720;
     if (panelOpen || introOpen) {
       _t2.subVectors(look, camPos).normalize().cross(new V3(0, 1, 0)).normalize();
       look.addScaledVector(_t2, panelOpen ? 4.5 : -4.5);
     }
-    if (mode === 'hangar' && window.innerWidth <= 720) look.y -= 2.5;
+    if (mode === 'hangar' && hangarSheet.matches) look.y -= 2.5;
     camera.lookAt(look);
     camDir.subVectors(look, camPos).normalize();
     cam.fov = damp(cam.fov, 50, 3, dt);
@@ -689,7 +759,9 @@ function updateCamera(dt, speed) {
     camera.lookAt(_t.set(...cam.free.look));
     cam.fov = cam.free.fov || cam.fov;
   }
-  camera.fov = cam.fov;
+  // On portrait screens, widen the vertical FOV so the view is never narrower than it is tall;
+  // otherwise an upright tablet crops the mech off the side of the screen.
+  camera.fov = camera.aspect < 1 ? 2 * Math.atan(Math.tan(cam.fov * Math.PI / 360) / camera.aspect) * 180 / Math.PI : cam.fov;
   camera.updateProjectionMatrix();
 
   // Shake
@@ -744,7 +816,18 @@ function frame(now) {
   if (mode === 'play' && P.alive) {
     P.runT += dt;
     P.hurtT += dt;
-    if (P.hurtT > REGEN_DELAY) P.ap = Math.min(AP_MAX, P.ap + REGEN_RATE * dt);
+    // Venom eats armor and holds off regeneration while it lasts
+    if (P.venomT > 0) {
+      P.venomT -= dt;
+      P.hurtT = 0;
+      P.ap -= VENOM_DPS * dt;
+      if (Math.random() < dt * 18) {
+        const a = Math.random() * Math.PI * 2;
+        fx.smoke.emit(P.pos.x + Math.cos(a) * 1.5, P.pos.y + 1 + Math.random() * 5, P.pos.z + Math.sin(a) * 1.5, 0, 1.2, 0, 0.8, 0.8, 2, 0.35, 0.9, 0.15, 0.6, 0.2, 0.5, 0.1, 0, 0.5, 0.5);
+      }
+      if (P.ap <= 0) die();
+    }
+    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(AP_MAX, P.ap + REGEN_RATE * dt);
   }
   if (mode === 'play' || mode === 'over') spiders.update(dt, spiderCtx);
   if (mode === 'over') {
