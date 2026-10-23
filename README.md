@@ -31,7 +31,8 @@ The game is then served at `https://agilancer.github.io/vectorclad/`.
 
 ## Title screen
 
-The game opens on a title screen with the live 3D VECTORCLAD logo (from the
+Before anything else loads, a boot screen downloads the title theme (see Music below).
+Then the game opens on a title screen with the live 3D VECTORCLAD logo (from the
 `vectorclad-brand` kit) while textures and the city load behind it. A tap, click or any
 key fades it out and hands over to the loading screen or, once loading is done, the
 intro card. The game doesn't start rendering until the title is gone, so the two never
@@ -46,6 +47,33 @@ The logo files live in `js/title/`. `logo.js` and `wordmark-data.js` are copied 
 brand kit; regenerate them there rather than editing them here. The title's three.js
 add-ons (bloom, post-processing) load through the import map in `index.html`, which
 points `three` at the same 0.170.0 build as `js/three.js`; keep the two versions in sync.
+
+## Music
+
+The soundtrack is eight songs by THEDEMONMECHANIZEDMACHINEDESTROYER in `audio/music/`.
+**Vectors** is the title theme. `js/boot.js` downloads it before the title screen or the
+game start loading, and it plays on the title screen. Getting past the title lowers the
+music to 55% over about a second, so the sound effects sit on top of it. After Vectors the
+other seven (**Oh No, Robot Insects**, **Sentient Plague**, **They Came From the Sky!** and
+**Vectors II** to **V**) play in a shuffled order, then Vectors again, then the seven in a
+new order, for as long as the game runs. Each song downloads in full while the one before it plays (from 30 seconds in, so it
+doesn't slow the texture download), and the music pauses while the tab is hidden. The
+hangar has a Music toggle next to Sound.
+
+Browsers don't play audio until the player taps, clicks or presses a key. When the browser
+blocks autoplay, which is usual on a first visit, the boot screen shows "Tap to power up"
+once Vectors has loaded, and the music and title start on that tap. On iOS, which ignores
+`audio.volume`, the music goes through a Web Audio gain node that it shares with the
+sound effects (`audioContext()` in `js/audio.js`).
+
+The masters are 48 kHz WAVs kept outside the repo. To re-encode them as 160 kbps MP3s:
+
+```sh
+pip install lameenc
+python tools/build_music.py "F:/! THEDEMONMECHANIZEDMACHINEDESTROYER"
+```
+
+The song list is at the top of `js/music.js`.
 
 ## Controls
 
@@ -81,7 +109,7 @@ their missiles almost straight up so they arc over the ground in front of the fe
 
 The hangar sets the loadout for six hardpoints (both hands, both shoulders, both
 legs), a frame paint scheme, and one of eight colorways per weapon. It has five
-presets and settings for sound, shadows, ink outlines, look sensitivity, inverted
+presets and settings for sound, music, shadows, ink outlines, look sensitivity, inverted
 look and render resolution. The loadout and settings are saved in `localStorage`
 under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 
@@ -389,6 +417,8 @@ in the hangar settings.
 | `js/frameParts.js` | Shared by spiders and scorpions: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, the mech's hit capsule |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
+| `js/music.js` | Soundtrack playlist: title theme, shuffled rotation, volume drop after the title |
+| `js/boot.js` | Entry point: downloads the title theme, then loads the title screen and the game |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
 | `js/ui.js` | HUD (armor, waves, damage indicators) and hangar menu |
 | `js/main.js` | Renderer, world scale, player physics and armor, camera, game loop, game over |
@@ -398,6 +428,7 @@ in the hangar settings.
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade, ground and structure kits |
 | `tools/city-panels.json` | Each facade, ground and structure panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
+| `tools/build_music.py` | Encodes the soundtrack WAVs to the MP3s in `audio/music/` |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
 directions by its normal and maps it into the region chosen for that direction,

@@ -2,6 +2,7 @@ import * as THREE from './three.js';
 import { loadTextures, makeMaterials, applyPaint, PAINTS } from './atlas.js';
 import { FX } from './fx.js';
 import { Sound } from './audio.js';
+import { music } from './music.js';
 import { World, SUN_DIR, STEP } from './world.js';
 import { Mech } from './mech.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
@@ -71,7 +72,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.6, 9000);
 
-const settings = Object.assign({ sound: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('vectorclad.settings', {}));
+const settings = Object.assign({ sound: true, music: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('vectorclad.settings', {}));
 
 function applySettings() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.hires ? 2 : 1.25));
@@ -80,6 +81,7 @@ function applySettings() {
   if (world) world.sun.castShadow = settings.shadows;
   scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined) o.material.needsUpdate = true; });
   sound.setEnabled(settings.sound);
+  music.setEnabled(settings.music);
   if (weapons) weapons.outlines = settings.outlines;
   scene.traverse((o) => { if (o.userData.isOutline) o.visible = settings.outlines; });
   store.set('vectorclad.settings', settings);
