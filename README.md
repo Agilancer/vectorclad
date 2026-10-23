@@ -233,9 +233,9 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
   hits it. Then it is voxelized into cells of about half a meter (up to 1.25 m for the
   biggest towers). The grid lines snap to every wall, floor and setback, so cell faces lie
   exactly on the original surfaces. Each round takes its own bite:
-  - machine gun, vulcan and shotgun rounds punch holes about a meter across;
-  - beam rifle bolts blow out bigger ones;
-  - rockets, grenades and missiles leave craters 2 to 5 m across;
+  - machine gun, vulcan and shotgun rounds punch holes about 1.5 m across;
+  - beam rifle bolts blow out holes about 3 m across;
+  - rockets, grenades and missiles leave craters 4 to 10 m across;
   - the mega beam burns a trench as deep as it is held on a spot, so a sweep cuts a line
     through a building.
 
@@ -252,20 +252,54 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
     office floors behind it with their ceiling lights on.
   - Faces are greedy-meshed one 16-cell chunk at a time, so a hit only re-meshes what it
     touched.
+- **Load paths are built in.** Where one volume stands on another (a setback tier, the
+  needle's shaft on its lobby drum, its pod on the shaft, a penthouse on a roof), there is a
+  slab between them, and the upper walls carry on down through the rooms below to what holds
+  them up. Flaring and tapering walls are one connected shell, and crowns, masts and halos
+  are tied to what holds them. Nothing in a building floats free until it is cut free.
 - **Structures fail like structures.** After damage, a standing structure is checked
-  three ways:
-  - **Islands:** cells cut off from the ground break away.
-  - **Sections:** at each weakened level, everything above is weighed against what is left
-    to carry it, and the level fails when the load wins.
-    - Every building's strength is calibrated so its weakest intact level carries 3.4
-      times its load.
+  four ways:
+  - **Islands:** cells cut off from the ground break away. After a collapse, anything else
+    it left hanging in the air goes too.
+  - **Sections:** at each weakened level, the section that is left (walls, columns and
+    core: the outer walls carry load like the rest) is analysed as an elastic section under
+    the weight above it.
+    - The load's offset from what is left bends the section: it squeezes harder on one side
+      and pulls on the other. Pulled too hard, that side cracks open and the rest takes it
+      all.
+    - Every building's strength is calibrated so its most stressed intact level carries 3.4
+      times its load, bending included.
     - Plan pieces more than about 8 m apart stand apart: twin towers, the bents of the El.
-    - Strength falls off as the load's center moves toward the edge of what is left. Cut a
-      building a little past halfway and its top tips over toward the cut, pivoting on
-      what remains.
-    - Shoot out too much of a storey and the floors above crush it and drop.
+    - Squeezed evenly past its strength, a level crushes and the floors above drop a storey.
+    - Squeezed on one side, cracked open on the other, or with the load past its edge, it
+      tips over toward the damage. Blow a notch into one side of a tower's base and it
+      falls that way like a felled tree.
+  - **Chunks:** parts of the plan left too far from anything still carrying load down
+    through the level break away with what stands over them: a corner whose walls and
+    column were blown out, a run of facade over a wide breach. The more load a part carries,
+    the less far the floors and walls above can reach out to hold it. What spans over the
+    gap arches, so the piece that drops narrows going up, and what is left above may give
+    way next.
   - **Spans:** floors, lintels and overhangs held too far from a solid path to the ground
     give way in slabs. Shoot out a run of columns and the floor above sags off.
+- **Tipping is a hinge.** When a level tips, its squeezed edge crumbles back to a pivot
+  line just behind where the load bears, in a burst of rubble and dust out of the stump's
+  top and the falling part's foot. The top then pivots there on a hinge. It leans slowly at
+  first, held by the strength left in the hinge, which grinds and groans and sheds grit.
+  Then it speeds up as its weight swings out past the edge. The hinge lets go when it snaps,
+  when it slides off its edge, when the stump under it goes, or when the gap the crumbled
+  edge left closes under the falling part's foot. From there the part pivots on its front
+  edge and topples.
+- **Neighbors don't hold each other up.** Buildings in a row stand flush against each other,
+  but a piece that breaks away gets no support from the walls it was flush against, its own
+  stump's sides or the building next door. It slides down them freely until it leans or
+  pushes into them, and then it collides as with anything else.
+- **Nothing broken is left standing.** A block pancaking down crushes everything under its
+  whole footprint, hollow or not, so a tapering shaft doesn't slide down inside the wider one
+  below. Walls a cell thick and columns that a collapse left standing free topple a moment
+  later, if they are taller than they could stand unbraced (about 16 times their thickness,
+  8 to 18 m; steel twice that). Masts, poles and parapets built that way are left alone. Skin
+  backed by nothing that is left disappears with it.
 - **Falling pieces are rigid bodies** (`physics.js`). Each is a voxel grid with mass and
   inertia summed over its cells. It collides through probes on its outer corners against
   the street, unbroken buildings, damaged ones and other pieces, with friction, warm
@@ -278,7 +312,11 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
   - **Shattering.** Hard landings break pieces along jagged Voronoi cracks. The cracks
     cluster around the impact, so a falling tower's far end may survive as one big block
     leaning on the street.
-  - **What they hit.** Pieces carve whatever they land on, which can bring that down too.
+  - **What they hit.** Pieces carve whatever they land on, up to three places a step, which
+    can bring that down too. How much each impact crushes goes by the energy it brings
+    there: the piece's mass at that point and the speed it came in at, so by how far it
+    fell. A slab off a roof dents the street; a toppling tower's top caves in the building
+    it lands on.
     They crush cars, lamp posts, spiders and scorpions, tear out trees, and hurt the mech.
     Spiders on a piece that breaks away fall off it, and roof-garden trees topple when the
     roof under them goes. Loose trees roll on broken floors and against standing walls.
@@ -288,10 +326,19 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
 - **The mech walks into what it breaks open.** It stands on broken floors and climbs
   rubble.
 
+- **It keeps the frame rate.** Hot loops run on typed arrays with no per-cell allocation.
+  Strength calibration weighs only the levels whose section changes. A blast that reaches
+  several unbroken buildings turns them into voxels nearest first, within a per-frame budget
+  (12 ms, 7 ms on touch devices), and carves the rest a frame or two later.
+
 The test script `tools/tests/destruction.js` (headless Chromium through Playwright) runs
-these scenarios: bullet holes, a tower cut past halfway, a pancake collapse, props, the El,
-walking into a breach, activation cost of the biggest structures, real weapons, and a soak
-with the swarm. It prints timings and writes screenshots to `tools/tests/out/`.
+these scenarios: bullet holes, a tower cut past halfway, a pancake collapse, props, the
+needle felled by missiles into one side of its base, a building dropped between its flush
+neighbors, a building corner blown out, the El, walking into a breach, activation cost of
+the biggest structures, real weapons, and a soak with the swarm. It prints timings and
+writes screenshots to `tools/tests/out/`. On a machine without a GPU or without access to
+the CDN, `SIM=1` runs game time without rendering between screenshots, and `THREE_DIR`
+serves a local copy of the three.js package.
 
 ## Spider-frames
 
@@ -486,12 +533,12 @@ in the hangar settings.
 | `js/trees.js` | Street and park trees: instanced trunks and leaves, uprooting, rigid-body tumbling and rolling, burning |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
 | `js/world.js` | Sky, lights, spatial collision grid (colliders and trees), raycasts (through voxel structures and falling pieces), damage routing |
-| `js/destruct/destruct.js` | Destruction: activating structures, damage, structural checks (islands, sections, spans), breaking away, crushing, shattering, rendering budgets |
+| `js/destruct/destruct.js` | Destruction: activating structures, damage, structural checks (islands, bending sections, chunks, spans, remnants), tipping on hinges, breaking away, crushing, shattering, rendering budgets |
 | `js/destruct/grid.js` | Voxel grids on lines snapped to the original surfaces, materials, ray marching and push-out |
 | `js/destruct/voxelize.js` | Turns a city owner's recorded volumes into walls, floors, columns, cores and rooms |
 | `js/destruct/skin.js` | Original triangles lifted out of the city meshes, masked per pixel by a 3D cell texture (and in shadows) |
 | `js/destruct/mesher.js` | Greedy mesher for broken faces and the rooms behind them, chunk by chunk |
-| `js/destruct/physics.js` | Rigid voxel bodies: probes, contacts, sequential-impulse solver, sleep |
+| `js/destruct/physics.js` | Rigid voxel bodies: probes, contacts, sequential-impulse solver, hinges, sleep |
 | `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
 | `js/destruct/textures.js` | Painted atlas for broken materials, office floors, lit ceilings and plaster |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |

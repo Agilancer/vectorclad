@@ -16,6 +16,8 @@ import { Grid, makeLines, OUT, AIR, SOLID, CONCRETE, MAT_BY_NAME, STEEL } from '
 
 const SMALL = new Set(['tree', 'lamp', 'signal', 'kiosk', 'subway', 'planter', 'fountain', 'armillary']);
 const _m = new THREE.Matrix4(), _mi = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Vector3();
+// The 12 edge-diagonal neighbours of a cell
+const DIAG = [[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [0, 1, 1], [0, 1, -1], [0, -1, 1], [0, -1, -1], [1, 0, 1], [1, 0, -1], [-1, 0, 1], [-1, 0, -1]];
 
 /** World box of a recorded volume: [x0, y0, z0, x1, y1, z1] */
 export function volBox(v) {
@@ -199,42 +201,81 @@ export function voxelizeOwner(owner, M, ground) {
   });
 
   // ---- classify: walls, roofs, soffits, floors, columns, core and rooms -----------------
-  for (let y = 0; y < ny; y++) {
-    const onGround = g.ys[y] <= ground + 1e-3;
+  // Top down, so the walls of a volume standing on another (a setback tier, a shaft on its
+  // lobby, a penthouse) carry on down through the rooms of the one below it to what holds it
+  // up: the load path a real tower has. (Not where the one below has its own wall within a cell:
+  // that is a taper or a twist, not a setback. And only through the one volume below.) A tower
+  // recorded from the ground through its podium keeps its facade down through the podium. The
+  // bottom of a volume standing on another is a slab.
+  // Per volume, flat: polygon or not, wall materials by side (w e n s d) above and below its
+  // band, the band's top, floor layers, core bounds
+  const NS = shells.length, poly = new Uint8Array(NS), wallM = new Uint8Array(NS * 10), bandY = new Float64Array(NS).fill(-Infinity);
+  const fl = new Uint8Array(NS * ny), core = new Int32Array(NS * 4).fill(-1);
+  shells.forEach((v, k) => {
+    const I = info[k];
+    poly[k] = v.t !== 'box' ? 1 : 0;
+    ['w', 'e', 'n', 's', 'd'].forEach((sd, j) => {
+      let m = I.mat, mb = I.mat;
+      if (v.sides) { m = MAT_BY_NAME[v.sides[sd]]; mb = v.band && v.sides[sd] !== 'brick' ? MAT_BY_NAME[v.band.mat] : m; }
+      wallM[k * 10 + j] = m || CONCRETE; wallM[k * 10 + 5 + j] = mb || CONCRETE;
+    });
+    if (v.band) bandY[k] = v.band.y;
+    fl.set(I.fl, k * ny);
+    if (I.core) core.set(I.core, k * 4);
+  });
+  const carryK = new Int16Array(nxz).fill(-1), carryIn = new Int16Array(nxz).fill(-1), carryM = new Uint8Array(nxz);
+  for (let y = ny - 1; y >= 0; y--) {
+    const onGround = g.ys[y] <= ground + 1e-3, yc = Y[y], top = y === ny - 1;
     for (let z = 0; z < nz; z++) {
+      const row = nx * z;
       for (let x = 0; x < nx; x++) {
-        const i = x + nx * (z + nz * y), k = vid[i];
-        if (k < 0) continue;
-        const v = shells[k], I = info[k];
-        let side = null;
-        const w = x === 0 || vid[i - 1] < 0, e = x === nx - 1 || vid[i + 1] < 0, n = z === 0 || vid[i - nx] < 0, sth = z === nz - 1 || vid[i + nx] < 0;
-        if (w) side = 'w'; else if (e) side = 'e'; else if (n) side = 'n'; else if (sth) side = 's';
-        else if (v.t !== 'box' && (vid[i - 1 - nx] < 0 || vid[i + 1 - nx] < 0 || vid[i - 1 + nx] < 0 || vid[i + 1 + nx] < 0)) side = 'd';
-        if (side) {
-          let m = I.mat;
-          if (v.sides) {
-            const name = v.sides[side];
-            m = v.band && Y[y] < v.band.y && name !== 'brick' ? MAT_BY_NAME[v.band.mat] : MAT_BY_NAME[name];
-          }
-          mat[i] = m || CONCRETE;
+        const c = x + row, i = c + nxz * y, k = vid[i];
+        if (k < 0) { carryK[c] = -1; continue; }
+        let side = -1;
+        if (x === 0 || vid[i - 1] < 0) side = 0; else if (x === nx - 1 || vid[i + 1] < 0) side = 1;
+        else if (z === 0 || vid[i - nx] < 0) side = 2; else if (z === nz - 1 || vid[i + nx] < 0) side = 3;
+        else if (poly[k] && (vid[i - 1 - nx] < 0 || vid[i + 1 - nx] < 0 || vid[i - 1 + nx] < 0 || vid[i + 1 + nx] < 0)) side = 4;
+        if (side >= 0) {
+          const m = wallM[k * 10 + (yc < bandY[k] ? 5 : 0) + side];
+          mat[i] = m;
+          carryK[c] = k; carryIn[c] = -1; carryM[c] = m === STEEL ? STEEL : CONCRETE;
           continue;
         }
-        if (y === ny - 1 || vid[i + nxz] < 0 || (y > 0 && vid[i - nxz] < 0) || onGround || I.fl[y]) { mat[i] = CONCRETE; continue; }
-        if (I.colX && I.colZ && I.colX[x] && I.colZ[z]) { mat[i] = CONCRETE; continue; }
-        if (I.core) {
-          const [a0, a1, b0, b1] = I.core;
-          if (x >= a0 && x <= a1 && z >= b0 && z <= b1 && (x === a0 || x === a1 || z === b0 || z === b1)) { mat[i] = CONCRETE; continue; }
+        // Its own facade above, here against another volume: the wall goes on down
+        if (carryK[c] === k && carryIn[c] < 0 && (vid[i - 1] !== k || vid[i + 1] !== k || vid[i - nx] !== k || vid[i + nx] !== k)) { mat[i] = carryM[c]; continue; }
+        if (top || vid[i + nxz] < 0 || (y > 0 && vid[i - nxz] !== k) || onGround || fl[k * ny + y]) { mat[i] = CONCRETE; continue; }
+        // A flaring or tapering surface steps out more than a cell a layer: its stairs overlap by
+        // a cell, so the slope is one connected shell
+        if (poly[k]) {
+          const b = i - nxz, a = i + nxz;
+          if ((y > 0 && (vid[b - 1] < 0 || vid[b + 1] < 0 || vid[b - nx] < 0 || vid[b + nx] < 0)) || vid[a - 1] < 0 || vid[a + 1] < 0 || vid[a - nx] < 0 || vid[a + nx] < 0) { mat[i] = CONCRETE; continue; }
         }
+        const I = info[k];
+        if (I.colX && I.colZ && I.colX[x] && I.colZ[z]) { mat[i] = CONCRETE; continue; }
+        const q = k * 4;
+        if (core[q] >= 0 && x >= core[q] && x <= core[q + 1] && z >= core[q + 2] && z <= core[q + 3] && (x === core[q] || x === core[q + 1] || z === core[q + 2] || z === core[q + 3])) { mat[i] = CONCRETE; continue; }
+        // A wall from a volume above, carried down; a wall ending inside its own volume stops
+        if (carryK[c] >= 0 && carryK[c] !== k) {
+          if (carryIn[c] < 0) {
+            // Entering the volume below: unless its own wall is right here
+            let edge = false;
+            for (let dz = -1; dz <= 1 && !edge; dz++) for (let dx = -1; dx <= 1; dx++) if (vid[i + dx + dz * nx] < 0) { edge = true; break; }
+            if (!edge) carryIn[c] = k;
+          }
+          if (carryIn[c] === k) { mat[i] = carryM[c]; continue; }
+        }
+        carryK[c] = -1; carryIn[c] = -1;
         mat[i] = AIR;
       }
     }
   }
 
   // ---- solid pieces --------------------------------------------------------------------
+  const props = []; // cells the solid pieces fill, checked for touching what holds them (tieLoose)
   const put = (x, y, z, m) => {
     if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) return;
     const i = x + nx * (z + nz * y);
-    if (mat[i] < SOLID) mat[i] = m;
+    if (mat[i] < SOLID) { mat[i] = m; props.push(i); }
   };
   const putAt = (px, py, pz, m) => put(lineIdx(g.xs, px), lineIdx(g.ys, py), lineIdx(g.zs, pz), m);
   for (const v of vols) {
@@ -295,8 +336,87 @@ export function voxelizeOwner(owner, M, ground) {
       }
     }
   }
+  tieLoose(g, ground, props);
   g.ground = ground;
   return g;
+}
+
+/**
+ * Whatever the solid pieces leave just short of touching (a crown on a roof, a mast on a pod,
+ * a halo over its struts, a truss card meeting its frame on a diagonal) is joined to what holds
+ * it: the gap under its lowest cells is filled, or a diagonal touch is made a face. The
+ * building's own volumes are joined by their slabs and carried walls already, so only the
+ * pieces (props) are searched. Pieces still floating after that fall at the first hit.
+ */
+let ST = new Uint8Array(1 << 16);
+function tieLoose(g, ground, props) {
+  const { nx, ny, nz, nxz, mat, N } = g;
+  if (!props.length) return;
+  let anchor = 1;
+  while (anchor < ny && g.ys[anchor] <= ground + 1e-3) anchor++;
+  if (ST.length < N) ST = new Uint8Array(N);
+  const st = ST; // 0 building (holds), 1 piece that holds, 2 piece found loose, 3 piece not yet seen
+  for (const i of props) st[i] = 3;
+  const held = (j) => mat[j] >= SOLID && st[j] < 2;
+  for (const i0 of props) {
+    if (st[i0] !== 3) continue;
+    // A connected group of pieces, and whether it touches the building or the ground
+    const cells = [i0];
+    st[i0] = 2;
+    let holds = false;
+    for (let h = 0; h < cells.length; h++) {
+      const i = cells[h], y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      if (y < anchor) holds = true;
+      for (const j of [x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1, z > 0 ? i - nx : -1, z < nz - 1 ? i + nx : -1, y > 0 ? i - nxz : -1, y < ny - 1 ? i + nxz : -1]) {
+        if (j < 0 || mat[j] < SOLID) continue;
+        if (st[j] === 3) { st[j] = 2; cells.push(j); } else if (st[j] < 2) holds = true;
+      }
+    }
+    if (!holds) tie(g, cells, st, held, anchor);
+    if (holds || cells.some((i) => st[i] === 1)) for (const i of cells) st[i] = 1;
+  }
+  for (const i of props) st[i] = 0;
+}
+
+/** Tie a loose group of cells to what holds (st 1 when it worked) */
+function tie(g, cells, st, held, anchor) {
+  const { nx, ny, nz, nxz, mat } = g;
+  // A strut straight down onto what holds or the ground (the shortest gaps win, three cells at
+  // most: longer would stand in mid-air, so a piece floating higher, a halo over a crown, is
+  // left to fall once what it hovers over goes), or a cell across a diagonal touch (as short as a
+  // strut over a one-cell gap)
+  let best = 4;
+  const ties = [];
+  for (const i of cells) {
+    const y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+    for (let d = 2; d <= best && y - d >= 0; d++) {
+      const j = i - d * nxz;
+      if (mat[j] < SOLID && y - d >= anchor) continue;
+      if (y - d < anchor || held(j)) {
+        if (d < best) { best = d; ties.length = 0; }
+        const strut = [];
+        for (let k = 1; k < d; k++) strut.push(i - k * nxz);
+        if (y - d < anchor && mat[j] < SOLID) strut.push(j); // down into the ground layer
+        ties.push(strut, mat[i]);
+      }
+      break;
+    }
+    if (best < 2) continue;
+    for (const [dx, dy, dz] of DIAG) {
+      const X = x + dx, Yy = y + dy, Z = z + dz;
+      if (X < 0 || Yy < 0 || Z < 0 || X >= nx || Yy >= ny || Z >= nz) continue;
+      if (!held(i + dx + dy * nxz + dz * nx)) continue;
+      if (best > 2) { best = 2; ties.length = 0; }
+      const a = dx ? i + dx : i + dy * nxz, b = dz ? i + dz * nx : i + dy * nxz;
+      ties.push([mat[a] < SOLID ? a : b], mat[i]);
+      break;
+    }
+  }
+  if (!ties.length) return;
+  // A few ties are enough to hold it; spread them over its underside
+  const n = ties.length / 2, step = Math.max(1, Math.floor(n / 48));
+  for (let t = 0; t < n; t += step) for (const j of ties[t * 2]) if (mat[j] < SOLID) mat[j] = ties[t * 2 + 1];
+  for (const i of cells) st[i] = 1;
 }
 
 function lineIdx(L, v) {

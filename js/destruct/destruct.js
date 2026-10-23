@@ -1,5 +1,5 @@
 import * as THREE from '../three.js';
-import { OUT, AIR, GONE, SOLID, MATS, lineIndexClamped } from './grid.js';
+import { OUT, AIR, GONE, SOLID, STEEL, MATS, lineIndexClamped } from './grid.js';
 import { voxelizeOwner, volBox } from './voxelize.js';
 import { CHUNK, meshChunk } from './mesher.js';
 import { interiorMaterials } from './textures.js';
@@ -14,26 +14,36 @@ import { Debris } from './debris.js';
 // Then the owner is voxelized (voxelize.js), its triangles move into a masked
 // skin (skin.js) and every hit carves cells away: bullets punch holes, blasts
 // blow out craters, the mega beam cuts trenches. After each round of damage a
-// structure is checked three ways:
+// structure is checked four ways:
 //
 //   - islands: cells no longer connected to the ground break away;
-//   - sections: at each damaged level, the load of everything above is set
-//     against what is left to carry it. Too little left and the floors above
-//     crush down a storey; the load's center beyond the edge of what is left
-//     (cut a building a little past halfway) and it tips over toward the cut;
+//   - sections: at each damaged level, what is left to carry the load above is
+//     analysed as an elastic section, the load's offset bending it. Crushed
+//     evenly, the floors above drop a storey; squeezed on one side and cracked
+//     open on the other, or with the load past its edge, it tips over toward
+//     the damage, pivoting on a hinge (blow a notch into a tower's base and it
+//     falls that way like a felled tree);
+//   - chunks: parts of the plan left too far from anything carrying load down
+//     through the level break away with what stands over them (a blown-out
+//     corner, facade over a wide breach), arching over the gap;
 //   - spans: floors, lintels and overhangs carried too far from a support
 //     that still reaches the ground give way and fall in slabs.
 //
 // What breaks away becomes a rigid body (physics.js) that topples, slides,
 // wedges itself between buildings and crushes what it lands on, carving the
-// structures it hits, which may fail in turn. Hard landings shatter bodies
-// into pieces along jagged Voronoi cracks, with rubble (debris.js) and dust.
+// structures it hits by the energy it brings, which may fail in turn. It gets
+// no support from the walls it was flush against. Hard landings shatter bodies
+// into pieces along jagged Voronoi cracks, with rubble (debris.js) and dust,
+// and what a collapse leaves standing free and unbraced topples after it.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
 const SAFETY = 3.4;            // intact buildings carry this many times their own weight at their weakest level
+const TENSION = 0.15;          // what a section can take in tension (rebar, mortar), against what it takes squeezed
+const CRUSH_J = 2.5e6;         // energy it takes to crush a cubic meter of building (J), for impacts
 const ANALYZE_EVERY = 0.07;    // seconds between structural checks of one structure
 const ISLAND_BUDGET = 60000;   // cells one island search may visit before calling for a full pass
+const ISLAND_ORDER = [5, 0, 1, 2, 3, 4]; // face neighbours pushed up first, so the search goes down first
 const MESH_BUDGET_MS = 5;      // chunk meshing per frame
 let MAX_BODIES = 70;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -41,6 +51,45 @@ const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _m4 = new THRE
 
 // Shared scratch arrays, grown as needed
 let VIS = new Uint32Array(1 << 16), QUEUE = new Int32Array(1 << 16), STAMP = 1;
+let LOADM = new Float64Array(4096), NEAR = new Int32Array(4096);                    // per plan column, levelLoads
+let CHA = new Float32Array(4096), CHB = new Float32Array(4096), CHR = new Int32Array(4096); // chunks
+let ND = new Uint8Array(1 << 16), SPQ = new Int32Array(1), SPD = new Uint8Array(1), SPS = new Int32Array(1), SPF = new Int32Array(1); // spans
+const SPC = new Int32Array(256);
+const NB = new Int32Array(6);
+/** The six face neighbours of cell i at (x, y, z) into NB, -1 off the grid */
+function faces(i, x, y, z, nx, ny, nz, nxz) {
+  NB[0] = x > 0 ? i - 1 : -1; NB[1] = x < nx - 1 ? i + 1 : -1;
+  NB[2] = z > 0 ? i - nx : -1; NB[3] = z < nz - 1 ? i + nx : -1;
+  NB[4] = y > 0 ? i - nxz : -1; NB[5] = y < ny - 1 ? i + nxz : -1;
+}
+/** Distance (in cells) from every plan cell to the nearest zero, two raster passes */
+function chamfer(D, nx, nz) {
+  const d2 = Math.SQRT2;
+  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    const i = x + nx * z;
+    let v = D[i];
+    if (v === 0) continue;
+    if (x > 0 && D[i - 1] + 1 < v) v = D[i - 1] + 1;
+    if (z > 0) {
+      if (D[i - nx] + 1 < v) v = D[i - nx] + 1;
+      if (x > 0 && D[i - nx - 1] + d2 < v) v = D[i - nx - 1] + d2;
+      if (x < nx - 1 && D[i - nx + 1] + d2 < v) v = D[i - nx + 1] + d2;
+    }
+    D[i] = v;
+  }
+  for (let z = nz - 1; z >= 0; z--) for (let x = nx - 1; x >= 0; x--) {
+    const i = x + nx * z;
+    let v = D[i];
+    if (v === 0) continue;
+    if (x < nx - 1 && D[i + 1] + 1 < v) v = D[i + 1] + 1;
+    if (z < nz - 1) {
+      if (D[i + nx] + 1 < v) v = D[i + nx] + 1;
+      if (x < nx - 1 && D[i + nx + 1] + d2 < v) v = D[i + nx + 1] + d2;
+      if (x > 0 && D[i + nx - 1] + d2 < v) v = D[i + nx - 1] + d2;
+    }
+    D[i] = v;
+  }
+}
 function scratch(n) {
   if (VIS.length < n) { VIS = new Uint32Array(n); STAMP = 1; }
   if (QUEUE.length < n) QUEUE = new Int32Array(n);
@@ -54,7 +103,7 @@ let SID = 1;
 
 /** A voxel structure: a standing building (static) or a falling piece of one (with a body) */
 class Structure {
-  constructor(D, g, owner, lut, off) {
+  constructor(D, g, owner, lut, off, cut = null) {
     this.id = SID++;
     this.D = D;
     this.g = g;
@@ -64,7 +113,7 @@ class Structure {
     this.body = null;
     this.group = new THREE.Group();
     this.group.matrixAutoUpdate = false;
-    this.mask = makeMask(g);
+    this.mask = makeMask(g, cut);
     this.U = {
       uMask: { value: this.mask }, uLut: { value: lut.tex }, uLutMin: { value: lut.min }, uLutScale: { value: lut.scale },
       uLutW: { value: lut.W }, uOff: { value: new V3(off[0], off[1], off[2]) }, uDim: { value: new V3(g.nx, g.ny, g.nz) },
@@ -105,7 +154,9 @@ export class Destruction {
     this.spiders = null;
     this.player = null;
     this.onPlayerHit = null;
-    this.frame = { chunks: 0, dust: 0 };
+    this.frame = { chunks: 0, dust: 0, act: 0 };
+    this.actBudget = mobile ? 7 : 12; // ms of activations one frame may take before the rest wait a frame
+    this.later = [];                  // blasts still to carve into structures not yet activated
     this.stats = { activated: 0, removed: 0, bodies: 0, fractures: 0, collapses: 0, activateMs: 0 };
     this.time = 0;
     this.crushAt = new Map();
@@ -358,7 +409,9 @@ export class Destruction {
     this.world.addCollider({ min: s.box.min.clone(), max: s.box.max.clone(), vox: s, proxy: true });
     this.structs.push(s);
     this.stats.activated++;
-    this.stats.activateMs += performance.now() - t0;
+    const ms = performance.now() - t0;
+    this.stats.activateMs += ms;
+    this.frame.act += ms;
     return s;
   }
 
@@ -383,11 +436,13 @@ export class Destruction {
   initStats(s) {
     const g = s.g, { nx, ny, nz, nxz, mat } = g;
     s.pairs = new Int32Array(ny + 1);
+    // A fingerprint of each level's section, so runs of identical levels are weighed once
+    const hash = new Float64Array(ny + 1);
     for (let y = 1; y < ny; y++) {
-      let n = 0;
+      let n = 0, h = 0;
       const a = y * nxz, b = a - nxz;
-      for (let c = 0; c < nxz; c++) if (mat[a + c] >= SOLID && mat[b + c] >= SOLID) n++;
-      s.pairs[y] = n;
+      for (let c = 0; c < nxz; c++) if (mat[a + c] >= SOLID && mat[b + c] >= SOLID) { n++; h += (c * 2654435761) % 1000003; }
+      s.pairs[y] = n; hash[y] = h;
     }
     s.pairs0 = s.pairs.slice();
     s.nly = Math.ceil(ny / 4) + 1;
@@ -402,44 +457,53 @@ export class Destruction {
         if (y % 4 === 0) s.colAbove[(y >> 2) * nxz + c] = run;
       }
     }
-    // Strength: the weakest intact level holds SAFETY times its load
-    let above = 0, worst = 0;
-    for (let y = ny - 1; y >= s.anchor; y--) {
-      above += layerMass[y];
-      let A = 0;
-      const a = y * nxz, b = a - nxz;
-      for (let c = 0; c < nxz; c++) if (mat[a + c] >= SOLID && mat[b + c] >= SOLID) { const x = c % nx; A += g.dx(x) * g.dz((c - x) / nx); }
-      if (A > 0) worst = Math.max(worst, above / A);
-    }
-    s.sigma = Math.max(1e-6, worst * SAFETY);
     s.totalMass = layerMass.reduce((t, v) => t + v, 0);
     s.dist = null; // support distances: worked out at the first structural check (supportDist)
+    // Strength: the most stressed piece of the most stressed intact level, load and bending
+    // both, carries SAFETY times what it does (and still twice that once it cracks)
+    // Levels whose section differs from the last one weighed (the same section higher up carries
+    // less); a tapering shaft is sampled every ten levels or so, and every 24 at least
+    const levels = [];
+    for (let y = s.anchor, last = -99; y < ny; y++) {
+      if (!s.pairs[y]) continue;
+      const same = s.pairs[y] === s.pairs[y - 1] && hash[y] === hash[y - 1];
+      const near = last >= 0 && Math.abs(s.pairs[y] - s.pairs[last]) <= 0.03 * s.pairs[last];
+      if (y - last < 24 && (same || (near && y - last < 10))) continue;
+      const L = this.levelLoads(s, y);
+      if (L) levels.push(L.comps);
+      last = y;
+    }
+    let worst = 0;
+    for (const comps of levels) for (const C of comps) if (C.M > 0) worst = Math.max(worst, sectionStress(g, C, Infinity, _st).smax);
+    s.sigma = Math.max(1e-6, worst * SAFETY);
+    let cracked = 0;
+    for (const comps of levels) for (const C of comps) if (C.M > 0) cracked = Math.max(cracked, sectionStress(g, C, TENSION * s.sigma, _st).smax);
+    if (isFinite(cracked)) s.sigma = Math.max(s.sigma, cracked * 2);
   }
 
   /** Steps from each cell to one standing on an unbroken solid column down to the ground */
   supportDist(s) {
     const g = s.g, { nx, ny, nz, nxz, mat } = g;
-    s.dist = new Uint8Array(g.N).fill(255);
+    const dist = (s.dist = new Uint8Array(g.N).fill(255));
     scratch(g.N);
     let qh = 0, qt = 0;
     for (let c = 0; c < nxz; c++) {
-      for (let y = 0; y < ny; y++) {
-        const i = c + nxz * y;
+      for (let i = c; i < g.N; i += nxz) {
         if (mat[i] < SOLID) break;
-        s.dist[i] = 0;
+        dist[i] = 0;
         QUEUE[qt++] = i;
       }
     }
     while (qh < qt) {
-      const i = QUEUE[qh++], d = s.dist[i] + 1;
+      const i = QUEUE[qh++], d = dist[i] + 1;
       if (d >= 255) continue;
-      const y = Math.floor(i / nxz), r = i - y * nxz, z = Math.floor(r / nx), x = r - z * nx;
-      if (x > 0 && mat[i - 1] >= SOLID && s.dist[i - 1] > d) { s.dist[i - 1] = d; QUEUE[qt++] = i - 1; }
-      if (x < nx - 1 && mat[i + 1] >= SOLID && s.dist[i + 1] > d) { s.dist[i + 1] = d; QUEUE[qt++] = i + 1; }
-      if (z > 0 && mat[i - nx] >= SOLID && s.dist[i - nx] > d) { s.dist[i - nx] = d; QUEUE[qt++] = i - nx; }
-      if (z < nz - 1 && mat[i + nx] >= SOLID && s.dist[i + nx] > d) { s.dist[i + nx] = d; QUEUE[qt++] = i + nx; }
-      if (y > 0 && mat[i - nxz] >= SOLID && s.dist[i - nxz] > d) { s.dist[i - nxz] = d; QUEUE[qt++] = i - nxz; }
-      if (y < ny - 1 && mat[i + nxz] >= SOLID && s.dist[i + nxz] > d) { s.dist[i + nxz] = d; QUEUE[qt++] = i + nxz; }
+      const y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      if (x > 0 && dist[i - 1] > d && mat[i - 1] >= SOLID) { dist[i - 1] = d; QUEUE[qt++] = i - 1; }
+      if (x < nx - 1 && dist[i + 1] > d && mat[i + 1] >= SOLID) { dist[i + 1] = d; QUEUE[qt++] = i + 1; }
+      if (z > 0 && dist[i - nx] > d && mat[i - nx] >= SOLID) { dist[i - nx] = d; QUEUE[qt++] = i - nx; }
+      if (z < nz - 1 && dist[i + nx] > d && mat[i + nx] >= SOLID) { dist[i + nx] = d; QUEUE[qt++] = i + nx; }
+      if (y > 0 && dist[i - nxz] > d && mat[i - nxz] >= SOLID) { dist[i - nxz] = d; QUEUE[qt++] = i - nxz; }
+      if (y < ny - 1 && dist[i + nxz] > d && mat[i + nxz] >= SOLID) { dist[i + nxz] = d; QUEUE[qt++] = i + nxz; }
     }
   }
 
@@ -454,8 +518,20 @@ export class Destruction {
     const md = s.mask.image.data;
     md[i * 2] = 0;
     md[i * 2 + 1] = 255;
-    const { nx, nz, nxz } = g;
+    const { nx, ny, nz, nxz } = g;
     const y = Math.floor(i / nxz), r = i - y * nxz, z = Math.floor(r / nx), x = r - z * nx;
+    // Skin backed by a room or the outside next to it (a slanted face, a thin rail) goes once
+    // nothing solid is left around that cell either
+    const gm = g.mat;
+    faces(i, x, y, z, nx, ny, nz, nxz);
+    for (let k = 0; k < 6; k++) {
+      const j = NB[k];
+      if (j < 0 || gm[j] >= GONE || !md[j * 2]) continue;
+      // j's own coordinates: one step from (x, y, z)
+      const jx = x + (k === 0 ? -1 : k === 1 ? 1 : 0), jz = z + (k === 2 ? -1 : k === 3 ? 1 : 0), jy = y + (k === 4 ? -1 : k === 5 ? 1 : 0);
+      if ((jx > 0 && gm[j - 1] >= SOLID) || (jx < nx - 1 && gm[j + 1] >= SOLID) || (jz > 0 && gm[j - nx] >= SOLID) || (jz < nz - 1 && gm[j + nx] >= SOLID) || (jy > 0 && gm[j - nxz] >= SOLID) || (jy < ny - 1 && gm[j + nxz] >= SOLID)) continue;
+      md[j * 2] = 0;
+    }
     if (!s.body) {
       if (y > 0 && g.mat[i - nxz] >= SOLID) s.pairs[y]--;
       if (y + 1 < g.ny && g.mat[i + nxz] >= SOLID) s.pairs[y + 1]--;
@@ -464,8 +540,9 @@ export class Destruction {
       if (s.dist) s.dist[i] = 255;
     }
     const B = s.maskBox || (s.maskBox = [x, y, z, x + 1, y + 1, z + 1]);
-    if (x < B[0]) B[0] = x; if (y < B[1]) B[1] = y; if (z < B[2]) B[2] = z;
-    if (x >= B[3]) B[3] = x + 1; if (y >= B[4]) B[4] = y + 1; if (z >= B[5]) B[5] = z + 1;
+    const xa = Math.max(0, x - 1), ya = Math.max(0, y - 1), za = Math.max(0, z - 1), xb = Math.min(nx, x + 2), yb = Math.min(ny, y + 2), zb = Math.min(nz, z + 2);
+    if (xa < B[0]) B[0] = xa; if (ya < B[1]) B[1] = ya; if (za < B[2]) B[2] = za;
+    if (xb > B[3]) B[3] = xb; if (yb > B[4]) B[4] = yb; if (zb > B[5]) B[5] = zb;
     this.touchChunk(s, x, y, z);
     if (!quiet) s.pending.push(i);
     this.stats.removed++;
@@ -514,6 +591,7 @@ export class Destruction {
       const dy = g.cy(y) - cy;
       for (let z = z0; z <= z1; z++) {
         const dz = g.cz(z) - cz;
+        if (dy * dy + dz * dz > r2) continue;
         for (let x = x0; x <= x1; x++) {
           const i = x + g.nx * (z + g.nz * y), m = g.mat[i];
           if (m < SOLID) continue;
@@ -636,13 +714,23 @@ export class Destruction {
   blast(p, radiusM, power, o = {}) {
     const R = radiusM * this.M;
     let total = 0;
+    const opts = Object.assign({ speed: 10 + power * 0.04, chunks: Math.round(8 + radiusM * 6) }, o);
+    // What it reaches is turned into voxels, nearest first; past the frame's budget the rest are
+    // carved a frame or two later
+    const reach = [];
     this.ownersIn(p.x - R, p.y - R, p.z - R, p.x + R, p.y + R, p.z + R, (ow) => {
       if (ow.struct || ow.dead) return;
       const B = ow.box;
       const dx = Math.max(B[0] - p.x, 0, p.x - B[3]), dy = Math.max(B[1] - p.y, 0, p.y - B[4]), dz = Math.max(B[2] - p.z, 0, p.z - B[5]);
-      if (dx * dx + dy * dy + dz * dz < R * R * 0.6) this.activate(ow);
+      // (only where the blast still breaks concrete: grazing a tower isn't worth turning it into voxels)
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < R * R * 0.45) reach.push([d2, ow]);
     });
-    const opts = Object.assign({ speed: 10 + power * 0.04, chunks: Math.round(8 + radiusM * 6) }, o);
+    reach.sort((a, b) => a[0] - b[0]);
+    for (const [, ow] of reach) {
+      if (this.frame.act === 0 || this.frame.act < this.actBudget) this.activate(ow);
+      else this.later.push({ ow, p: p.clone(), R, power, opts });
+    }
     for (const s of this.structs) {
       if (s.dead) continue;
       total += this.damageSphere(s, p.x, p.y, p.z, R, power, opts);
@@ -692,9 +780,9 @@ export class Destruction {
     const seeds = [];
     const st0 = nextStamp();
     for (const i of removed) {
-      const y = Math.floor(i / nxz), r = i - y * nxz, z = Math.floor(r / nx), x = r - z * nx;
-      const nb = [x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1, z > 0 ? i - nx : -1, z < nz - 1 ? i + nx : -1, y > 0 ? i - nxz : -1, y < ny - 1 ? i + nxz : -1];
-      for (const j of nb) if (j >= 0 && mat[j] >= SOLID && VIS[j] !== st0) { VIS[j] = st0; seeds.push(j); }
+      const y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      faces(i, x, y, z, nx, ny, nz, nxz);
+      for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && mat[j] >= SOLID && VIS[j] !== st0) { VIS[j] = st0; seeds.push(j); } }
     }
     let budget = ISLAND_BUDGET * 4;
     for (const seed of seeds) {
@@ -707,13 +795,14 @@ export class Destruction {
         const i = QUEUE[--top];
         cells.push(i);
         if (++count > ISLAND_BUDGET || --budget < 0) { found = true; s.needFull = true; break; }
-        const y = Math.floor(i / nxz);
+        const y = (i / nxz) | 0;
         if (y < s.anchor) { found = true; break; }
-        const r = i - y * nxz, z = Math.floor(r / nx), x = r - z * nx;
+        const r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
         // Pushed last, popped first: down
-        const nb = [y < ny - 1 ? i + nxz : -1, x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1, z > 0 ? i - nx : -1, z < nz - 1 ? i + nx : -1, y > 0 ? i - nxz : -1];
+        faces(i, x, y, z, nx, ny, nz, nxz);
         let hitGround = false;
-        for (const j of nb) {
+        for (let q = 0; q < 6; q++) {
+          const j = NB[ISLAND_ORDER[q]];
           if (j < 0 || mat[j] < SOLID) continue;
           const v = VIS[j];
           if (v === st) continue;
@@ -736,27 +825,21 @@ export class Destruction {
     const st = nextStamp();
     let qh = 0, qt = 0;
     for (let i = 0; i < s.anchor * nxz; i++) if (mat[i] >= SOLID) { VIS[i] = st; QUEUE[qt++] = i; }
-    const visit = (j) => { if (mat[j] >= SOLID && VIS[j] !== st) { VIS[j] = st; QUEUE[qt++] = j; } };
     while (qh < qt) {
-      const i = QUEUE[qh++], y = Math.floor(i / nxz), r = i - y * nxz, z = Math.floor(r / nx), x = r - z * nx;
-      if (x > 0) visit(i - 1); if (x < nx - 1) visit(i + 1); if (z > 0) visit(i - nx); if (z < nz - 1) visit(i + nx); if (y > 0) visit(i - nxz); if (y < ny - 1) visit(i + nxz);
+      const i = QUEUE[qh++], y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      faces(i, x, y, z, nx, ny, nz, nxz);
+      for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && mat[j] >= SOLID && VIS[j] !== st) { VIS[j] = st; QUEUE[qt++] = j; } }
     }
     // Label what was not reached
     for (let i = 0; i < N; i++) {
       if (mat[i] < SOLID || VIS[i] === st) continue;
-      const cells = [];
       const ls = nextStamp();
-      let h = 0, t = 0;
-      const local = [];
-      local.push(i); VIS[i] = ls;
-      while (h < local.length) {
-        const c = local[h++];
-        cells.push(c);
-        const y = Math.floor(c / nxz), r = c - y * nxz, z = Math.floor(r / nx), x = r - z * nx;
-        for (const j of [x > 0 ? c - 1 : -1, x < nx - 1 ? c + 1 : -1, z > 0 ? c - nx : -1, z < nz - 1 ? c + nx : -1, y > 0 ? c - nxz : -1, y < ny - 1 ? c + nxz : -1]) {
-          if (j >= 0 && mat[j] >= SOLID && VIS[j] !== ls && VIS[j] !== st) { VIS[j] = ls; local.push(j); }
-        }
-        t++;
+      const cells = [i];
+      VIS[i] = ls;
+      for (let h = 0; h < cells.length; h++) {
+        const c = cells[h], y = (c / nxz) | 0, r = c - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+        faces(c, x, y, z, nx, ny, nz, nxz);
+        for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && mat[j] >= SOLID && VIS[j] !== ls && VIS[j] !== st) { VIS[j] = ls; cells.push(j); } }
       }
       this.detach(s, cells, { cause: 'island' });
       if (s.dead) return;
@@ -781,30 +864,58 @@ export class Destruction {
 
   /**
    * Can what stands above level y (the interface between layers y - 1 and y) still be carried?
-   * The section splits into separate pieces of floor plan (two towers on a podium); every column
-   * of cells above hands its weight to the nearest piece. Each piece fails if its load is more
-   * than its strength, reduced the farther the load's center sits toward its edge, or if the
-   * center is past the edge: then it tips.
+   * Each separate piece of the section (two towers on a podium) is weighed against the load
+   * handed to it, with the bending the load's offset puts into it (sectionStress). Overloaded,
+   * it gives: crushed evenly it pancakes a storey; squeezed on one side, cracked open on the
+   * other, or with the load past its edge, it tips over that side. If it holds as a whole,
+   * parts of the plan left too far from anything still standing under them may still break
+   * off on their own (chunks).
    */
   checkLevel(s, y) {
+    const L = this.levelLoads(s, y);
+    if (!L) return;
+    const wy = s.g.ys[y];
+    for (let id = 0; id < L.comps.length; id++) {
+      const C = L.comps[id];
+      if (C.M <= 0 || !C.cells.length) continue;
+      const r = sectionStress(s.g, C, TENSION * s.sigma, _st);
+      const u = r.smax / s.sigma;
+      if (u >= 1 || r.beyond) {
+        const tip = r.e > 1e-6 && (r.beyond || r.cracked || r.smin0 < 0.3 * r.smax0);
+        this.fail(s, y, L.near, id, tip ? 'tip' : 'crush', { ax: r.ax, az: r.az, lx: r.lx, lz: r.lz, fx: r.fx, fz: r.fz, front: r.front, depth: r.depth, beyond: r.beyond, wy, M: C.M });
+        return;
+      }
+      if (u > 0.6 && this.time > s.warnT) this.warn(s, r.ax, wy, r.az, C, u);
+    }
+    this.chunks(s, y, L);
+  }
+
+  /**
+   * The section at level y and the load on it: the section's cells (both layers solid) fall
+   * into pieces of plan more than about 8 m apart (twin towers, the bents of the El; closer
+   * ones work together), and every column of the plan hands the weight above it to the nearest
+   * piece. Returns { comps: [{ cells, M, mx, mz }], near } or null; leaves each column's load in
+   * LOADM for chunks().
+   */
+  levelLoads(s, y) {
     const g = s.g, { nx, nz, ny, nxz, mat } = g;
     scratch(nxz * 2);
-    const lab = new Int32Array(nxz).fill(-1);
+    if (LOADM.length < nxz) { LOADM = new Float64Array(nxz * 2); NEAR = new Int32Array(nxz * 2); }
     const comps = [];
     const a = y * nxz, b = a - nxz;
-    // Pieces of plan more than about 8 m apart stand apart (twin towers, the bents of the El);
-    // closer ones (columns and the walls round them) work together. Label a coarse grid of
-    // ~4 m squares, grown by one square, so gaps under 8 m close up.
+    // Label a coarse grid of ~4 m squares, grown by one square, so gaps under 8 m close up
     const k = Math.max(1, Math.round((4 * this.M) / s.cellSize)), cx = Math.ceil(nx / k), cz = Math.ceil(nz / k);
     const on = new Uint8Array(cx * cz), grown = new Int32Array(cx * cz).fill(-2);
-    for (let c = 0; c < nxz; c++) if (mat[a + c] >= SOLID && mat[b + c] >= SOLID) { const x = c % nx; on[Math.floor(x / k) + cx * Math.floor((c - x) / nx / k)] = 1; }
+    let any = false;
+    for (let c = 0; c < nxz; c++) if (mat[a + c] >= SOLID && mat[b + c] >= SOLID) { const x = c % nx; on[Math.floor(x / k) + cx * Math.floor((c - x) / nx / k)] = 1; any = true; }
+    if (!any) return null;
     for (let j = 0; j < cz; j++) for (let i = 0; i < cx; i++) {
-      let any = 0;
-      for (let dj = -1; dj <= 1 && !any; dj++) for (let di = -1; di <= 1; di++) {
+      let hit = 0;
+      for (let dj = -1; dj <= 1 && !hit; dj++) for (let di = -1; di <= 1; di++) {
         const ii = i + di, jj = j + dj;
-        if (ii >= 0 && jj >= 0 && ii < cx && jj < cz && on[ii + cx * jj]) { any = 1; break; }
+        if (ii >= 0 && jj >= 0 && ii < cx && jj < cz && on[ii + cx * jj]) { hit = 1; break; }
       }
-      if (any) grown[i + cx * j] = -1;
+      if (hit) grown[i + cx * j] = -1;
     }
     for (let q = 0; q < cx * cz; q++) {
       if (grown[q] !== -1) continue;
@@ -812,27 +923,29 @@ export class Destruction {
       grown[q] = id;
       for (let h = 0; h < list.length; h++) {
         const p = list[h], i = p % cx, j = (p - i) / cx;
-        for (const n of [i > 0 ? p - 1 : -1, i < cx - 1 ? p + 1 : -1, j > 0 ? p - cx : -1, j < cz - 1 ? p + cx : -1]) if (n >= 0 && grown[n] === -1) { grown[n] = id; list.push(n); }
+        if (i > 0 && grown[p - 1] === -1) { grown[p - 1] = id; list.push(p - 1); }
+        if (i < cx - 1 && grown[p + 1] === -1) { grown[p + 1] = id; list.push(p + 1); }
+        if (j > 0 && grown[p - cx] === -1) { grown[p - cx] = id; list.push(p - cx); }
+        if (j < cz - 1 && grown[p + cx] === -1) { grown[p + cx] = id; list.push(p + cx); }
       }
       comps.push({ cells: [], M: 0, mx: 0, mz: 0 });
     }
+    // Nearest section piece for every column
+    const near = NEAR;
+    near.fill(-1, 0, nxz);
+    let qh = 0, qt = 0;
     for (let c = 0; c < nxz; c++) {
       if (mat[a + c] < SOLID || mat[b + c] < SOLID) continue;
       const x = c % nx, id = grown[Math.floor(x / k) + cx * Math.floor((c - x) / nx / k)];
-      lab[c] = id;
       comps[id].cells.push(c);
+      near[c] = id; QUEUE[qt++] = c;
     }
-    if (!comps.length) return;
-    // Nearest section piece for every column
-    const near = new Int32Array(nxz).fill(-1);
-    let qh = 0, qt = 0;
-    for (let c = 0; c < nxz; c++) if (lab[c] >= 0) { near[c] = lab[c]; QUEUE[qt++] = c; }
     while (qh < qt) {
-      const k = QUEUE[qh++], x = k % nx, z = (k - x) / nx, id = near[k];
-      if (x > 0 && near[k - 1] < 0) { near[k - 1] = id; QUEUE[qt++] = k - 1; }
-      if (x < nx - 1 && near[k + 1] < 0) { near[k + 1] = id; QUEUE[qt++] = k + 1; }
-      if (z > 0 && near[k - nx] < 0) { near[k - nx] = id; QUEUE[qt++] = k - nx; }
-      if (z < nz - 1 && near[k + nx] < 0) { near[k + nx] = id; QUEUE[qt++] = k + nx; }
+      const c = QUEUE[qh++], x = c % nx, z = (c - x) / nx, id = near[c];
+      if (x > 0 && near[c - 1] < 0) { near[c - 1] = id; QUEUE[qt++] = c - 1; }
+      if (x < nx - 1 && near[c + 1] < 0) { near[c + 1] = id; QUEUE[qt++] = c + 1; }
+      if (z > 0 && near[c - nx] < 0) { near[c - nx] = id; QUEUE[qt++] = c - nx; }
+      if (z < nz - 1 && near[c + nx] < 0) { near[c + nx] = id; QUEUE[qt++] = c + nx; }
     }
     // Weight above y in each column
     const ly = Math.ceil(y / 4), yEnd = Math.min(ly * 4, ny);
@@ -840,41 +953,146 @@ export class Destruction {
       let m = ly < s.nly && ly * 4 < ny ? s.colAbove[ly * nxz + c] : 0;
       const x = c % nx, z = (c - x) / nx;
       for (let yy = y; yy < yEnd; yy++) { const i = c + nxz * yy; if (mat[i] >= SOLID) m += MATS[mat[i]].density * g.vol(x, yy, z); }
+      LOADM[c] = m;
       if (m <= 0) continue;
       const C = comps[near[c]];
       C.M += m; C.mx += m * g.cx(x); C.mz += m * g.cz(z);
     }
-    for (let id = 0; id < comps.length; id++) {
-      const C = comps[id];
-      if (C.M <= 0) continue;
-      let A = 0, ax = 0, az = 0;
-      for (const k of C.cells) { const x = k % nx, z = (k - x) / nx, w = g.dx(x) * g.dz(z); A += w; ax += w * g.cx(x); az += w * g.cz(z); }
-      ax /= A; az /= A;
-      const ex = C.mx / C.M - ax, ez = C.mz / C.M - az, e = Math.hypot(ex, ez);
-      let ratio = 0;
-      if (e > 1e-4) {
-        const ux = ex / e, uz = ez / e;
-        let reach = 0;
-        for (const k of C.cells) { const x = k % nx, z = (k - x) / nx; reach = Math.max(reach, (g.cx(x) - ax) * ux + (g.cz(z) - az) * uz + 0.5 * (Math.abs(ux) * g.dx(x) + Math.abs(uz) * g.dz(z))); }
-        ratio = e / Math.max(1e-6, reach);
-      }
-      const cap = s.sigma * A * Math.max(0, 1 - ratio);
-      const stress = cap > 0 ? C.M / cap : Infinity;
-      const wy = g.ys[y];
-      if (ratio >= 1 || stress >= 1) {
-        this.fail(s, y, near, id, ratio > 0.55 ? 'tip' : 'crush', { ax, az, ex, ez, wy, M: C.M });
-        return;
-      }
-      if ((stress > 0.55 || ratio > 0.72) && this.time > s.warnT) this.warn(s, ax, wy, az, C, Math.max(stress, ratio));
-    }
+    return { comps, near };
   }
 
-  /** A level gives: the floors above come down, crushing a storey or tipping over */
+  /**
+   * Parts of the plan at level y the damage has left too far from anything still carrying load
+   * down through the level, farther than the floors and walls above can reach out to them (less
+   * far the more they carry), break away with what stands over them: a corner whose walls and
+   * column were blown out, a run of facade over a wide breach. What spans over the gap arches:
+   * the piece that drops narrows going up, and what is left above may give way next in turn.
+   * Only local failures: a region more than a quarter of the loaded plan is the whole level's
+   * business (checkLevel), a top cantilevered off what is left acts as one. Returns true if
+   * anything broke away.
+   */
+  chunks(s, y, L) {
+    const g = s.g, { nx, nz, ny, nxz, mat } = g, a = y * nxz, b = a - nxz;
+    const cs = s.cellSize, M = this.M;
+    if (CHA.length < nxz) { CHA = new Float32Array(nxz * 2); CHB = new Float32Array(nxz * 2); CHR = new Int32Array(nxz * 2); }
+    // Plan distance (in cells) to what carries load across the level now, and before any damage
+    const now = CHA, was = CHB;
+    for (let c = 0; c < nxz; c++) {
+      now[c] = mat[a + c] >= SOLID && mat[b + c] >= SOLID ? 0 : 1e9;
+      was[c] = (mat[a + c] >= SOLID || mat[a + c] === GONE) && (mat[b + c] >= SOLID || mat[b + c] === GONE) ? 0 : 1e9;
+    }
+    chamfer(now, nx, nz); chamfer(was, nx, nz);
+    // Columns cut off: farther than they can be reached, and well farther than they were
+    const reg = CHR;
+    let found = false, loaded = 0;
+    for (let c = 0; c < nxz; c++) {
+      reg[c] = -1;
+      const m = LOADM[c];
+      if (m > 0) loaded++;
+      if (m <= 0 || now[c] < 2 || now[c] < was[c] + 1.5) continue;
+      if (now[c] * cs > this.reachOut(s, y, c, m)) { reg[c] = -2; found = true; }
+    }
+    if (!found) return false;
+    // Connected regions of them, a few cells or more
+    let broke = false;
+    for (let c0 = 0; c0 < nxz; c0++) {
+      if (reg[c0] !== -2) continue;
+      const cols = [c0];
+      reg[c0] = c0;
+      for (let h = 0; h < cols.length; h++) {
+        const c = cols[h], x = c % nx, z = (c - x) / nx;
+        if (x > 0 && reg[c - 1] === -2) { reg[c - 1] = c0; cols.push(c - 1); }
+        if (x < nx - 1 && reg[c + 1] === -2) { reg[c + 1] = c0; cols.push(c + 1); }
+        if (z > 0 && reg[c - nx] === -2) { reg[c - nx] = c0; cols.push(c - nx); }
+        if (z < nz - 1 && reg[c + nx] === -2) { reg[c + nx] = c0; cols.push(c + nx); }
+      }
+      if (cols.length < 3 || cols.length > loaded * 0.25) continue;
+      // What drops: over each column, up to where the arch over the gap takes the load
+      const seeds = [];
+      let mx = 0, mz = 0, n = 0;
+      for (const c of cols) {
+        const reach = this.reachOut(s, y, c, LOADM[c]), d = now[c] * cs;
+        const x = c % nx, z = (c - x) / nx;
+        for (let yy = y; yy < ny; yy++) {
+          if (d <= reach + 0.6 * (g.ys[yy] - g.ys[y])) break;
+          const i = c + nxz * yy;
+          if (mat[i] >= SOLID) { seeds.push(i); mx += g.cx(x); mz += g.cz(z); n++; }
+        }
+      }
+      if (seeds.length < 8) continue;
+      const cells = this.hanging(s, seeds), G = this.groundStamp;
+      // Peel away from the building: out from the middle of the section toward the chunk
+      let ox = mx / n - L.comps.reduce((t, C) => t + C.mx, 0) / Math.max(1e-6, L.comps.reduce((t, C) => t + C.M, 0));
+      let oz = mz / n - L.comps.reduce((t, C) => t + C.mz, 0) / Math.max(1e-6, L.comps.reduce((t, C) => t + C.M, 0));
+      const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+      const p = _a.set(mx / n, g.ys[y], mz / n);
+      this.stats.chunks = (this.stats.chunks || 0) + 1;
+      this.dustRing(p, Math.sqrt(cols.length) * cs * 0.6, 0.8);
+      this.sound.collapse(p, Math.min(2.5, Math.cbrt(cells.length) / 14));
+      this.armRemnants(s, cells);
+      const body = this.detach(s, cells, { cause: 'chunk' });
+      if (body) {
+        body.v.x += ox * 0.6 * M; body.v.z += oz * 0.6 * M;
+        // Tip outward: top away from the building
+        body.w.x += oz * 0.12; body.w.z -= ox * 0.12;
+      }
+      broke = true;
+      if (s.dead) return true;
+      this.leftovers(s, G);
+      if (s.dead) return true;
+    }
+    return broke;
+  }
+
+  /** How far (game units) floors and walls over column c at level y can carry it out from support */
+  reachOut(s, y, c, m) {
+    const g = s.g, { nxz, ny, mat } = g, M = this.M;
+    let span = MATS[3].span;
+    for (let yy = y; yy < Math.min(ny, y + 8); yy++) { const k = mat[c + nxz * yy]; if (k >= SOLID) { span = MATS[k].span; break; } }
+    // Its weight as a height of solid over the column, in meters: the more it holds, the less it reaches
+    const x = c % g.nx, H = m / (g.dx(x) * g.dz((c - x) / g.nx)) / M;
+    return span * M * Math.max(0.5, Math.min(1, Math.sqrt(15 / Math.max(1e-3, H))));
+  }
+
+  /**
+   * Seeds and everything only they held to the ground: what goes with them when they go. One
+   * pass from the ground over what is left, so it costs one flood of the structure.
+   */
+  hanging(s, seeds) {
+    const g = s.g, { nx, ny, nz, nxz, mat } = g;
+    scratch(g.N);
+    const F = nextStamp();
+    for (const i of seeds) VIS[i] = F;
+    const G = nextStamp();
+    let qh = 0, qt = 0;
+    for (let i = 0; i < s.anchor * nxz; i++) if (mat[i] >= SOLID && VIS[i] !== F) { VIS[i] = G; QUEUE[qt++] = i; }
+    while (qh < qt) {
+      const i = QUEUE[qh++], y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      faces(i, x, y, z, nx, ny, nz, nxz);
+      for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && mat[j] >= SOLID && VIS[j] !== F && VIS[j] !== G) { VIS[j] = G; QUEUE[qt++] = j; } }
+    }
+    this.groundStamp = G;
+    const out = seeds.slice();
+    for (let h = 0; h < out.length; h++) {
+      const i = out[h], y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      faces(i, x, y, z, nx, ny, nz, nxz);
+      for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && mat[j] >= SOLID && VIS[j] !== F && VIS[j] !== G) { VIS[j] = F; out.push(j); } }
+    }
+    return out;
+  }
+
+  /**
+   * A level gives: the floors above come down, crushing a storey, or tip over the side the
+   * section was squeezed on. Tipping, the squeezed edge crumbles back to just behind where the
+   * load bears, and the top pivots there on a hinge: slow at first, held by what the hinge has
+   * left, faster as its weight swings out past the edge, until the hinge snaps or the gap the
+   * crumbled edge left closes under it.
+   */
   fail(s, y, near, id, mode, info) {
     const g = s.g, { nx, ny, nxz, mat } = g;
     this.stats.collapses++;
     let y0 = y;
-    const p = _a.set(info.ax, info.wy, info.az);
+    const p = new V3(info.lx, info.wy, info.lz);
     if (mode === 'crush') {
       // The weakest storey turns to rubble and everything above drops onto what is left
       const crushTop = Math.min(ny, y + Math.max(2, Math.round((3.2 * this.M) / s.cellSize)));
@@ -894,19 +1112,126 @@ export class Destruction {
       }
       y0 = crushTop;
     }
-    const cells = [];
-    for (let yy = y0; yy < ny; yy++) for (let c = 0; c < nxz; c++) if (near[c] === id && mat[c + nxz * yy] >= SOLID) cells.push(c + nxz * yy);
+    const tip = mode === 'tip' ? this.crushEdge(s, y, near, id, info) : null;
+    const seeds = [];
+    for (let yy = y0; yy < ny; yy++) for (let c = 0; c < nxz; c++) if (near[c] === id && mat[c + nxz * yy] >= SOLID) seeds.push(c + nxz * yy);
+    if (!seeds.length) return;
+    const cells = this.hanging(s, seeds), G = this.groundStamp;
     // Dust bursting out of the failing floor all round
     this.dustRing(p, Math.sqrt(info.M / Math.max(1e-6, this.M ** 3)) * 0.02 + 2, mode === 'crush' ? 1.6 : 1);
     const size = Math.min(4, Math.cbrt(cells.length) / 12);
     this.sound.collapse(p, size);
     this.fx.onShake(p, 0.6 + size * 0.3);
+    this.armRemnants(s, cells);
     const b = this.detach(s, cells, { cause: mode });
-    if (b && mode === 'tip') {
-      // A nudge over the edge so it doesn't balance on a knife edge
-      const e = Math.hypot(info.ex, info.ez) || 1;
-      b.w.x += (info.ez / e) * 0.04; b.w.z -= (info.ex / e) * 0.04;
+    // A hinge for what stands tall over its pivot (a tower going over); a low, wide part (a
+    // deck losing its bents, a squat top) just tips off its edge on contacts
+    if (b && tip && b.x.y - tip.wy > 0.8 * (Math.abs(tip.fx) * (b.max.x - b.min.x) + Math.abs(tip.fz) * (b.max.z - b.min.z))) this.hingeOn(b, s, tip);
+    // And anything else it leaves hanging in the air (the crumbled edge may cut bits off)
+    if (!s.dead) this.leftovers(s, G);
+  }
+
+  /**
+   * After hanging() and the detach of what it found: solid cells the ground flood (stamp G)
+   * didn't reach are hanging in the air with nothing; they go too. One linear pass, the flood
+   * already done.
+   */
+  leftovers(s, G) {
+    const g = s.g, { nx, ny, nz, nxz, mat, N } = g;
+    let ls = 0;
+    for (let i = s.anchor * nxz; i < N; i++) {
+      if (mat[i] < SOLID || VIS[i] === G || VIS[i] === ls) continue;
+      ls = nextStamp();
+      const cells = [i];
+      VIS[i] = ls;
+      for (let h = 0; h < cells.length; h++) {
+        const c = cells[h], y = (c / nxz) | 0, r = c - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+        faces(c, x, y, z, nx, ny, nz, nxz);
+        for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && mat[j] >= SOLID && VIS[j] !== G && VIS[j] !== ls) { VIS[j] = ls; cells.push(j); } }
+      }
+      this.detach(s, cells, { cause: 'island' });
+      if (s.dead) return;
+      // detach stamps cells of its own; the ground's stamp G on the rest is untouched
     }
+  }
+
+  /**
+   * Tipping: the squeezed edge of the section crumbles back to a pivot line just behind where
+   * the load bears (or the section's edge, with the load already past it), a storey's worth
+   * deep: rubble and dust out of the stump's top and the falling part's foot. Returns the pivot
+   * for the hinge.
+   */
+  crushEdge(s, y, near, id, info) {
+    const g = s.g, { nx, ny, nxz, mat } = g, cs = s.cellSize, M = this.M;
+    const fx = info.fx, fz = info.fz;
+    // Pivot: d back from the load along the fall direction
+    let d, hb = 0;
+    if (info.beyond) d = -info.front;
+    else {
+      const behind = info.depth - info.front; // section behind the load
+      d = Math.min(Math.max(1.5 * cs, 0.12 * info.depth), Math.max(0.5 * cs, 0.8 * behind));
+      hb = Math.max(1, Math.round((1.6 * M) / cs));
+    }
+    const px = info.lx - fx * d, pz = info.lz - fz * d, wy = g.ys[y];
+    // Only the section itself crumbles (its cells across the level and a cell round them), not a
+    // wider lobby or podium roof just under the level
+    if (CHR.length < nxz) CHR = new Int32Array(nxz * 2);
+    const nz = g.nz, a = y * nxz, b = a - nxz, zone = CHR;
+    for (let c = 0; c < nxz; c++) zone[c] = 0;
+    for (let c = 0; c < nxz; c++) {
+      if (near[c] !== id || mat[a + c] < SOLID || mat[b + c] < SOLID) continue;
+      const x = c % nx, z = (c - x) / nx;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const X = x + dx, Z = z + dz;
+        if (X >= 0 && Z >= 0 && X < nx && Z < nz) zone[X + nx * Z] = 1;
+      }
+    }
+    let n = 0, sx = 0, sy = 0, sz = 0;
+    if (hb) {
+      for (let yy = Math.max(s.anchor, y - hb); yy < Math.min(ny, y + hb); yy++) {
+        for (let c = 0; c < nxz; c++) {
+          if (near[c] !== id || !zone[c]) continue;
+          const x = c % nx, z = (c - x) / nx;
+          if ((g.cx(x) - px) * fx + (g.cz(z) - pz) * fz <= 0) continue;
+          const i = c + nxz * yy;
+          if (mat[i] < SOLID) continue;
+          n++; sx += g.cx(x); sy += g.cy(yy); sz += g.cz(z);
+          if (n % 3 === 0 && this.frame.chunks < 200) { this.frame.chunks++; this.chunkFrom(s, g.cx(x), g.cy(yy), g.cz(z), fx, 0.3, fz, rand(4, 9) * M, mat[i], {}); }
+          this.removeCell(s, i, true);
+        }
+      }
+      if (n) this.dustRing(_b.set(sx / n, sy / n, sz / n), Math.sqrt(n / hb) * cs * 0.5 + 2 * M, 1.2);
+    }
+    // How far the section reaches along the hinge line, either side of the pivot
+    let span = cs;
+    for (let c = 0; c < nxz; c++) {
+      if (near[c] !== id || !zone[c]) continue;
+      const i = c + nxz * (y - 1);
+      if (y < 1 || mat[i] < SOLID) continue;
+      const x = c % nx, z = (c - x) / nx, along = (g.cx(x) - px) * fz - (g.cz(z) - pz) * fx;
+      if (Math.abs((g.cx(x) - px) * fx + (g.cz(z) - pz) * fz) < 2 * cs) span = Math.max(span, Math.abs(along));
+    }
+    return { px, pz, wy, fx, fz, d, hb, dFront: info.front + d, span };
+  }
+
+  /** Pin a tipping body on its pivot line (see crushEdge) */
+  hingeOn(b, s, T) {
+    const cs = s.cellSize, G = this.G;
+    const pivot = new V3(T.px, T.wy, T.pz), fall = new V3(T.fx, 0, T.fz), axis = new V3(T.fz, 0, -T.fx);
+    const hc = Math.max(cs, b.x.y - T.wy);
+    // Lever of its weight past the pivot, and what the hinge has to hold against it
+    const lever = (b.x.x - T.px) * T.fx + (b.x.z - T.pz) * T.fz;
+    const Mr = 0.4 * b.m * G * Math.max(0, lever);
+    // The crumbling edge gives it a start; its own height sets how fast a tower that tall leans
+    b.w.addScaledVector(axis, 0.08 * Math.sqrt(G / hc));
+    const extra = { s, wy: T.wy, span: T.span };
+    if (T.hb) {
+      // Its foot at the front: when that comes down onto the crumbled stump, the gap has closed
+      extra.foot = b.toLocal(T.px + T.fx * T.dFront, T.wy + T.hb * cs, T.pz + T.fz * T.dFront, new V3());
+      extra.footY = T.wy - T.hb * cs + 0.3 * cs;
+    }
+    this.physics.setHinge(b, pivot, axis, fall, Mr, 0.06, rand(0.35, 0.6), extra);
+    this.stats.hinges = (this.stats.hinges || 0) + 1;
   }
 
   /** A strained level groans and sheds dust and grit */
@@ -950,11 +1275,14 @@ export class Destruction {
     y0 = Math.max(0, y0 - 1); y1 = Math.min(ny - 1, y1 + S);
     const rw = x1 - x0 + 1, rd = z1 - z0 + 1, rh = y1 - y0 + 1, RN = rw * rd * rh;
     if (RN > 900000) return;
-    const nd = new Uint8Array(RN).fill(255);
+    if (ND.length < RN) ND = new Uint8Array(RN);
+    const nd = ND;
+    nd.fill(255, 0, RN);
     const L = (x, y, z) => (x - x0) + rw * ((z - z0) + rd * (y - y0));
-    // Buckets by distance
-    const buckets = [];
-    const push = (d, i) => { (buckets[d] || (buckets[d] = [])).push(i); };
+    if (SPQ.length < RN) { SPQ = new Int32Array(RN); SPD = new Uint8Array(RN); SPS = new Int32Array(RN); SPF = new Int32Array(RN * 2); }
+    // Seeds with the distance they start at, then sorted by it (counting sort)
+    let ns = 0;
+    const cnt = SPC.fill(0);
     for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
       let anch = y0 === 0 || (mat[x + nx * (z + nz * (y0 - 1))] >= SOLID && s.dist[x + nx * (z + nz * (y0 - 1))] === 0);
       for (let y = y0; y <= y1; y++) {
@@ -962,29 +1290,35 @@ export class Destruction {
         if (mat[i] < SOLID) { anch = false; continue; }
         anch = anch || y < s.anchor;
         const l = L(x, y, z);
-        if (anch) { nd[l] = 0; push(0, l); continue; }
-        // The region's sides and top keep what they had; its floor hands up from below
-        const edge = x === x0 || x === x1 || z === z0 || z === z1 || y === y1;
-        let d0 = edge ? s.dist[i] : 255;
-        if (y === y0 && y0 > 0 && mat[i - nxz] >= SOLID) d0 = Math.min(d0, s.dist[i - nxz] + 1);
-        if (d0 < 255) { nd[l] = d0; push(d0, l); }
+        let d0 = 0;
+        if (!anch) {
+          // The region's sides and top keep what they had; its floor hands up from below
+          const edge = x === x0 || x === x1 || z === z0 || z === z1 || y === y1;
+          d0 = edge ? s.dist[i] : 255;
+          if (y === y0 && y0 > 0 && mat[i - nxz] >= SOLID) d0 = Math.min(d0, s.dist[i - nxz] + 1);
+          if (d0 >= 255) continue;
+        }
+        nd[l] = d0; SPQ[ns] = l; SPD[ns++] = d0; cnt[d0]++;
       }
     }
-    for (let d = 0; d < buckets.length; d++) {
-      const B = buckets[d];
-      if (!B) continue;
-      for (let k = 0; k < B.length; k++) {
-        const l = B[k];
-        if (nd[l] !== d) continue;
-        const x = l % rw, t = (l - x) / rw, z = t % rd, y = (t - z) / rd;
-        const nd1 = d + 1;
-        if (nd1 >= 255) continue;
-        const gi = (x + x0) + nx * ((z + z0) + nz * (y + y0));
-        const tryN = (ok, ln, gn) => { if (ok && mat[gn] >= SOLID && nd[ln] > nd1) { nd[ln] = nd1; push(nd1, ln); } };
-        tryN(x > 0, l - 1, gi - 1); tryN(x < rw - 1, l + 1, gi + 1);
-        tryN(z > 0, l - rw, gi - nx); tryN(z < rd - 1, l + rw, gi + nx);
-        tryN(y > 0, l - rw * rd, gi - nxz); tryN(y < rh - 1, l + rw * rd, gi + nxz);
-      }
+    for (let d = 0, o = 0; d < 256; d++) { const c = cnt[d]; cnt[d] = o; o += c; }
+    for (let k = 0; k < ns; k++) SPS[cnt[SPD[k]]++] = SPQ[k];
+    // Breadth first from them in order of distance: the sorted seeds merged with the queue
+    let sp = 0, qh = 0, qt = 0;
+    const plane = rw * rd;
+    while (sp < ns || qh < qt) {
+      let l;
+      if (qh < qt && (sp >= ns || nd[SPF[qh]] <= nd[SPS[sp]])) l = SPF[qh++]; else l = SPS[sp++];
+      const nd1 = nd[l] + 1;
+      if (nd1 >= 255) continue;
+      const x = l % rw, t = (l - x) / rw, z = t % rd, y = (t - z) / rd;
+      const gi = (x + x0) + nx * ((z + z0) + nz * (y + y0));
+      if (x > 0 && nd[l - 1] > nd1 && mat[gi - 1] >= SOLID) { nd[l - 1] = nd1; SPF[qt++] = l - 1; }
+      if (x < rw - 1 && nd[l + 1] > nd1 && mat[gi + 1] >= SOLID) { nd[l + 1] = nd1; SPF[qt++] = l + 1; }
+      if (z > 0 && nd[l - rw] > nd1 && mat[gi - nx] >= SOLID) { nd[l - rw] = nd1; SPF[qt++] = l - rw; }
+      if (z < rd - 1 && nd[l + rw] > nd1 && mat[gi + nx] >= SOLID) { nd[l + rw] = nd1; SPF[qt++] = l + rw; }
+      if (y > 0 && nd[l - plane] > nd1 && mat[gi - nxz] >= SOLID) { nd[l - plane] = nd1; SPF[qt++] = l - plane; }
+      if (y < rh - 1 && nd[l + plane] > nd1 && mat[gi + nxz] >= SOLID) { nd[l + plane] = nd1; SPF[qt++] = l + plane; }
     }
     // Failing cells
     const fail = [];
@@ -1012,6 +1346,98 @@ export class Destruction {
       }
       if (cells.length > 2) this.sound.crash(this.toWorld(s, g.cx(cells[0] % nx), g.ys[Math.floor(cells[0] / nxz)], g.cz(Math.floor((cells[0] % nxz) / nx)), _b), Math.min(2, cells.length / 400));
       this.detach(s, cells, { cause: 'span' });
+      if (s.dead) return;
+    }
+  }
+
+  /** Look for what a collapse left standing on its own, a little after it settles */
+  armRemnants(s, cells, box) {
+    if (s.dead || s.body) return;
+    const t = this.time + 0.9;
+    if (!s.remnantT || s.remnantT > t) s.remnantT = t;
+    // Where to look: round what went, a few cells wider (x0, y0, z0, x1, z1)
+    const g = s.g, { nx, nz, nxz } = g, R = s.remBox || (s.remBox = [Infinity, Infinity, Infinity, -1, -1]);
+    if (box) { R[0] = Math.min(R[0], box[0]); R[1] = Math.min(R[1], box[1]); R[2] = Math.min(R[2], box[2]); R[3] = Math.max(R[3], box[3]); R[4] = Math.max(R[4], box[4]); }
+    if (cells) for (const i of cells) {
+      const y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      if (x < R[0]) R[0] = x; if (y < R[1]) R[1] = y; if (z < R[2]) R[2] = z; if (x > R[3]) R[3] = x; if (z > R[4]) R[4] = z;
+    }
+  }
+
+  /**
+   * What a collapse left standing with nothing to brace it goes too: walls a cell thick and
+   * columns whose floors and roof are gone, standing free taller than they could (about 16
+   * times their thickness, 8 to 18 m; steel twice that). Masts, poles and parapets built that
+   * way are left alone: only runs that were braced before (by what is now gone) count.
+   */
+  remnants(s) {
+    const g = s.g, { nx, ny, nz, nxz, mat } = g, cs = s.cellSize, M = this.M;
+    const lim = Math.min(18 * M, Math.max(8 * M, 16 * cs));
+    // Only round what the collapse took (a wall it left standing free is next to it)
+    const R = s.remBox;
+    s.remBox = null;
+    if (!R || R[3] < 0) return;
+    const pad = 4, X0 = Math.max(0, R[0] - pad), X1 = Math.min(nx - 1, R[3] + pad), Z0 = Math.max(0, R[2] - pad), Z1 = Math.min(nz - 1, R[4] + pad);
+    const Y0 = Math.max(s.anchor, R[1] - Math.ceil(lim / cs) - 1);
+    // Thin: three or fewer other solid cells round it in its layer (now, or before any damage)
+    const count = (i, x, z, orig) => {
+      let n = 0;
+      const x0 = x > 0 ? -1 : 0, x1 = x < nx - 1 ? 1 : 0, z0 = z > 0 ? -nx : 0, z1 = z < nz - 1 ? nx : 0;
+      for (let dz = z0; dz <= z1; dz += nx) for (let dx = x0; dx <= x1; dx++) {
+        if (!dx && !dz) continue;
+        const m = mat[i + dx + dz];
+        if (m >= SOLID || (orig && m === GONE)) n++;
+      }
+      return n;
+    };
+    const marks = [];
+    for (let z = Z0; z <= Z1; z++) for (let x = X0; x <= X1; x++) {
+      const c = x + nx * z;
+      let y = Y0;
+      while (y < ny) {
+        const i = c + nxz * y;
+        if (mat[i] < SOLID || count(i, x, z, false) > 3) { y++; continue; }
+        // A run of thin cells from here up
+        let y1 = y, braced = false, steel = true;
+        while (y1 < ny) {
+          const j = c + nxz * y1;
+          if (mat[j] < SOLID || count(j, x, z, false) > 3) break;
+          if (count(j, x, z, true) > 3) braced = true;
+          if (mat[j] !== STEEL) steel = false;
+          y1++;
+        }
+        const top = y1 < ny ? mat[c + nxz * y1] : OUT;
+        // Standing free (nothing on top), and it used to be braced, or capped by what is gone, wall
+        // round the cap and all (under a hole in a wall that goes on round it, it is still a wall)
+        const capped = top === GONE && count(c + nxz * y1, x, z, false) === 0;
+        if (top < SOLID && (braced || capped) && g.ys[y1] - g.ys[y] > lim * (steel ? 2 : 1)) for (let k = y; k < y1; k++) marks.push(c + nxz * k);
+        y = y1 + 1;
+      }
+    }
+    if (!marks.length) return;
+    // Topple in connected pieces, outward from the middle of the plan
+    scratch(g.N);
+    const fs = nextStamp();
+    for (const i of marks) VIS[i] = fs;
+    const mcx = (g.xs[0] + g.xs[nx]) / 2, mcz = (g.zs[0] + g.zs[nz]) / 2;
+    for (const i0 of marks) {
+      if (VIS[i0] !== fs || mat[i0] < SOLID) continue;
+      const ps = nextStamp(), cells = [i0];
+      VIS[i0] = ps;
+      let sx = 0, sz = 0;
+      for (let h = 0; h < cells.length; h++) {
+        const i = cells[h], y = (i / nxz) | 0, r = i - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+        sx += g.cx(x); sz += g.cz(z);
+        faces(i, x, y, z, nx, ny, nz, nxz);
+        for (let k = 0; k < 6; k++) { const j = NB[k]; if (j >= 0 && VIS[j] === fs && mat[j] >= SOLID) { VIS[j] = ps; cells.push(j); } }
+      }
+      this.stats.remnants = (this.stats.remnants || 0) + 1;
+      const b = this.detach(s, cells, { cause: 'remnant' });
+      if (b) {
+        let ox = sx / cells.length - mcx, oz = sz / cells.length - mcz;
+        const l = Math.hypot(ox, oz) || 1; ox /= l; oz /= l;
+        b.w.x += oz * 0.1; b.w.z -= ox * 0.1;
+      }
       if (s.dead) return;
     }
   }
@@ -1087,10 +1513,11 @@ export class Destruction {
     }
     const bg = g.sub(x0, y0, z0, x1 + 1, y1 + 1, z1 + 1);
     bg.hp = new Uint8Array(bg.N);
+    const cut = []; // what stays behind
     for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
       const gi = x + nx * (z + nz * y), bi = (x - x0) + bg.nx * ((z - z0) + bg.nz * (y - y0));
       if (VIS[gi] === st) bg.hp[bi] = s.hp[gi];
-      else if (bg.mat[bi] >= SOLID) bg.mat[bi] = GONE;
+      else if (bg.mat[bi] >= SOLID) { bg.mat[bi] = GONE; cut.push(bi); } else if (bg.mat[bi] === GONE) cut.push(bi); // (and what was shot away)
     }
     // Out of the parent; the edge it broke from gets checked
     for (const i of cells) this.removeCell(s, i, true);
@@ -1099,7 +1526,7 @@ export class Destruction {
       if ((x > 0 && mat[i - 1] >= SOLID) || (x < nx - 1 && mat[i + 1] >= SOLID) || (z > 0 && mat[i - nx] >= SOLID) || (z < nz - 1 && mat[i + nx] >= SOLID) || (y > 0 && mat[i - nxz] >= SOLID) || (y < g.ny - 1 && mat[i + nxz] >= SOLID)) s.pending.push(i);
     }
     const off = [s.off[0] + x0, s.off[1] + y0, s.off[2] + z0];
-    const bs = new Structure(this, bg, s.owner, s.lut, off);
+    const bs = new Structure(this, bg, s.owner, s.lut, off, cut);
     bs.hp = bg.hp;
     bs.cellSize = s.cellSize;
     bs.sigma = s.sigma;
@@ -1123,6 +1550,14 @@ export class Destruction {
       b.age = pb.age;
     }
     b.updateR();
+    if (!s.body) {
+      // Flush against its parent and the buildings next door: they give it no support until it
+      // leans or pushes into them (physics.js)
+      // (by owner: a neighbor still a city box now may be a voxel structure by the time it's hit)
+      const near = new Set([s.owner]), pad = s.cellSize;
+      this.statics(_a.copy(b.min).subScalar(pad), _b.copy(b.max).addScalar(pad), (o) => near.add(o.vox ? o.vox.owner : o.owner || o));
+      b.fresh = { near, x0: b.x.clone(), q0: b.q.clone(), r2: (2 * s.cellSize) ** 2 };
+    }
     this.physics.add(b);
     this.scene.add(bs.group);
     b.matrix(bs.group.matrix);
@@ -1184,9 +1619,14 @@ export class Destruction {
 
   // ---- impacts ---------------------------------------------------------------------
 
-  /** A piece hit something hard this step: dust, sound, crushing and maybe shattering */
+  /**
+   * A piece hit something hard this step: dust, sound, crushing and maybe shattering. What it
+   * crushes at each place it struck goes by the energy it brought there (its mass at that point
+   * and the speed it came in at, so by how far it fell): a storey-sized block off a roof dents a
+   * street, a toppling tower's top caves in the building it lands on.
+   */
   impacts(dt) {
-    const M = this.M;
+    const M = this.M, M3 = M * M * M;
     for (const b of [...this.physics.bodies]) {
       b.crashT = Math.max(0, (b.crashT || 0) - dt);
       const imp = b.impact;
@@ -1203,13 +1643,18 @@ export class Destruction {
           this.fx.onShake(imp.point, Math.min(1, 0.1 + k * 0.25));
         }
         // Crush what it hit, and chip itself where it struck
-        if (sp > 5) {
-          const R = Math.min(5, 0.3 * Math.sqrt(sp) * Math.max(0.6, size / 14)), P = Math.min(420, 30 + sp * 22);
-          this.crushOther(imp, R, P, b);
-          b.toLocal(imp.point.x, imp.point.y, imp.point.z, _a);
-          this.damageSphere(b.s, _a.x, _a.y, _a.z, Math.min(R, 2) * M, P * 0.7, { speed: sp * 0.4 * M, chunks: 6 });
-          if (b.s.dead) continue;
+        for (let n = 0; n < b.nimp; n++) {
+          const I = b.imps[n], v = I.speed / M;
+          if (v <= 5) continue;
+          const E = 0.5 * (I.meff / M3) * 2400 * v * v;                        // joules
+          const R = Math.min(9, Math.max(0.6, Math.cbrt((3 * E) / CRUSH_J / (4 * Math.PI)))); // meters
+          const P = Math.min(520, 60 + v * 20);
+          this.crushOther(I, R, P, b);
+          b.toLocal(I.point.x, I.point.y, I.point.z, _a);
+          this.damageSphere(b.s, _a.x, _a.y, _a.z, Math.min(R, 2.5) * M, P * 0.7, { speed: v * 0.4 * M, chunks: 6 });
+          if (b.s.dead) break;
         }
+        if (b.s.dead) continue;
       }
       // Shatter
       const thr = 7 + 30 / Math.cbrt(Math.max(1, b.cells / 40));
@@ -1263,8 +1708,9 @@ export class Destruction {
       // turns to rubble, so a falling block crushes down floor by floor
       const wide = (u1 - u0) > cs * 4 && (v1 - v0) > cs * 4;
       // Landing hard on top of what's left: the block crushes its way down through it
-      if (wide && q > 6 && crushOther && !other.body && n.y > 0.9 && !a.crushDown && a.cells > 400) {
-        a.crushDown = { s: other, slow: 0 };
+      // (not a piece toppling over: that pivots on the edge it crushes)
+      if (wide && q > 6 && crushOther && !other.body && n.y > 0.9 && !a.crushDown && a.cells > 400 && !a.hinge && a.R[4] > 0.95 && a.w.length() < 0.2) {
+        a.crushDown = { s: other, slow: 0, foot: footprint(a.s.g) };
         this.stats.crushDowns = (this.stats.crushDowns || 0) + 1;
         this.sound.collapse(c0.p, Math.min(3, Math.cbrt(a.cells) / 14));
         continue;
@@ -1311,25 +1757,27 @@ export class Destruction {
     b.v.x *= 1 - 2 * dt; b.v.z *= 1 - 2 * dt;
     b.w.multiplyScalar(1 - 3 * dt);
     C.slow = b.v.y > -0.6 * M ? C.slow + dt : 0;
-    if (C.slow > 0.35 || b.min.y < this.ground(b.x.x, b.x.z) + 0.5 * M) { b.crushDown = null; return; }
-    // Cells of the structure in the band the block's underside sweeps through
-    const g = s.g, travel = Math.max(0, -b.v.y * dt) + s.cellSize;
-    const x0 = lineIndexClamped(g.xs, b.min.x), x1 = lineIndexClamped(g.xs, b.max.x);
-    const z0 = lineIndexClamped(g.zs, b.min.z), z1 = lineIndexClamped(g.zs, b.max.z);
+    if (C.slow > 0.35 || b.min.y < this.ground(b.x.x, b.x.z) + 0.5 * M) {
+      b.crushDown = null;
+      const g = s.g;
+      this.armRemnants(s, null, [lineIndexClamped(g.xs, b.min.x), 0, lineIndexClamped(g.zs, b.min.z), lineIndexClamped(g.xs, b.max.x), lineIndexClamped(g.zs, b.max.z)]);
+      return;
+    }
+    // Cells of the structure in the band the block's underside sweeps through, across its whole
+    // footprint (hollow or not, and a cell wider): a tapering shaft dropping into the wider one
+    // below takes its walls with it, it doesn't slide down inside them
+    const g = s.g, travel = Math.max(0, -b.v.y * dt) + s.cellSize, F = C.foot, pad = s.cellSize;
+    const x0 = lineIndexClamped(g.xs, b.min.x - pad), x1 = lineIndexClamped(g.xs, b.max.x + pad);
+    const z0 = lineIndexClamped(g.zs, b.min.z - pad), z1 = lineIndexClamped(g.zs, b.max.z + pad);
     const y0 = lineIndexClamped(g.ys, b.min.y - travel), y1 = lineIndexClamped(g.ys, b.min.y + Math.min(b.max.y - b.min.y, s.cellSize * 6));
-    const bg = b.s.g;
     let n = 0, sx = 0, sy = 0, sz = 0;
     for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
       const i = x + g.nx * (z + g.nz * y), m = g.mat[i];
       if (m < SOLID) continue;
-      // Under the block's solid: the cell, lifted by the step's travel, falls inside it
-      b.toLocal(g.cx(x), g.cy(y) + travel, g.cz(z), _a);
-      const k = bg.cellAt(_a.x, _a.y, _a.z);
-      if (k < 0 || bg.mat[k] < SOLID) {
-        b.toLocal(g.cx(x), g.cy(y) + travel + s.cellSize, g.cz(z), _a);
-        const k2 = bg.cellAt(_a.x, _a.y, _a.z);
-        if (k2 < 0 || bg.mat[k2] < SOLID) continue;
-      }
+      // Under the block: in its footprint, and its underside there reaches the cell this step
+      b.toLocal(g.cx(x), g.cy(y), g.cz(z), _a);
+      const low = footLow(F, _a.x, _a.z);
+      if (low === null || _a.y + travel < low - s.cellSize * 0.5) continue;
       n++; sx += g.cx(x); sy += g.cy(y); sz += g.cz(z);
       if (n % 5 === 0 && this.frame.chunks < 220) {
         this.frame.chunks++;
@@ -1398,12 +1846,15 @@ export class Destruction {
   crushOther(imp, R, P, b) {
     const o = imp.other, p = imp.point;
     if (!o) return;
-    if (o.vox) { if (!o.vox.dead) this.damageSphere(o.vox, p.x, p.y, p.z, R * this.M, P, { speed: 6 * this.M, chunks: 8 }); return; }
+    const chunks = Math.round(6 + R * 2);
+    if (o.vox) { if (!o.vox.dead) this.damageSphere(o.vox, p.x, p.y, p.z, R * this.M, P, { speed: 6 * this.M, chunks }); return; }
     if (o.isBody) { o.toLocal(p.x, p.y, p.z, _a); this.damageSphere(o.s, _a.x, _a.y, _a.z, R * this.M, P * 0.8, { chunks: 6 }); return; }
     if (o.ref && o.ref.kind === 'car') { this.city.damageCar(o.ref, 999, p); this.city.crushCar(o.ref); return; }
     if (o.owner) {
+      // Unbroken yet: within the frame's activation budget, or a frame or two later
+      if (!o.owner.struct && this.frame.act > 0 && this.frame.act >= this.actBudget) { this.later.push({ ow: o.owner, p: p.clone(), R: R * this.M, power: P, opts: { speed: 6 * this.M, chunks } }); return; }
       const s = this.activate(o.owner);
-      if (s) this.damageSphere(s, p.x, p.y, p.z, R * this.M, P, { speed: 6 * this.M, chunks: 8 });
+      if (s) this.damageSphere(s, p.x, p.y, p.z, R * this.M, P, { speed: 6 * this.M, chunks });
     }
   }
 
@@ -1495,11 +1946,18 @@ export class Destruction {
       this.pressures(dt / n);
       for (const b of this.physics.bodies) if (b.crushDown) this.crushDown(b, dt / n);
     }
+    for (const b of this.physics.bodies) if (b.hinge) this.tendHinge(b, dt);
+    // Blasts waiting on structures to activate
+    while (this.later.length && (this.frame.act === 0 || this.frame.act < this.actBudget)) {
+      const L = this.later.shift(), s = this.activate(L.ow);
+      if (s) this.damageSphere(s, L.p.x, L.p.y, L.p.z, L.R, L.power, L.opts);
+    }
     const T1 = performance.now();
     // Structural checks
     for (const s of [...this.structs]) {
       s.analyzeT -= dt;
       if (s.pending.length && s.analyzeT <= 0 && !s.dead) { s.analyzeT = ANALYZE_EVERY; this.analyze(s); }
+      if (s.remnantT && this.time >= s.remnantT && !s.dead) { s.remnantT = 0; this.remnants(s); }
     }
     for (const b of [...this.physics.bodies]) {
       const s = b.s;
@@ -1527,6 +1985,7 @@ export class Destruction {
         if (v > 2 * this.M) this.crushUnder(b, ctx);
       }
     }
+    this.capBodies();
     const T2 = performance.now();
     this.debris.update(dt);
     this.roofTrees(dt);
@@ -1537,6 +1996,85 @@ export class Destruction {
       this.slow = this.slow || [];
       this.slow.push({ t: +this.time.toFixed(1), ms: +(T3 - T0).toFixed(1), phys: +(T1 - T0).toFixed(1), checks: +(T2 - T1).toFixed(1), draw: +(T3 - T2).toFixed(1), act: +(this.stats.activateMs - act0).toFixed(1), bodies: this.physics.bodies.length });
       if (this.slow.length > 40) this.slow.shift();
+    }
+    // Activations from here to the next update (weapons fire first) count against the next frame
+    this.frame.act = 0;
+  }
+
+  /**
+   * A body pivoting on a hinge: let it go when the hinge snapped or slid off its edge, when the
+   * gap the crumbled edge left has closed under its foot, or when the stump under the pivot is
+   * gone; meanwhile the hinge grinds, shedding grit and dust, groaning as it starts to go.
+   */
+  tendHinge(b, dt) {
+    const H = b.hinge, S = H.s, cs = b.s.cellSize, w = H.wa;
+    if (!H.span) H.span = 0.35 * Math.min(b.max.x - b.min.x, b.max.z - b.min.z);
+    if (!H.broken) {
+      if (S.dead) H.broken = 'stump';
+      else if (H.foot && b.toWorld(H.foot.x, H.foot.y, H.foot.z, _a).y < H.footY) H.broken = 'closed';
+      else if ((H.supT = (H.supT || 0) - dt) <= 0) {
+        // Still something under the hinge line to turn on (a hollow shaft's two walls will do),
+        // and still something of its own over it to turn with
+        H.supT = 0.1;
+        const g = S.g, bg = b.s.g, n = Math.max(2, Math.ceil(H.span / cs));
+        let held = false, own = false;
+        for (let k = -n; k <= n && !(held && own); k++) {
+          const t = (k / n) * H.span, x = w.x + H.axis.x * t - H.fall.x * cs * 0.6, z = w.z + H.axis.z * t - H.fall.z * cs * 0.6;
+          for (let d = 0.5; d <= 1.5; d += 1) {
+            if (!held) { const i = g.cellAt(x, w.y - cs * d, z); if (i >= 0 && g.mat[i] >= SOLID) held = true; }
+            if (!own) { b.toLocal(x, w.y + cs * d, z, _b); const i = bg.cellAt(_b.x, _b.y, _b.z); if (i >= 0 && bg.mat[i] >= SOLID) own = true; }
+          }
+        }
+        if (!held || !own) H.broken = 'support';
+      }
+    }
+    if (H.broken) {
+      const st = this.stats.hingeBreaks || (this.stats.hingeBreaks = {});
+      st[H.broken] = (st[H.broken] || 0) + 1;
+      b.hinge = null;
+      // Settled or turned back: it just goes quiet
+      if (H.broken === 'rest' || H.broken === 'back' || H.broken === 'age') return;
+      const k = Math.min(3, Math.cbrt(b.cells) / 12);
+      this.sound.crash(w, k);
+      this.sound.metalHit(w, Math.min(1, 0.3 + k * 0.2));
+      this.dustRing(w, H.span + 2 * this.M, Math.min(1.4, 0.4 + k * 0.3));
+      return;
+    }
+    // Grinding
+    const om = Math.abs(b.w.dot(H.axis));
+    H.fxT = (H.fxT || 0) - dt;
+    if (H.fxT > 0 || om < 0.003) return;
+    H.fxT = Math.max(0.07, 0.45 - om * 3);
+    const fx = this.fx, M = this.M;
+    for (let i = 0; i < 4; i++) {
+      const t = rand(-1, 1) * H.span, x = w.x + H.axis.x * t, z = w.z + H.axis.z * t, gy = rand(0.42, 0.55);
+      fx.smoke.emit(x, w.y + rand(-1, 1) * cs, z, H.fall.x * rand(1, 4) + rand(-1, 1), rand(0, 2), H.fall.z * rand(1, 4) + rand(-1, 1),
+        rand(2.5, 4.5), M * 2, M * rand(6, 10), gy, gy * 0.96, gy * 0.9, 0.6, gy, gy * 0.96, gy * 0.9, 0, 1.2, 0.2, rand(-0.6, 0.6));
+      if (i % 2 === 0) this.debris.spawn(x, w.y, z, H.fall.x * rand(2, 6), rand(1, 4), H.fall.z * rand(2, 6), cs * rand(0.3, 0.7), 3, rand(8, 16));
+    }
+    this.sound.crumble(w, 12 + om * 400);
+    if (this.time > (H.groanT || 0)) { H.groanT = this.time + rand(1.2, 2.2); this.sound.groan(w, Math.min(1, 0.5 + om * 8)); }
+  }
+
+  /**
+   * Past the piece budget (big pieces always break away as pieces), the smallest of those lying
+   * still crumble into rubble and dust, so the physics keeps its frame time on a phone
+   */
+  capBodies() {
+    const B = this.physics.bodies;
+    if (B.length <= MAX_BODIES || (this.capT = (this.capT || 0) - 1) > 0) return;
+    this.capT = 10; // every ten frames or so
+    const still = B.filter((b) => b.sleeping && b.cells < 1500 && !b.s.dead).sort((p, q) => p.cells - q.cells);
+    for (const b of still.slice(0, B.length - MAX_BODIES)) {
+      const P = b.probes, n = Math.min(8, P.length / 3);
+      for (let k = 0; k < n && this.frame.chunks < 200; k++) {
+        const j = Math.floor(Math.random() * (P.length / 3));
+        b.toWorld(P[j * 3], P[j * 3 + 1], P[j * 3 + 2], _a);
+        this.frame.chunks++;
+        this.debris.spawn(_a.x, _a.y, _a.z, rand(-1, 1), rand(0, 1.5), rand(-1, 1), b.s.cellSize * rand(0.5, 0.9), 3, rand(10, 20));
+      }
+      this.dustRing(b.x, Math.cbrt(b.cells) * b.s.cellSize * 0.5, 0.3);
+      this.killBody(b);
     }
   }
 
@@ -1679,6 +2217,119 @@ export class Destruction {
 
 const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0);
 const _hit = {};
+const _st = {};
+
+// Scratch for section analysis, grown as needed
+let SX = new Float64Array(4096), SZ = new Float64Array(4096), SDX = new Float64Array(4096), SDZ = new Float64Array(4096), SACT = new Uint8Array(4096);
+
+/**
+ * Stresses in a level's section piece C (C.cells: plan cells carrying load across the level,
+ * C.M the load above, C.mx / C.M, C.mz / C.M where it bears) as an elastic section: the load
+ * squeezes it evenly and its offset from the section's centroid bends it, squeezing harder
+ * on one side and pulling on the other. Pulled harder than sigT, that side cracks and lets go,
+ * and what is left takes it all (a few rounds of that). Returns into out: smax, the peak
+ * squeeze; smax0 and smin0 before cracking; cracked; the fall direction (fx, fz) from the
+ * centroid toward where the load bears; front, how far past the load the section reaches that
+ * way (not past it: beyond); depth, the section's extent that way; and lx, lz, the load point.
+ */
+function sectionStress(g, C, sigT, out) {
+  const cells = C.cells, n = cells.length, nx = g.nx, P = C.M;
+  if (SX.length < n) { const k = n * 2; SX = new Float64Array(k); SZ = new Float64Array(k); SDX = new Float64Array(k); SDZ = new Float64Array(k); SACT = new Uint8Array(k); }
+  for (let k = 0; k < n; k++) {
+    const c = cells[k], x = c % nx, z = (c - x) / nx;
+    SX[k] = g.cx(x); SZ[k] = g.cz(z); SDX[k] = g.dx(x); SDZ[k] = g.dz(z); SACT[k] = 1;
+  }
+  const lx = C.mx / P, lz = C.mz / P;
+  out.lx = lx; out.lz = lz; out.cracked = false;
+  let smax = 0, ax0 = 0, az0 = 0;
+  for (let it = 0; it < 4; it++) {
+    let A = 0, Sx = 0, Sz = 0;
+    for (let k = 0; k < n; k++) if (SACT[k]) { const w = SDX[k] * SDZ[k]; A += w; Sx += w * SX[k]; Sz += w * SZ[k]; }
+    if (A <= 0) { smax = Infinity; break; }
+    const ax = Sx / A, az = Sz / A;
+    let Iuu = 0, Ivv = 0, Iuv = 0;
+    for (let k = 0; k < n; k++) {
+      if (!SACT[k]) continue;
+      const w = SDX[k] * SDZ[k], u = SX[k] - ax, v = SZ[k] - az;
+      Iuu += w * (u * u + SDX[k] * SDX[k] / 12); Ivv += w * (v * v + SDZ[k] * SDZ[k] / 12); Iuv += w * u * v;
+    }
+    const ex = lx - ax, ez = lz - az, det = Math.max(1e-12, Iuu * Ivv - Iuv * Iuv);
+    // sigma = a + b u + c v balances the load and its moment about the centroid
+    const a = P / A, b = (P * (ex * Ivv - ez * Iuv)) / det, cc = (P * (ez * Iuu - ex * Iuv)) / det;
+    let hi = -Infinity, lo = Infinity;
+    for (let k = 0; k < n; k++) {
+      if (!SACT[k]) continue;
+      const sg = a + b * (SX[k] - ax) + cc * (SZ[k] - az), h = 0.5 * (Math.abs(b) * SDX[k] + Math.abs(cc) * SDZ[k]);
+      if (sg + h > hi) hi = sg + h;
+      if (sg - h < lo) lo = sg - h;
+    }
+    smax = hi;
+    if (it === 0) { out.smax0 = hi; out.smin0 = lo; ax0 = ax; az0 = az; }
+    if (lo >= -sigT) break;
+    // Cracked: the cells pulled on let go
+    out.cracked = true;
+    let left = 0;
+    for (let k = 0; k < n; k++) if (SACT[k]) { if (a + b * (SX[k] - ax) + cc * (SZ[k] - az) < 0) SACT[k] = 0; else left++; }
+    if (!left) { smax = Infinity; break; }
+  }
+  out.smax = smax;
+  // Which way it goes, and how much section there is ahead of and behind the load that way
+  const ex = lx - ax0, ez = lz - az0, e = Math.hypot(ex, ez);
+  const fx = e > 1e-6 ? ex / e : 0, fz = e > 1e-6 ? ez / e : 0;
+  let front = -Infinity, back = Infinity;
+  for (let k = 0; k < n; k++) {
+    const d = (SX[k] - lx) * fx + (SZ[k] - lz) * fz, h = 0.5 * (Math.abs(fx) * SDX[k] + Math.abs(fz) * SDZ[k]);
+    if (d + h > front) front = d + h;
+    if (d - h < back) back = d - h;
+  }
+  out.ax = ax0; out.az = az0; out.e = e; out.fx = fx; out.fz = fz;
+  out.front = front; out.depth = front - back; out.beyond = e > 1e-6 && front <= 0;
+  return out;
+}
+
+/**
+ * A body grid's footprint in its own frame: every column with solid in it, the holes in its
+ * plan filled (a hollow shaft covers its inside), grown by a cell; with the lowest solid in each
+ * column (filled and grown ones take the lowest of the whole piece).
+ */
+function footprint(g) {
+  const { nx, ny, nz, nxz, mat } = g, W = nx + 2, D = nz + 2;
+  const on = new Uint8Array(W * D), low = new Float32Array(W * D).fill(Infinity);
+  let lowest = Infinity;
+  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    for (let y = 0; y < ny; y++) {
+      if (mat[x + nx * (z + nz * y)] >= SOLID) { const k = x + 1 + W * (z + 1); on[k] = 1; low[k] = g.ys[y]; if (g.ys[y] < lowest) lowest = g.ys[y]; break; }
+    }
+  }
+  // Outside: flood from the border; what it doesn't reach is inside
+  const out = new Uint8Array(W * D), q = [0];
+  out[0] = 1;
+  for (let h = 0; h < q.length; h++) {
+    const k = q[h], x = k % W, z = (k - x) / W;
+    for (const j of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, z > 0 ? k - W : -1, z < D - 1 ? k + W : -1]) if (j >= 0 && !out[j] && !on[j]) { out[j] = 1; q.push(j); }
+  }
+  const foot = new Uint8Array(W * D);
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    let hit = false;
+    for (let dz = -1; dz <= 1 && !hit; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const X = x + dx, Z = z + dz;
+      if (X >= 0 && Z >= 0 && X < W && Z < D && !out[X + W * Z]) { hit = true; break; }
+    }
+    const k = x + W * z;
+    if (hit) { foot[k] = 1; if (low[k] === Infinity) low[k] = lowest; }
+  }
+  return { foot, low, W, xs: g.xs, zs: g.zs, nx, nz, cell: (g.xs[nx] - g.xs[0]) / nx };
+}
+
+/** Lowest solid of a footprint at local (x, z), or null outside it */
+function footLow(F, x, z) {
+  let i, j;
+  if (x < F.xs[0]) i = x < F.xs[0] - F.cell ? -1 : 0; else if (x >= F.xs[F.nx]) i = x > F.xs[F.nx] + F.cell ? -1 : F.nx + 1; else i = lineIndexClamped(F.xs, x) + 1;
+  if (z < F.zs[0]) j = z < F.zs[0] - F.cell ? -1 : 0; else if (z >= F.zs[F.nz]) j = z > F.zs[F.nz] + F.cell ? -1 : F.nz + 1; else j = lineIndexClamped(F.zs, z) + 1;
+  if (i < 0 || j < 0) return null;
+  const k = i + F.W * j;
+  return F.foot[k] ? F.low[k] : null;
+}
 
 /** Entry distance of a ray into a box, or null */
 function rayAabb(o, d, mn, mx, max) {
