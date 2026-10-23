@@ -437,3 +437,129 @@ body.touch .score { padding: 3px 10px; }
 @media (prefers-reduced-motion: reduce) {
   #overheat, .lock.new, .gauge.armor.low #ap-txt { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Title screen (the first screen) and the rotate-to-landscape overlay.
+   Colors are the VECTORCLAD brand neon palette (vectorclad-brand kit, tokens/palette.json).
+--------------------------------------------------------------------------- */
+#title {
+  --vc-void: #050507;
+  --vc-ink: #e6e7ee;
+  --vc-dim: #8b8e9d;
+  --vc-rule: #3b3d4a;
+  --vc-purple: #b44dff;
+  --vc-green: #3dff7a;
+  --vc-yellow: #ffe23d;
+  position: fixed; inset: 0; z-index: 60;
+  color: var(--vc-ink);
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(180, 77, 255, 0.16), transparent 60%),
+    radial-gradient(ellipse at 75% 60%, rgba(61, 255, 122, 0.08), transparent 55%),
+    var(--vc-void);
+  transition: opacity 0.9s ease, filter 0.9s ease;
+}
+#title-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  opacity: 0; transition: opacity 0.8s ease;
+}
+#title.is-live #title-canvas { opacity: 1; }
+
+/* Text logo: shows until the 3D logo is running (or for good if WebGL is unavailable). */
+.title-word {
+  position: absolute; left: 50%; top: 43%; margin: 0;
+  transform: translate(-50%, -50%) skewX(-7deg);
+  font: 700 clamp(40px, 9vw, 120px) / 1 var(--font-display);
+  letter-spacing: 0.06em; white-space: nowrap;
+  color: #d9dce6; text-shadow: 0 0 18px rgba(180, 77, 255, 0.55);
+  transition: opacity 0.6s ease;
+}
+.title-word span { color: var(--vc-green); text-shadow: 0 0 18px rgba(61, 255, 122, 0.5); }
+#title.is-live .title-word { opacity: 0; }
+
+/* The whole screen is the start button. */
+#title-start {
+  position: absolute; inset: 0; width: 100%; margin: 0; border: 0; background: transparent; color: inherit;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 calc(clamp(64px, 17vh, 150px) + env(safe-area-inset-bottom, 0px));
+  -webkit-tap-highlight-color: transparent;
+}
+#title-start:focus-visible { outline: none; }
+#title-start:focus-visible .title-prompt { outline: 2px solid var(--vc-yellow); outline-offset: 8px; }
+.title-prompt {
+  display: inline-flex; align-items: center; gap: 14px;
+  font: 14px var(--font-mono); letter-spacing: 0.5em; text-transform: uppercase;
+  padding-left: 0.5em;
+  color: var(--vc-yellow);
+  text-shadow: 0 0 6px rgba(255, 226, 61, 0.8), 0 0 18px rgba(255, 226, 61, 0.45);
+  animation: title-blink 1.6s steps(1, end) infinite;
+}
+.title-prompt i { display: block; width: 22px; height: 2px; background: currentColor; box-shadow: 0 0 8px rgba(255, 226, 61, 0.7); }
+@keyframes title-blink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0.2; } }
+
+#title.is-leaving { opacity: 0; filter: brightness(1.8) blur(2px); pointer-events: none; }
+#title.is-leaving .title-prompt { animation: title-blink-fast 0.12s steps(1, end) infinite; }
+@keyframes title-blink-fast { 50% { opacity: 0.15; } }
+
+.title-tag {
+  position: absolute; left: 0; right: 0; bottom: 0; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 calc(22px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px;
+  font-size: 12px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--vc-ink);
+  pointer-events: none;
+}
+.title-bracket { width: 11px; height: 11px; flex: none; border: 1.5px solid var(--vc-ink); display: grid; place-items: center; }
+.title-bracket::after { content: ""; width: 3px; height: 3px; background: var(--vc-green); }
+.title-dashes { display: flex; gap: 4px; }
+.title-dashes i { display: block; width: 12px; height: 4px; background: var(--vc-yellow); transform: skewX(-32deg); }
+.title-dashes i:nth-child(n+5) { background: var(--vc-purple); }
+.title-kana {
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif; font-weight: 700;
+  letter-spacing: 0.18em; padding: 3px 9px; border: 1.5px solid var(--vc-rule); color: var(--vc-green);
+}
+
+@media (max-height: 500px) {
+  #title-start { padding-block: 0 calc(52px + env(safe-area-inset-bottom, 0px)); }
+  .title-prompt { font-size: 12px; }
+  .title-tag { font-size: 10px; padding-block: 0 calc(12px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Rotate overlay: phones held upright. Matches portraitPhone in js/title/title.js. */
+#rotate { display: none; }
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
+  #rotate {
+    position: fixed; inset: 0; z-index: 100;
+    display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(180, 77, 255, 0.2), transparent 60%),
+      rgba(5, 5, 7, 0.96);
+    color: #e6e7ee;
+  }
+}
+.rotate-phone {
+  position: relative; width: 46px; height: 80px; margin-bottom: 18px;
+  border: 3px solid #e6e7ee;
+  box-shadow: 0 0 18px rgba(180, 77, 255, 0.55), inset 0 0 12px rgba(180, 77, 255, 0.25);
+  animation: rotate-phone 2.4s ease-in-out infinite;
+}
+.rotate-phone i { position: absolute; left: 50%; bottom: 6px; width: 12px; height: 3px; margin-left: -6px; background: #b44dff; }
+@keyframes rotate-phone {
+  0%, 20% { transform: rotate(0deg); }
+  50%, 80% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+.rotate-title {
+  margin: 0; font: 700 22px var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
+  color: #ffe23d; text-shadow: 0 0 12px rgba(255, 226, 61, 0.5);
+}
+.rotate-sub { margin: 0; font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: #8b8e9d; }
+
+@media (prefers-reduced-motion: reduce) {
+  #title, #title-canvas, .title-word { transition-duration: 0.15s; }
+  .title-prompt, #title.is-leaving .title-prompt, .rotate-phone { animation: none; }
+}

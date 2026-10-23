@@ -25,6 +25,23 @@ three.js 0.170.0 loads from jsDelivr, so the first load needs a network connecti
 To turn it on, go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
 The game is then served at `https://agilancer.github.io/vectorclad/`.
 
+## Title screen
+
+The game opens on a title screen with the live 3D VECTORCLAD logo (from the
+`vectorclad-brand` kit) while textures and the city load behind it. A tap, click or any
+key fades it out and hands over to the loading screen or, once loading is done, the
+intro card. The game doesn't start rendering until the title is gone, so the two never
+compete for the GPU.
+
+On phones held upright, a "Rotate your phone" overlay covers the screen until the phone
+is turned sideways. Tapping start on a phone also asks for fullscreen and a landscape
+lock, which Android browsers honor and iOS ignores.
+
+The logo files live in `js/title/`. `logo.js` and `wordmark-data.js` are copied from the
+brand kit; regenerate them there rather than editing them here. The title's three.js
+add-ons (bloom, post-processing) load through the import map in `index.html`, which
+points `three` at the same 0.170.0 build as `js/three.js`; keep the two versions in sync.
+
 ## Controls
 
 | Action | Keyboard / mouse | Touch |
@@ -190,7 +207,10 @@ cost about fifteen draw calls.
 The suit follows Armored Core's style:
 - **Silhouette:** tall, hunched frame, narrow waist, long arms with heavy forearms.
 - **Armor:** sharp, faceted plates that sweep backward.
-- **Head:** a humanoid helm set low between raised collar plates: angled visor eyes under a pointed brow, a faceplate with a nose ridge and chin, cheek guards, ear sensors, swept antennas and a gold crest.
+- **Head:** a beast head thrust forward between raised collar plates, on red hydraulic neck rams:
+  - A pointed prow leans out over an open maw lit red behind its fangs, above a lower jaw that ends in a hanging chin.
+  - Armor scales layer up and back from the prow into a crest of swept fins.
+  - Each eye is a slanted red slit with an orange core, set under a heavy brow with a glowing seam. The eyes glow red in every paint; only the glint at their core takes the paint's eye color.
 - **Legs:** blade knees, thin shins and talon feet with heel spurs.
 - **Back:** a booster pack with swept stabilizer fins. Missile pods and cannons mount on top of it.
 - **Paint:** dark armor over a gold-trimmed frame. The default is Lynx Navy; Unsung Black, Shrieker Steel, Glint White, Desert Ops and Crimson are in the hangar.
@@ -241,6 +261,9 @@ in the hangar settings.
 | `js/input.js` | Keyboard, pointer lock and touch controls |
 | `js/ui.js` | HUD (armor, waves, damage indicators) and hangar menu |
 | `js/main.js` | Renderer, world scale, player physics and armor, camera, game loop, game over |
+| `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
+| `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
+| `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 

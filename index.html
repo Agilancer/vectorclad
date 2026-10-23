@@ -9,11 +9,38 @@
 <meta name="theme-color" content="#0d0f12">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+JP:wght@700&family=Share+Tech+Mono&display=swap">
 <link rel="stylesheet" href="style.css">
+<!-- Lets the title logo's three.js add-ons (bloom etc.) share the same three.js as js/three.js. Keep the versions in sync. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
 </head>
 <body>
 <canvas id="c"></canvas>
+
+<section id="title" aria-label="Title screen">
+  <canvas id="title-canvas" aria-hidden="true"></canvas>
+  <h1 class="title-word">VECTOR<span>CLAD</span></h1>
+  <button id="title-start" type="button">
+    <span class="title-prompt"><i aria-hidden="true"></i><span id="title-prompt">Tap to start</span><i aria-hidden="true"></i></span>
+  </button>
+  <p class="title-tag mono">
+    <span class="title-bracket" aria-hidden="true"></span>
+    <span>Field trial // Tech demo</span>
+    <span class="title-dashes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <span class="title-kana" lang="ja">ベクタークラッド</span>
+  </p>
+</section>
+
+<div id="rotate" role="alert" aria-labelledby="rotate-title">
+  <div class="rotate-phone" aria-hidden="true"><i></i></div>
+  <p id="rotate-title" class="rotate-title">Rotate your phone</p>
+  <p class="rotate-sub mono">VECTORCLAD plays in landscape</p>
+</div>
 
 <div id="loading">
   <div class="load-box">
@@ -153,6 +180,7 @@
   <div class="hangar-body" id="hangar-body"></div>
 </aside>
 
+<script type="module" src="js/title/title.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
