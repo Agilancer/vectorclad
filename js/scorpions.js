@@ -366,7 +366,7 @@ export class ScorpionNest {
     Object.assign(s, {
       kind: 'scorpion', nest: this, radius: 2.4 * s.scale,
       timer: 1.3, emergeT: 1.3, dig: 1, hidden: false, stealth: false,
-      cool: { claw: rand(0.4, 1), sting: rand(1, 2.5), burrow: rand(2, 5), spit: rand(1.5, 3), zap: rand(2, 4), flame: rand(1.5, 3) },
+      cool: { claw: rand(0.4, 1), sting: rand(1, 2.5), burrow: rand(0.5, 2), spit: rand(1.5, 3), zap: rand(2, 4), flame: rand(1.5, 3) },
       tail: [...TAIL_REST], tailYaw: 0, wrist: [new V3(-WRIST_REST[0], WRIST_REST[1], WRIST_REST[2]), new V3(...WRIST_REST)], open: [0.15, 0.15],
       hand: [new V3(0.12, -0.12, 1).normalize(), new V3(-0.12, -0.12, 1).normalize()],
       tailAct: null, clawAct: null, side: 1, stingY: STING_HEIGHTS[0], lunge: 0, slip: 0, gripT: 0, revealT: 0, rage: false, grip: null, menace: false,
