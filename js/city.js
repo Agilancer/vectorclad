@@ -337,7 +337,7 @@ export class City {
   layout() {
     const m = (x) => this.m(x);
     const L = (this.L = {
-      blockW: m(120), blockD: m(64), aveW: m(28), aveWalk: m(5), stW: m(22), stWalk: m(4), curb: m(0.2),
+      blockW: m(120), blockD: m(64), aveW: m(28), aveWalk: m(5), stW: m(28), stWalk: m(4), curb: m(0.2),
       prom: m(32), water: -m(3),
     });
     const NX = 10, NZ = 10, NORTH = 2; // two extra rows of blocks north continue the city past the barrier
