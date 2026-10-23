@@ -106,7 +106,8 @@ it with a 2D DDA.
 
 The enemies are six-legged spider machines cut from the spider texture sheets.
 They are weak alone (one beam rifle bolt, one missile or a short burst drops
-each one) but come in waves that keep growing:
+most of them; the big Lancers and Bombardiers take two bolts) but come in waves
+that keep growing:
 
 - **Waves:** wave *n* sends 6 + 6*n* spiders, in packs, with up to 6 + 5*n*
   alive at once (64 at most). Packs spawn out of sight, 75 to 230 units away, on
