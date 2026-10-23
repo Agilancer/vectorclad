@@ -1,9 +1,9 @@
 import * as THREE from './three.js';
-import { ATLASES, TILES } from './cityTiles.js';
+import { ATLASES, TILES, PANELS, KITS, GROUND, PARTS, STRUCTS, OUTLINES } from './cityTiles.js';
 import { canvasTexture } from './atlas.js';
 
 // ---------------------------------------------------------------------------
-// Lower Manhattan, built from the city texture sheets.
+// Port Meridian, built from the city texture sheets.
 //
 // A 10 x 10 grid of blocks at real proportions: 100 ft avenues, 60 ft cross
 // streets, blocks long east-west. Everything is laid out in meters and scaled
@@ -11,8 +11,12 @@ import { canvasTexture } from './atlas.js';
 // so the mech stands 40 ft tall.
 //
 // Geometry is merged per material and per chunk. Every surface samples one of
-// three texture atlases through a shader that tiles inside an atlas cell, so
-// the whole city draws in a few dozen calls.
+// six texture atlases through a shader that tiles inside an atlas cell, so
+// the whole city draws in a few dozen calls. Many facades are composed from
+// panel kits: piers, runs of window bays and louvered vent floors cut from one
+// family of materials. Streets and sidewalks draw on ground kits picked by how
+// worn the pavement is in each part of town. An elevated railway, an elevated
+// highway and two bridges are built from structure kits.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -34,14 +38,22 @@ function mulberry(seed) {
 // ---------------------------------------------------------------------------
 
 const cellCache = new Map();
+/** Where a tile sits in its atlas: corner (u, v) and size (w, h) in texture coordinates */
 function cell(name) {
   let c = cellCache.get(name);
   if (c) return c;
-  const t = TILES[name];
-  if (!t) throw new Error(`Unknown city tile ${name}`);
-  const A = ATLASES[t[0]];
-  const col = t[1] % A.cols, row = Math.floor(t[1] / A.cols);
-  c = { atlas: t[0], u: (col * A.cell + A.pad) / A.w, v: 1 - (row * A.cell + A.pad + A.content) / A.h, aspect: t[2] };
+  const p = PANELS[name] || PARTS[name];
+  if (p) {
+    // A facade, ground or structure panel: its own rectangle on its page of the atlas
+    const A = ATLASES[p[0]];
+    c = { atlas: p[0], u: p[1] / A.w, v: 1 - (p[2] + p[4]) / A.h, w: p[3] / A.w, h: p[4] / A.h, aspect: p[3] / p[4] };
+  } else {
+    const t = TILES[name];
+    if (!t) throw new Error(`Unknown city tile ${name}`);
+    const A = ATLASES[t[0]];
+    const col = t[1] % A.cols, row = Math.floor(t[1] / A.cols);
+    c = { atlas: t[0], u: (col * A.cell + A.pad) / A.w, v: 1 - (row * A.cell + A.pad + A.content) / A.h, w: A.content / A.w, h: A.content / A.h, aspect: t[2] };
+  }
   cellCache.set(name, c);
   return c;
 }
@@ -78,8 +90,72 @@ const G = {
 };
 const pick = (r, a) => a[Math.floor(r() * a.length)];
 
+// Panel kits that suit each kind of building (repeats weight the pick)
+const KIT_STYLE = {
+  walkup: ['brick', 'brick', 'limestone', 'masonry'],
+  prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete', 'masonry', 'travertine', 'ivory', 'sandstone'],
+  modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches', 'seaglass', 'silver', 'azure', 'travertine', 'masonry', 'sandstone'],
+  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass'],
+  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'slate', 'indigo', 'silver', 'basalt', 'azure'],
+  deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone'],
+  far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine'],
+};
+
+// Ground kits for clean, worn and broken pavement
+const GROUND_WEAR = [
+  ['crisp', 'fresh', 'buslane', 'tactile', 'redcurb'],
+  ['faded', 'grime', 'cobble', 'hazard', 'tactile', 'redcurb'],
+  ['ruin', 'grime', 'hazard', 'faded'],
+];
+
+/**
+ * The sign atlas: 2 x 4 cells of 2:1. Cell 0 is a helipad marking (drawn squeezed, so it shows
+ * round on a square pad); cells 1-7 are screens for made-up brands.
+ */
+function signTexture() {
+  return canvasTexture(1024, (g, S) => {
+    const cw = S / 2, ch = S / 4;
+    const ads = [
+      ['VOLTA', 'CHARGE IN 4 MIN', '#ff2d6f', '#3a0ca3'], ['KAIRO', 'SKY LOUNGE 88F', '#00e5ff', '#032b5a'],
+      ['NEON/9', 'NIGHT MARKET', '#ffd400', '#d1003f'], ['HALCYON', 'AIR · RAIL · SEA', '#7cff4f', '#003b2f'],
+      ['ZERO-G', 'ENERGY DRINK', '#ff7a00', '#2b0057'], ['PULSE', 'LIVE AT THE DOME', '#f0f0ff', '#0050ff'],
+      ['ORBIT', 'MERIDIAN TOWER', '#ff4fd8', '#00a6a6'],
+    ];
+    for (let i = 0; i < 8; i++) {
+      g.save();
+      g.translate((i % 2) * cw, Math.floor(i / 2) * ch);
+      g.beginPath(); g.rect(0, 0, cw, ch); g.clip();
+      if (i === 0) {
+        g.fillStyle = '#2c2e31'; g.fillRect(0, 0, cw, ch);
+        g.scale(2, 1);
+        g.strokeStyle = '#f2c230'; g.lineWidth = 9;
+        g.beginPath(); g.arc(128, 128, 104, 0, Math.PI * 2); g.stroke();
+        g.fillStyle = '#eceae4';
+        g.fillRect(84, 66, 22, 124); g.fillRect(150, 66, 22, 124); g.fillRect(84, 117, 88, 22);
+      } else {
+        const [word, sub, a, b] = ads[i - 1];
+        const gr = g.createLinearGradient(0, 0, cw, ch);
+        gr.addColorStop(0, b); gr.addColorStop(1, '#05060a');
+        g.fillStyle = gr; g.fillRect(0, 0, cw, ch);
+        // Shapes behind the type
+        g.globalAlpha = 0.35; g.fillStyle = a;
+        for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(60 + k * 105, 40 + (k % 2) * 170, 30 + k * 12, 0, Math.PI * 2); g.fill(); }
+        g.globalAlpha = 1;
+        g.fillStyle = a; g.fillRect(24, ch - 46, cw - 48, 6);
+        g.font = 'bold 104px "Chakra Petch", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.shadowColor = a; g.shadowBlur = 24; g.fillStyle = '#ffffff';
+        g.fillText(word, cw / 2, ch * 0.42);
+        g.shadowBlur = 0; g.font = 'bold 30px "Chakra Petch", sans-serif'; g.fillStyle = a;
+        g.fillText(sub, cw / 2, ch * 0.78);
+      }
+      g.restore();
+    }
+  });
+}
+
 // World size of one repeat of a tile, in meters: [width, height]
 function tileMeters(name) {
+  if (PANELS[name]) return [PANELS[name][5], PANELS[name][6]];
   if (name.startsWith('office')) return [12, 12];
   if (name.startsWith('facade')) return [7.2, 7.2];
   if (name.startsWith('shop')) {
@@ -95,32 +171,38 @@ function tileMeters(name) {
 
 // ---------------------------------------------------------------------------
 // Materials: atlas sampling with fract() inside a cell and textureGrad() so
-// mip selection stays continuous across tile repeats.
+// mip selection stays continuous across tile repeats. Each vertex carries its
+// cell's rectangle, so cells can be any size.
 //   aMode 0: opaque   1: paint keyed off the asphalt   2: round cut-out
+// Structure cards (trusses, railings) use the alpha in the atlas: o.cut.
 // ---------------------------------------------------------------------------
 
-function atlasMaterial(key, tex, o = {}) {
-  const A = ATLASES[key];
+/** Sample the atlas cell in a shader; shared by the surface and shadow materials */
+function atlasShader(sh) {
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute vec4 aCell;\nattribute float aMode;\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
+    .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCell = aCell; vTUv = uv; vMode = aMode;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec4 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
+    .replace('#include <map_fragment>', /* glsl */`
+      vec2 tuv = fract(vTUv);
+      vec4 sampledDiffuseColor = textureGrad(map, vCell.xy + tuv * vCell.zw, dFdx(vTUv) * vCell.zw, dFdy(vTUv) * vCell.zw);
+      float atlasLum = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float atlasAlpha = 1.0;
+      if (vMode > 0.5 && vMode < 1.5) atlasAlpha = smoothstep(0.075, 0.16, atlasLum);
+      else if (vMode > 1.5) atlasAlpha = 1.0 - smoothstep(0.42, 0.47, length(tuv - 0.5));
+      diffuseColor *= sampledDiffuseColor;
+      diffuseColor.a *= atlasAlpha;`);
+}
+
+function atlasMaterial(tex, o = {}) {
   const m = new THREE.MeshStandardMaterial({
     map: tex, vertexColors: true, roughness: o.roughness ?? 0.85, metalness: o.metalness ?? 0,
-    alphaTest: o.decal ? 0.5 : 0, polygonOffset: !!o.decal, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    alphaTest: o.decal || o.cut ? 0.5 : 0, polygonOffset: !!o.decal, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    side: o.cut ? THREE.DoubleSide : THREE.FrontSide, alphaToCoverage: !!o.cut,
   });
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uCellSize = { value: new THREE.Vector2(A.content / A.w, A.content / A.h) };
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 aCell;\nattribute float aMode;\nvarying vec2 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCell = aCell; vTUv = uv; vMode = aMode;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec2 uCellSize;\nvarying vec2 vCell;\nvarying vec2 vTUv;\nvarying float vMode;')
-      .replace('#include <map_fragment>', /* glsl */`
-        vec2 tuv = fract(vTUv);
-        vec4 sampledDiffuseColor = textureGrad(map, vCell + tuv * uCellSize, dFdx(vTUv) * uCellSize, dFdy(vTUv) * uCellSize);
-        float atlasLum = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-        float atlasAlpha = 1.0;
-        if (vMode > 0.5 && vMode < 1.5) atlasAlpha = smoothstep(0.075, 0.16, atlasLum);
-        else if (vMode > 1.5) atlasAlpha = 1.0 - smoothstep(0.42, 0.47, length(tuv - 0.5));
-        diffuseColor *= sampledDiffuseColor;
-        diffuseColor.a *= atlasAlpha;`);
+    atlasShader(sh);
     if (o.glass) {
       // Dark texels are window glass: make them glossy so they pick up the sky
       sh.fragmentShader = sh.fragmentShader
@@ -128,7 +210,15 @@ function atlasMaterial(key, tex, o = {}) {
         .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.65, glassAmt);');
     }
   };
-  m.customProgramCacheKey = () => `atlas-${key}-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}`;
+  m.customProgramCacheKey = () => `atlas-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}-${o.cut ? 1 : 0}`;
+  return m;
+}
+
+/** Shadows for structure cards, so trusses and railings cast their holes */
+function atlasDepthMaterial(tex) {
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5 });
+  m.onBeforeCompile = atlasShader;
+  m.customProgramCacheKey = () => 'atlas-depth';
   return m;
 }
 
@@ -144,7 +234,7 @@ class Buf {
   }
   v(x, y, z, nx, ny, nz, r, g, b, u, v, c, mode) {
     this.pos.push(x, y, z); this.nor.push(nx, ny, nz); this.col.push(r, g, b);
-    if (this.t) { this.uv.push(u, v); this.cell.push(c.u, c.v); this.mode.push(mode); }
+    if (this.t) { this.uv.push(u, v); this.cell.push(c.u, c.v, c.w, c.h); this.mode.push(mode); }
     return this.n++;
   }
   geometry() {
@@ -154,7 +244,7 @@ class Buf {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     if (this.t) {
       g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-      g.setAttribute('aCell', new THREE.Float32BufferAttribute(this.cell, 2));
+      g.setAttribute('aCell', new THREE.Float32BufferAttribute(this.cell, 4));
       g.setAttribute('aMode', new THREE.Float32BufferAttribute(this.mode, 1));
     }
     g.setIndex(this.n > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
@@ -178,6 +268,7 @@ const SHAPES = {
   cone4: new THREE.ConeGeometry(1, 1, 4, 1),
   ico: new THREE.IcosahedronGeometry(1, 0),
   sphere: new THREE.SphereGeometry(1, 10, 6),
+  torus: new THREE.TorusGeometry(1, 0.07, 6, 40),
 };
 
 // ---------------------------------------------------------------------------
@@ -191,27 +282,50 @@ export class City {
     this.fx = fx;
     this.sound = sound;
     this.r = mulberry(1916);
+    this.rg = mulberry(1958); // ground textures, apart from the layout so neither shifts the other
     this.colliders = [];
     this.steam = [];
+    this.fountains = [];
+    this.signs = { screen: { pos: [], nor: [], uv: [], idx: [] }, mark: { pos: [], nor: [], uv: [], idx: [] } };
+    this.rd = mulberry(1988); // decorations: screens and kiosks, apart from the layout
     this.cars = [];
     this.pending = [];
     this.burning = [];
     this.bufs = new Map();
     this.meshes = [];
     this.mats = {
-      facade: atlasMaterial('facade', tex.facade, { roughness: 0.75, glass: true }),
-      surface: atlasMaterial('surface', tex.surface, { roughness: 0.85 }),
-      ground: atlasMaterial('ground', tex.ground, { roughness: 0.92 }),
-      decal: atlasMaterial('ground', tex.ground, { roughness: 0.6, decal: true }),
+      facade: atlasMaterial(tex.facade, { roughness: 0.75, glass: true }),
+      surface: atlasMaterial(tex.surface, { roughness: 0.85 }),
+      ground: atlasMaterial(tex.ground, { roughness: 0.92 }),
+      decal: atlasMaterial(tex.ground, { roughness: 0.6, decal: true }),
       props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.15 }),
     };
+    // One material per page of the panel atlas, a surface and a decal material per page of the
+    // road atlas, and a solid and a see-through card material per page of the structure atlas
+    this.depthMats = {};
+    for (const k of Object.keys(ATLASES)) {
+      if (k.startsWith('panels')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.75, glass: true });
+      if (k.startsWith('roads')) {
+        this.mats[k] = atlasMaterial(tex[k], { roughness: 0.92 });
+        this.mats[`${k}Decal`] = atlasMaterial(tex[k], { roughness: 0.6, decal: true });
+      }
+      if (k.startsWith('structs')) {
+        this.mats[k] = atlasMaterial(tex[k], { roughness: 0.8, metalness: 0.1 });
+        this.mats[`${k}Cut`] = atlasMaterial(tex[k], { roughness: 0.7, metalness: 0.2, cut: true });
+        this.depthMats[`${k}Cut`] = atlasDepthMaterial(tex[k]);
+      }
+    }
+    this.rs = mulberry(2001); // structures, apart from the layout so neither shifts the other
     this.layout();
     this.buildGround();
     this.buildBlocks();
     this.buildFurniture();
+    this.buildEl();
+    this.buildHighway();
     this.buildWaterfront();
     this.buildScenery();
     this.flush();
+    this.flushSigns();
     this.buildCars();
   }
 
@@ -258,6 +372,28 @@ export class City {
     let b = this.bufs.get(key);
     if (!b) { b = new Buf(mat !== 'props'); b.mat = mat; this.bufs.set(key, b); }
     return b;
+  }
+
+  /** The current chunk's buffer for the atlas a wall tile lives in; cut: its see-through card material */
+  bufFor(tile, cut = false) { return this.buf(cell(tile).atlas + (cut ? 'Cut' : ''), this.cur); }
+
+  /** The surface (or decal) buffer for the atlas a ground tile lives in */
+  groundBuf(tile, decal = false, chunk = 'all') {
+    const a = cell(tile).atlas;
+    if (a === 'ground') return this.buf(decal ? 'decal' : 'ground', chunk);
+    return this.buf(decal ? `${a}Decal` : a, chunk);
+  }
+
+  /**
+   * A ground tile for a role ('asphalt', 'walk', 'lane', ...) at x, z, from a kit suited to
+   * how worn the pavement is there. old: the original tiles, mixed into clean streets.
+   */
+  groundTile(role, x, z, old) {
+    const rg = this.rg, w = this.wear(x, z), band = w < 0.4 ? 0 : w < 0.7 ? 1 : 2;
+    if (old && band === 0 && rg() < 0.35) return pick(rg, old);
+    const kits = GROUND_WEAR[band].filter((k) => GROUND[k][role].length);
+    if (!kits.length) return old ? pick(rg, old) : null;
+    return pick(rg, GROUND[pick(rg, kits)][role]);
   }
 
   chunkOf(x, z) {
@@ -340,10 +476,15 @@ export class City {
 
   /** Append a unit prop shape with a transform and a flat color */
   prop(shape, x, y, z, sx, sy, sz, color, ry = 0, rx = 0, rz = 0, chunk) {
-    const g = SHAPES[shape];
-    const b = this.buf('props', chunk || this.chunkOf(x, z));
     _q.setFromEuler(new THREE.Euler(rx, ry, rz));
-    _m.compose(_c.set(x, y, z), _q, _s.set(sx, sy, sz));
+    this.propQ(shape, _c.set(x, y, z), _q, _s.set(sx, sy, sz), color, chunk || this.chunkOf(x, z));
+  }
+
+  /** Append a unit prop shape at a position, rotation and scale */
+  propQ(shape, pos, q, scale, color, chunk) {
+    const g = SHAPES[shape];
+    const b = this.buf('props', chunk);
+    _m.compose(pos, q, scale);
     const nm = new THREE.Matrix3().getNormalMatrix(_m);
     const P = g.attributes.position, N = g.attributes.normal, I = g.index;
     const i0 = b.n;
@@ -356,6 +497,141 @@ export class City {
     else for (let i = 0; i < P.count; i++) b.idx.push(i0 + i);
   }
 
+  /** A thin prop shape from a to b (a stay, a hanger), r thick */
+  strut(shape, a, b, r, color, chunk) {
+    const d = new V3().subVectors(b, a), len = d.length();
+    const q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 1, 0), d.divideScalar(len));
+    this.propQ(shape, new V3().addVectors(a, b).multiplyScalar(0.5), q, new V3(r, len, r), color, chunk);
+  }
+
+  // ---- structure pieces --------------------------------------------------------
+
+  /**
+   * A structure box. f: { ns, ew, top, bottom } for the faces facing ±z, ±x, up and down, each
+   * [tile, repeat width, repeat height] in units (0: once across the face), with an optional
+   * fourth entry true to fit whole repeats along a side. Top and bottom repeat along x and z.
+   */
+  sbox(x0, y0, z0, x1, y1, z1, f, tint = WHITE) {
+    const side = (spec, ax, az, bx, bz) => {
+      if (!spec) return;
+      const [t, tw, th, snap] = spec, w = Math.hypot(bx - ax, bz - az);
+      this.wall(this.bufFor(t), t, ax, az, bx, bz, y0, y1, tw || w, th || y1 - y0, { ao: false, tint, snapU: snap });
+    };
+    side(f.ns, x0, z1, x1, z1); side(f.ns, x1, z0, x0, z0);
+    side(f.ew, x1, z1, x1, z0); side(f.ew, x0, z0, x0, z1);
+    const flatFace = (spec, y, up) => {
+      if (!spec) return;
+      const [t, tw, th] = spec, uv = (x, z) => [(x - x0) / (tw || x1 - x0), (z1 - z) / (th || z1 - z0)];
+      if (up) this.flat(this.bufFor(t), t, x0, z0, x1, z1, y, uv, 0, tint);
+      else this.under(this.bufFor(t), t, x0, z0, x1, z1, y, uv, tint);
+    };
+    flatFace(f.top, y1, true);
+    flatFace(f.bottom, y0, false);
+  }
+
+  /** Flat horizontal quad facing down, with uv from a function of (x, z) */
+  under(b, tile, x0, z0, x1, z1, y, uvf, col = WHITE) {
+    const P = [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]];
+    this.quad(b, P, [0, -1, 0], P.map((p) => uvf(p[0], p[2])), cell(tile), col);
+  }
+
+  /**
+   * A vertical quad from a to b whose edges slope: y from ya0 to ya1 at a, yb0 to yb1 at b.
+   * u runs along it every tw, continuing from one quad to the next; v runs up it every th
+   * from each end's bottom edge, or from y = 0 with o.world.
+   */
+  skew(b, tile, ax, az, bx, bz, ya0, ya1, yb0, yb1, tw, th, o = {}) {
+    const dx = bx - ax, dz = bz - az, w = Math.hypot(dx, dz);
+    const ua = (ax * dx + az * dz) / w / tw, ub = ua + w / tw;
+    const v = (y, y0) => (o.world ? y : y - y0) / th;
+    this.quad(b, [[ax, ya0, az], [bx, yb0, bz], [bx, yb1, bz], [ax, ya1, az]], [-dz / w, 0, dx / w],
+      [[ua, v(ya0, ya0)], [ub, v(yb0, yb0)], [ub, v(yb1, yb0)], [ua, v(ya1, ya0)]], cell(tile), o.tint || WHITE);
+  }
+
+  /** A see-through card (a truss, a railing) standing from a to b over y0..y1, repeating every tw (0: once) */
+  card(tile, ax, az, bx, bz, y0, y1, tw = 0) {
+    const w = Math.hypot(bx - ax, bz - az);
+    this.wall(this.bufFor(tile, true), tile, ax, az, bx, bz, y0, y1, tw || w, y1 - y0, { ao: false, snapU: true });
+  }
+
+  /** A lamp post or other piece seen from every side: two cards crossed at (x, z), h tall */
+  crossCard(tile, x, y, z, h) {
+    const w = h * cell(tile).aspect / 2;
+    this.card(tile, x - w, z, x + w, z, y, y + h);
+    this.card(tile, x, z + w, x, z - w, y, y + h);
+  }
+
+  /**
+   * A solid piece (pier, tower, pylon) extruded from its traced outline: w wide and h tall with
+   * its base centered at (x, y, z), d deep, turned by ry. Its faces show the piece and its edges
+   * the side tile, repeating every ts. The side tile must be on the piece's atlas page.
+   */
+  solid(name, side, x, y, z, w, h, d, ry = 0, ts = this.m(4)) {
+    const O = OUTLINES[name], ring = (r) => r.map(([u, v]) => new THREE.Vector2((u - 0.5) * w, v * h));
+    const shape = new THREE.Shape(ring(O[0]));
+    for (const hole of O.slice(1)) shape.holes.push(new THREE.Path(ring(hole)));
+    const g = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false, curveSegments: 1 });
+    g.translate(0, 0, -d / 2);
+    const P = g.attributes.position, N = g.attributes.normal;
+    const b = this.bufFor(name), cp = cell(name), cs = cell(side);
+    const q = new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), ry);
+    const M = new THREE.Matrix4().compose(new V3(x, y, z), q, new V3(1, 1, 1));
+    const p = new V3(), nn = new V3();
+    // The geometry is not indexed, so each triangle has its own vertices and face normal
+    for (let i = 0; i < P.count; i += 3) {
+      const nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), cap = Math.abs(nz) > 0.5;
+      nn.set(nx, ny, nz).applyQuaternion(q);
+      for (let k = i; k < i + 3; k++) {
+        const px = P.getX(k), py = P.getY(k), pz = P.getZ(k);
+        const u = cap ? clamp(px / w + 0.5, 0.002, 0.998) : pz / ts, v = cap ? clamp(py / h, 0.002, 0.998) : (py * nx - px * ny) / ts;
+        p.set(px, py, pz).applyMatrix4(M);
+        b.idx.push(b.v(p.x, p.y, p.z, nn.x, nn.y, nn.z, 1, 1, 1, u, v, cap ? cp : cs, 0));
+      }
+    }
+    g.dispose();
+  }
+
+  /** Where a horizontal line at height v (0..1) crosses a solid piece's outline: sorted u values */
+  outlineCuts(name, v) {
+    const xs = [];
+    for (const r of OUTLINES[name]) {
+      for (let i = 0; i < r.length; i++) {
+        const [ax, ay] = r[i], [bx, by] = r[(i + 1) % r.length];
+        if ((ay <= v) !== (by <= v)) xs.push(ax + (v - ay) / (by - ay) * (bx - ax));
+      }
+    }
+    return xs.sort((a, b) => a - b);
+  }
+
+  /** Width (0..1) of the opening through a piece's middle at height v, or 0 where it is solid */
+  opening(name, v) {
+    const xs = this.outlineCuts(name, v);
+    for (let i = 1; i < xs.length - 1; i += 2) if (xs[i] <= 0.5 && xs[i + 1] >= 0.5) return xs[i + 1] - xs[i];
+    return 0;
+  }
+
+  /** A cable through points pts (V3), r thick, wrapped in a tile repeating every rep along it */
+  cable(tile, pts, r, rep) {
+    const b = this.bufFor(tile), c = cell(tile), sides = 6, rings = [];
+    let s = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const t = new V3().subVectors(pts[Math.min(i + 1, pts.length - 1)], pts[Math.max(i - 1, 0)]).normalize();
+      const u1 = new V3().crossVectors(t, Math.abs(t.y) < 0.95 ? new V3(0, 1, 0) : new V3(1, 0, 0)).normalize();
+      if (i) s += pts[i].distanceTo(pts[i - 1]);
+      rings.push({ p: pts[i], u1, u2: new V3().crossVectors(u1, t), s });
+    }
+    for (let i = 0; i < rings.length - 1; i++) {
+      for (let k = 0; k < sides; k++) {
+        const ids = [[rings[i], k], [rings[i + 1], k], [rings[i + 1], k + 1], [rings[i], k + 1]].map(([R, kk]) => {
+          const a = (kk / sides) * Math.PI * 2, cs = Math.cos(a), sn = Math.sin(a);
+          const nx = R.u1.x * cs + R.u2.x * sn, ny = R.u1.y * cs + R.u2.y * sn, nz = R.u1.z * cs + R.u2.z * sn;
+          return b.v(R.p.x + nx * r, R.p.y + ny * r, R.p.z + nz * r, nx, ny, nz, 1, 1, 1, R.s / rep, (kk / sides) * 0.999, c, 0);
+        });
+        b.idx.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
+      }
+    }
+  }
+
   collide(x0, y0, z0, x1, y1, z1, extra) {
     const c = Object.assign({ min: new V3(x0, y0, z0), max: new V3(x1, y1, z1) }, extra);
     this.colliders.push(c);
@@ -365,18 +641,36 @@ export class City {
   // ---- ground ----------------------------------------------------------------
 
   buildGround() {
-    const L = this.L, r = this.r, m = (x) => this.m(x);
-    const g = this.buf('ground'), d = this.buf('decal');
-    const asphaltM = m(5);
-    const patch = (x0, z0, x1, z1, rot) => {
-      const t = pick(r, G.asphalt), ox = r() * 7;
-      this.flat(g, t, x0, z0, x1, z1, 0, (x, z) => (rot ? [z / asphaltM + ox, x / asphaltM] : [x / asphaltM + ox, -z / asphaltM]));
+    const L = this.L, rg = this.rg, m = (x) => this.m(x);
+    // Wear: broad patches of worn and broken pavement, so streets weather by neighborhood
+    const spots = Array.from({ length: 9 }, () => [L.x0 + rg() * (L.x1 - L.x0), L.zN + rg() * (L.z1 - L.zN), m(100 + rg() * 180), 0.3 + rg() * 0.45]);
+    this.wear = (x, z) => clamp(0.12 + spots.reduce((w, [sx, sz, R, k]) => w + k * Math.exp(-((x - sx) ** 2 + (z - sz) ** 2) / (R * R)), 0), 0, 1);
+    const patch = (x0, z0, x1, z1, rot, holes = true) => {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      const t = this.groundTile('asphalt', cx, cz, G.asphalt), ox = rg() * 7;
+      // Kit asphalt repeats at 1.6 times its painted size, coarser but less repetitive; the original tiles every 5 m
+      const [tw, th] = PANELS[t] ? tileMeters(t).map((v) => m(v * 1.6)) : [m(5), m(5)];
+      this.flat(this.groundBuf(t), t, x0, z0, x1, z1, 0, (x, z) => (rot ? [z / tw + ox, x / th] : [x / tw + ox, -z / th]));
+      // Cracked patches and potholes where the street is worn, clear of the crossings: the
+      // tiled asphalt stays even, and the damage lies over it in soft-edged rounds
+      const w = this.wear(cx, cz);
+      if (!holes || w < 0.4) return;
+      const n = Math.round(((x1 - x0) * (z1 - z0)) / m(9) ** 2 * (w - 0.4) * 2);
+      for (let i = 0; i < n; i++) {
+        const h = this.groundTile('hole', cx, cz);
+        if (!h) break;
+        const s = m(2.2 + rg() * 2.6);
+        const [ex, ez] = rot ? [s, m(8)] : [m(8), s];
+        if (x1 - x0 < 2 * ex || z1 - z0 < 2 * ez) break;
+        const x = x0 + ex + rg() * (x1 - x0 - 2 * ex), z = z0 + ez + rg() * (z1 - z0 - 2 * ez);
+        this.flat(this.groundBuf(h, true), h, x - s / 2, z - s / 2, x + s / 2, z + s / 2, m(0.01), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s], 2);
+      }
     };
     // Avenue segments between cross streets, cross-street segments between avenues, and intersection squares
     for (const a of L.aves) {
       for (let i = 0; i < L.sts.length; i++) {
         const s = L.sts[i], n = L.sts[i + 1];
-        patch(a.x0, s.z0, a.x1, s.z1, false);
+        patch(a.x0, s.z0, a.x1, s.z1, false, false);
         if (n) patch(a.r0, s.z1, a.r1, n.z0, true);
       }
     }
@@ -391,7 +685,7 @@ export class City {
   }
 
   sidewalk(B) {
-    const L = this.L, r = this.r, m = (x) => this.m(x);
+    const L = this.L, rg = this.rg, m = (x) => this.m(x);
     const g = this.buf('ground');
     const x0 = B.x0 - L.aveWalk, x1 = B.x1 + L.aveWalk, z0 = B.z0 - L.stWalk, z1 = B.z1 + L.stWalk;
     const h = L.curb, rad = m(4.5), cw = m(0.45);
@@ -402,14 +696,15 @@ export class City {
       return pts;
     };
     const outer = ring(0), inner = ring(cw);
-    const slab = pick(r, G.slab), curb = 'paveB32', ts = m(3), up = new V3(0, 1, 0);
     const center = new V3((x0 + x1) / 2, h, (z0 + z1) / 2);
-    const c1 = cell(slab), c2 = cell(curb), c3 = cell('walls53');
-    const tint = [0.96 + r() * 0.06, 0.96 + r() * 0.05, 0.95 + r() * 0.05];
-    const uv = (p) => [p.x / ts, -p.z / ts];
+    const slab = this.groundTile('walk', center.x, center.z, G.slab), curb = 'paveB32', up = new V3(0, 1, 0);
+    const [sw, sh] = PANELS[slab] ? tileMeters(slab).map(m) : [m(3), m(3)];
+    const sg = this.groundBuf(slab), c1 = cell(slab), c2 = cell(curb);
+    const tint = [0.96 + rg() * 0.06, 0.96 + rg() * 0.05, 0.95 + rg() * 0.05];
+    const uv = (p) => [p.x / sw, -p.z / sh];
     for (let i = 0; i < inner.length; i++) {
       const p = inner[i], q = inner[(i + 1) % inner.length];
-      this.tri(g, [center, p, q], [uv(center), uv(p), uv(q)], c1, tint, 0, up);
+      this.tri(sg, [center, p, q], [uv(center), uv(p), uv(q)], c1, tint, 0, up);
       const P = outer[i], Q = outer[(i + 1) % outer.length];
       const cuv = (v) => [v.x / m(1.2), -v.z / m(1.2)];
       this.tri(g, [P, Q, q], [cuv(P), cuv(Q), cuv(q)], c2, WHITE, 0, up);
@@ -418,19 +713,50 @@ export class City {
       this.wall(g, 'walls53', Q.x, Q.z, P.x, P.z, 0, h, m(1.2), m(1.2), { ao: false, tint: [0.8, 0.8, 0.8] });
     }
     this.collide(x0, 0, z0, x1, h, z1, { low: true });
-    // A few utility covers set into the sidewalk
+    // A few utility covers set into the sidewalk, at their own size (up to 1.4 m)
     for (let i = 0; i < 2; i++) {
-      const side = r() < 0.5, along = B.x0 + r() * (B.x1 - B.x0), off = m(1.4) + r() * m(1.5);
-      const z = side ? B.z0 - off : B.z1 + off, s = m(1.6);
-      this.flat(this.buf('decal'), pick(r, G.manholeSquare), along - s / 2, z - s / 2, along + s / 2, z + s / 2, h + m(0.02), (x, zz) => [(x - along + s / 2) / s, (z + s / 2 - zz) / s]);
+      const side = rg() < 0.5, along = B.x0 + rg() * (B.x1 - B.x0), off = m(1.4) + rg() * m(1.5);
+      const z = side ? B.z0 - off : B.z1 + off;
+      const t = this.groundTile('square', along, z, G.manholeSquare);
+      let [w, d] = PANELS[t] ? tileMeters(t) : [1.6, 1.6];
+      const k = clamp(Math.max(w, d), 0.7, 1.4) / Math.max(w, d);
+      w = m(w * k); d = m(d * k);
+      this.flat(this.groundBuf(t, true), t, along - w / 2, z - d / 2, along + w / 2, z + d / 2, h + m(0.02), (x, zz) => [(x - along + w / 2) / w, (z + d / 2 - zz) / d]);
     }
+  }
+
+  /**
+   * A painted line along a road: along z at x = c for an avenue, along x at z = c for a
+   * street, from a0 to a1. Kit lines are cropped to their paint and stretched along the
+   * road; the original tiles hold a line in the middle of a 3 m strip.
+   */
+  roadLine(tile, alongZ, c, a0, a1, y) {
+    const m = (x) => this.m(x), b = this.groundBuf(tile, true);
+    const [w, len] = PANELS[tile] ? [m(tileMeters(tile)[0]), m(tileMeters(tile)[1] * 3)] : [m(3), m(tile === 'asphB11' ? 3 : 9)];
+    if (alongZ) this.flat(b, tile, c - w / 2, a0, c + w / 2, a1, y, (x, z) => [(x - c + w / 2) / w, -z / len], 1);
+    else this.flat(b, tile, a0, c - w / 2, a1, c + w / 2, y, (x, z) => [(z - c + w / 2) / w, x / len], 1);
+  }
+
+  /** A crosswalk over x0..x1, z0..z1; alongZ: its stripes run along z, across an avenue */
+  crosswalk(tile, x0, z0, x1, z1, y, alongZ) {
+    const b = this.groundBuf(tile, true);
+    if (!PANELS[tile]) {
+      // The original tiles: stripes run across the tile, repeating every 4.8 m
+      const rep = this.m(4.8);
+      if (alongZ) this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(z - z0) / (z1 - z0), x / rep], 1);
+      else this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(x - x0) / (x1 - x0), -z / rep], 1);
+      return;
+    }
+    // Kit tiles stand upright: the stripes span the crossing, repeating across the road at the tile's aspect
+    const [tw, th] = tileMeters(tile);
+    if (alongZ) { const rep = (z1 - z0) * tw / th; this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(x - x0) / rep, (z - z0) / (z1 - z0)], 1); }
+    else { const rep = (x1 - x0) * tw / th; this.flat(b, tile, x0, z0, x1, z1, y, (x, z) => [(z - z0) / rep, (x - x0) / (x1 - x0)], 1); }
   }
 
   markings() {
     const L = this.L, r = this.r, m = (x) => this.m(x);
     const d = this.buf('decal');
     const y = m(0.02);
-    const lineW = m(3);
     // Avenues: four lanes one way, dashed white dividers, crosswalks and stop bars at each street
     for (const a of L.aves) {
       const cx = (a.r0 + a.r1) / 2, lane = (a.r1 - a.r0) / 4;
@@ -438,16 +764,14 @@ export class City {
         const z0 = s.z1, z1 = s.z1 + L.blockD;
         if (z0 >= L.z1) continue;
         const za = z0 + m(9), zb = Math.min(z1, L.z1) - m(9);
-        for (const off of [-1, 0, 1]) {
-          const x = cx + off * lane;
-          this.flat(d, 'asphB12', x - lineW / 2, za, x + lineW / 2, zb, y, (xx, z) => [(xx - x + lineW / 2) / lineW, -z / m(9)], 1);
-        }
+        const t = this.groundTile('lane', cx, (za + zb) / 2, ['asphB12']);
+        for (const off of [-1, 0, 1]) this.roadLine(t, true, cx + off * lane, za, zb, y);
       }
       for (const s of L.sts) {
         // Crosswalks across the avenue, in line with the street's sidewalks
         for (const [zc0, zc1] of [[s.z0, s.r0], [s.r1, s.z1]]) {
           const zz0 = zc0 + m(0.4), zz1 = zc1 - m(0.4);
-          this.flat(d, 'asphB20', a.r0 + m(0.6), zz0, a.r1 - m(0.6), zz1, y, (x, z) => [(z - zz0) / (zz1 - zz0), x / m(4.8)], 1);
+          this.crosswalk(this.groundTile('crosswalk', cx, zz0, ['asphB20']), a.r0 + m(0.6), zz0, a.r1 - m(0.6), zz1, y, true);
         }
         // Stop bar on the approach side
         const zs = a.dir > 0 ? s.z0 - m(1.2) : s.z1 + m(1.2);
@@ -471,13 +795,13 @@ export class City {
       const cz = (s.r0 + s.r1) / 2, two = (s.k + 20) % 3 === 0;
       for (let i = 0; i < L.aves.length - 1; i++) {
         const x0 = L.aves[i].x1 + m(8), x1 = L.aves[i + 1].x0 - m(8);
-        const t = two ? 'asphB11' : 'asphB12';
-        this.flat(d, t, x0, cz - lineW / 2, x1, cz + lineW / 2, y, (x, z) => [(z - cz + lineW / 2) / lineW, x / m(two ? 3 : 9)], 1);
+        const t = two ? this.groundTile('yellow', (x0 + x1) / 2, cz, ['asphB11']) : this.groundTile('lane', (x0 + x1) / 2, cz, ['asphB12']);
+        this.roadLine(t, false, cz, x0, x1, y);
       }
       for (const a of L.aves) {
         for (const [xc0, xc1] of [[a.x0, a.r0], [a.r1, a.x1]]) {
           const xx0 = xc0 + m(0.4), xx1 = xc1 - m(0.4);
-          this.flat(d, r() < 0.5 ? 'asphB20' : 'asphB21', xx0, s.r0 + m(0.5), xx1, s.r1 - m(0.5), y, (x, z) => [(x - xx0) / (xx1 - xx0), -z / m(4.8)], 1);
+          this.crosswalk(this.groundTile('crosswalk', xx0, cz, ['asphB20', 'asphB21']), xx0, s.r0 + m(0.5), xx1, s.r1 - m(0.5), y, false);
         }
       }
     }
@@ -485,13 +809,17 @@ export class City {
     for (const a of L.aves) {
       for (const s of L.sts) {
         if (s.k < 0) continue;
-        if (r() < 0.12) this.flat(d, 'asphB23', a.r0 + m(0.5), s.r0 + m(0.3), a.r1 - m(0.5), s.r1 - m(0.3), y, (x, z) => [(x - a.r0) / (a.r1 - a.r0), (s.r1 - z) / (s.r1 - s.r0)], 1);
+        if (r() < 0.12) {
+          const t = this.groundTile('box', (a.r0 + a.r1) / 2, (s.r0 + s.r1) / 2, ['asphB23']);
+          this.flat(this.groundBuf(t, true), t, a.r0 + m(0.5), s.r0 + m(0.3), a.r1 - m(0.5), s.r1 - m(0.3), y, (x, z) => [(x - a.r0) / (a.r1 - a.r0), (s.r1 - z) / (s.r1 - s.r0)], 1);
+        }
         const n = 1 + Math.floor(r() * 2);
         for (let i = 0; i < n; i++) {
           const x = a.r0 + m(3) + r() * (a.r1 - a.r0 - m(6)), z = s.z1 + m(10) + r() * (L.blockD - m(20)), w = m(1.6);
           if (z > L.z1) continue;
-          this.flat(d, pick(r, G.manholeRound), x - w / 2, z - w / 2, x + w / 2, z + w / 2, y, (xx, zz) => [(xx - x + w / 2) / w, (z + w / 2 - zz) / w], 2);
-          if (r() < 0.06 && s.k >= 0) this.steam.push({ pos: new V3(x, 0, z), t: r() * 3, stack: false });
+          const t = this.groundTile('round', x, z, G.manholeRound);
+          this.flat(this.groundBuf(t, true), t, x - w / 2, z - w / 2, x + w / 2, z + w / 2, y, (xx, zz) => [(xx - x + w / 2) / w, (z + w / 2 - zz) / w], 2);
+          if (r() < 0.09 && s.k >= 0) this.steam.push({ pos: new V3(x, 0, z), t: r() * 3, stack: false });
         }
       }
     }
@@ -503,26 +831,29 @@ export class City {
     const L = this.L;
     // Special blocks
     const special = {
-      '2,3': 'landmark', '3,4': 'plaza', '5,1': 'park', '4,9': 'green', '5,2': 'woolworth', '7,7': 'pyramid', '8,5': 'deco',
+      '2,2': 'needle', '3,4': 'plaza', '4,4': 'twist', '6,7': 'park', '1,6': 'green', '6,4': 'twins',
+      '3,6': 'gate', '7,2': 'stack', '8,6': 'terraces', '5,8': 'deco',
     };
-    // Tall clusters: around the landmark (west) and the Wall Street spine (southeast)
+    // Tall clusters: around the needle and the plaza (north), and a second spine to the southeast
     const tall = (j, k) => {
-      const d1 = Math.hypot(j - 2.3, k - 3.4), d2 = Math.hypot(j - 7, k - 6.8);
+      const d1 = Math.hypot(j - 4.2, k - 3.4), d2 = Math.hypot(j - 6.8, k - 6.4);
       return Math.max(Math.exp(-d1 * d1 / 7), 0.92 * Math.exp(-d2 * d2 / 6), 0.18);
     };
     for (const B of L.blocks) {
       this.cur = this.chunkOf((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2);
       const type = B.playable ? special[`${B.j},${B.k}`] : null;
       const t = B.playable ? tall(B.j, B.k) : 0.25 + this.r() * 0.15;
-      if (type === 'landmark') this.landmarkBlock(B);
+      if (type === 'needle') this.needleBlock(B);
       else if (type === 'plaza') this.plazaBlock(B);
       else if (type === 'park') this.parkBlock(B, true);
       else if (type === 'green') this.parkBlock(B, false);
-      else if (type === 'woolworth') this.towerBlock(B, t, 'woolworth');
-      else if (type === 'pyramid') this.towerBlock(B, t, 'pyramid');
-      else if (type === 'deco') this.towerBlock(B, t, 'deco');
-      else if (t > 0.62 && this.r() < 0.8) this.towerBlock(B, t, this.r() < 0.6 ? 'glass' : 'deco');
-      else this.mixedBlock(B, t);
+      else if (type === 'twins') this.twinsBlock(B, t);
+      else if (type === 'gate') this.gateBlock(B, t);
+      else if (type) this.towerBlock(B, t, type);
+      else if (t > 0.62 && this.r() < 0.8) {
+        const q = this.r();
+        this.towerBlock(B, t, q < 0.38 ? 'glass' : q < 0.52 ? 'deco' : q < 0.7 ? 'prism' : q < 0.86 ? 'twist' : 'stack');
+      } else this.mixedBlock(B, t);
     }
   }
 
@@ -562,7 +893,20 @@ export class City {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
     const streets = { n: front === 'n', s: front === 's', e: ends.e, w: ends.w };
     const tint = this.tint(style === 'office' ? 0.05 : 0.08);
-    if (style === 'walkup') {
+    if (style === 'walkup' && r() < 0.25) {
+      // Brick and limestone bays over a storefront
+      const F = this.kitFacade(pick(r, KIT_STYLE.walkup), x1 - x0);
+      const [, bh] = tileMeters(F.bay);
+      const n = Math.max(1, Math.round((10 + r() * 12) / bh));
+      const groundTile = r() < 0.25 ? pick(r, G.doors) : pick(r, G.ground);
+      const [, gh] = tileMeters(groundTile);
+      this.building({
+        x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
+        tiers: [{ x0, x1, z0, z1, y1: y0 + m(gh + n * bh), tile: F.bay, F, band: { tile: groundTile, h: m(gh) } }],
+        roof: { tile: pick(r, G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        cornice: r() < 0.8,
+      });
+    } else if (style === 'walkup') {
       const useOne = r() < 0.6;
       const upper = useOne ? pick(r, G.walkupUpper) : pick(r, G.walkupBrick);
       const [, uh] = tileMeters(upper);
@@ -573,35 +917,39 @@ export class City {
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
         tiers: [{ x0, x1, z0, z1, y1: top, tile: upper, band: { tile: groundTile, h: m(gh) } }],
-        roof: { tile: pick(r, G.roof), waterTower: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        roof: { tile: pick(r, G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
         cornice: r() < 0.8,
       });
     } else if (style === 'prewar') {
-      const tile = pick(r, r() < 0.8 ? G.prewar : G.officeStone);
+      const F = r() < 0.55 ? this.kitFacade(pick(r, KIT_STYLE.prewar), x1 - x0) : null;
+      const tile = F ? F.bay : pick(r, r() < 0.8 ? G.prewar : G.officeStone);
       const [, th] = tileMeters(tile);
-      const n = Math.max(3, Math.round((3 + r() * 5 + t * 7) * 7.2 / th));
+      const n = Math.max(F ? 2 : 3, Math.round((3 + r() * 5 + t * 7) * 7.2 / th));
       const band = r() < 0.6 ? { tile: pick(r, G.ground), h: m(4.5) } : { tile: pick(r, G.stone), h: m(6), stone: true };
       const h0 = band.h + m(n * th);
-      const tiers = [{ x0, x1, z0, z1, y1: y0 + h0, tile, band }];
-      if (n > 7 && r() < 0.6) {
-        const k = 2 + Math.floor(r() * 3), i = m(3 + r() * 3);
+      const tiers = [{ x0, x1, z0, z1, y1: y0 + h0, tile, F, band }];
+      if ((F ? n * th > 55 : n > 7) && r() < 0.6) {
+        const k = F ? Math.max(1, Math.round((14 + r() * 16) / th)) : 2 + Math.floor(r() * 3), i = m(3 + r() * 3);
         const sb = this.inset({ x0, x1, z0, z1 }, i, streets);
-        if (sb) tiers.push({ ...sb, y1: y0 + h0 + m(k * th), tile });
+        if (sb) tiers.push({ ...sb, y1: y0 + h0 + m(k * th), tile, F });
       }
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), tiers,
-        roof: { tile: pick(r, G.roof), waterTower: r() < 0.45, bulkhead: true, ac: Math.floor(r() * 3) },
+        roof: { tile: pick(r, G.roof), feature: r() < 0.45, bulkhead: true, ac: Math.floor(r() * 3) },
         cornice: true,
       });
     } else if (style === 'modern' || style === 'office') {
-      const tile = style === 'modern' ? pick(r, G.modern) : pick(r, r() < 0.75 ? G.officeGlass : G.officePanel);
+      const F = r() < 0.75 ? this.kitFacade(pick(r, KIT_STYLE[style]), x1 - x0) : null;
+      const tile = F ? F.bay : style === 'modern' ? pick(r, G.modern) : pick(r, r() < 0.75 ? G.officeGlass : G.officePanel);
       const [, th] = tileMeters(tile);
-      const n = Math.max(3, Math.round((style === 'modern' ? 30 + r() * 30 : 45 + r() * 50 + t * 60) / th));
+      const n = Math.max(F ? 2 : 3, Math.round((style === 'modern' ? 30 + r() * 30 : 45 + r() * 50 + t * 60) / th));
       const band = { tile: r() < 0.5 ? 'facade12' : pick(r, G.ground), h: r() < 0.5 ? m(7.2) : m(4.5) };
+      // Kit facades may get a vent floor every 40-70 m and a crown
+      const S = F ? this.kitStack(F, y0 + band.h, n, { every: Math.max(3, Math.round((40 + r() * 30) / th)), crown: r() < 0.5 }) : { y: y0 + band.h + m(n * th) };
       this.building({
-        x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.panel),
-        tiers: [{ x0, x1, z0, z1, y1: y0 + band.h + m(n * th), tile, band }],
-        roof: { tile: pick(r, G.roof), mech: pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
+        x0, x1, z0, z1, y0, streets, tint, party: (F && F.solid) || pick(r, G.panel),
+        tiers: [{ x0, x1, z0, z1, y1: S.y, tile, F, bands: S.bands, band }],
+        roof: { tile: pick(r, G.roof), mech: (F && F.vent) || pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
       });
     }
   }
@@ -624,7 +972,7 @@ export class City {
    */
   building(o) {
     const m = (x) => this.m(x), r = this.r;
-    const fb = this.buf('facade', this.cur), sb = this.buf('surface', this.cur);
+    const sb = this.buf('surface', this.cur);
     let ylo = o.y0;
     o.tiers.forEach((T, ti) => {
       // Towers that rise above the neighborhood get windows on every side
@@ -640,19 +988,26 @@ export class City {
           if (T.band && ti === 0) {
             const bt = T.band.tile, [bw, bh] = tileMeters(bt);
             const isFacade = !bt.startsWith('walls');
-            this.wall(isFacade ? fb : sb, bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
+            this.wall(this.bufFor(bt), bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
             y += T.band.h;
           }
-          this.wall(fb, T.tile, ax, az, bx, bz, y, T.y1, m(tw), m(th), { snapU: true, tint: o.tint, base: o.y0 });
+          if (T.F) this.kitWall(T.F, ax, az, bx, bz, y, T.y1, { tint: o.tint, base: o.y0, bands: T.bands });
+          else this.wall(this.bufFor(T.tile), T.tile, ax, az, bx, bz, y, T.y1, m(tw), m(th), { snapU: true, tint: o.tint, base: o.y0 });
+          // Now and then a big screen over the street, on buildings tall enough to carry one
+          const len = Math.hypot(bx - ax, bz - az);
+          if (ti === 0 && o.streets[side] && T.y1 - o.y0 > m(30) && len > m(16) && this.rd() < 0.13) {
+            const w = Math.min(len * 0.5, m(16));
+            this.screen(ax, az, bx, bz, y + m(3), w, m(0.35));
+          }
         } else {
-          const [pw] = tileMeters(o.party);
-          this.wall(sb, o.party, ax, az, bx, bz, ylo, T.y1, m(pw), m(pw), { tint: o.tint, base: o.y0 });
+          const [pw, ph] = tileMeters(o.party);
+          this.wall(this.bufFor(o.party), o.party, ax, az, bx, bz, ylo, T.y1, m(pw), m(ph), { tint: o.tint, base: o.y0 });
         }
       }
       // Roof (or setback terrace)
       const last = ti === o.tiers.length - 1;
-      const rt = (o.roof && o.roof.tile) || 'roof00', rs = m(6);
-      if (!(last && o.crown)) this.flat(sb, rt, T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / rs, -z / rs]);
+      const rt = T.roofTile || (o.roof && o.roof.tile) || 'roof00', rs = T.roofTile ? m(4) : m(6);
+      if (!(last && o.crown)) this.flat(this.bufFor(rt), rt, T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / rs, -z / rs]);
       this.collide(T.x0, ti === 0 ? 0 : ylo, T.z0, T.x1, T.y1, T.z1, { building: true });
       ylo = T.y1;
     });
@@ -680,11 +1035,10 @@ export class City {
       // Mechanical penthouse wrapped in louvers
       const i = Math.min(W, D) * 0.22;
       const h = m(12);
-      const [mw] = tileMeters(R.mech);
-      const fb = this.buf('facade', this.cur);
+      const [mw, mh] = tileMeters(R.mech);
       const x0 = T.x0 + i, x1 = T.x1 - i, z0 = T.z0 + i, z1 = T.z1 - i;
       for (const [ax, az, bx, bz] of [[x0, z1, x1, z1], [x1, z0, x0, z0], [x1, z1, x1, z0], [x0, z0, x0, z1]]) {
-        this.wall(fb, R.mech, ax, az, bx, bz, y, y + h, m(mw), h, { snapU: true, ao: false });
+        this.wall(this.bufFor(R.mech), R.mech, ax, az, bx, bz, y, y + h, m(mw), m(mh), { snapU: true, ao: false });
       }
       this.flat(sb, 'roof04', x0, z0, x1, z1, y + h, (x, z) => [x / m(6), -z / m(6)]);
       this.collide(x0, y, z0, x1, y + h, z1, { building: true });
@@ -710,25 +1064,211 @@ export class City {
       const [x, z] = at(0.3 + r() * 0.4, 0.3 + r() * 0.4), s = m(3.2);
       this.flat(sb, pick(r, G.skylight), x - s / 2, z - s / 2, x + s / 2, z + s / 2, y + m(0.15), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
     }
-    if (R.waterTower && W > m(7) && D > m(7)) {
+    if (R.feature && W > m(7) && D > m(7)) {
       const [x, z] = at(0.3 + r() * 0.4, 0.3 + r() * 0.4);
-      this.waterTower(x, y, z);
+      this.roofFeature(x, y, z, T, streets);
     }
   }
 
-  waterTower(x, y, z) {
-    const m = (v) => this.m(v), r = this.r;
-    const legs = m(3.5 + r() * 2), R = m(2.1 + r() * 0.6), H = m(4.6 + r() * 1.2);
-    const wood = [0.42 + r() * 0.08, 0.3 + r() * 0.05, 0.22], steel = [0.25, 0.25, 0.27];
-    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-      this.prop('pole', x + sx * R * 0.62, y + legs / 2, z + sz * R * 0.62, m(0.14), legs, m(0.14), steel);
+  /** Something on a roof: a garden, a steel tank, a mast, solar panels or a billboard facing the street */
+  roofFeature(x, y, z, T, streets) {
+    const m = (v) => this.m(v), r = this.r, q = r(), W = T.x1 - T.x0, D = T.z1 - T.z0;
+    if (q < 0.25 && W > m(10) && D > m(10)) this.roofGarden(x, y, z, Math.min(W, D) * 0.6);
+    else if (q < 0.45) {
+      // A squat steel tank on a plinth
+      const R = m(1.8 + r() * 0.8), H = m(3.5 + r() * 2), steel = [0.6, 0.62, 0.65];
+      this.prop('box', x, y + m(0.3), z, R * 2.3, m(0.6), R * 2.3, [0.3, 0.3, 0.32]);
+      this.prop('cyl', x, y + m(0.6) + H / 2, z, R, H, R, steel);
+      this.prop('ring6', x, y + m(0.6) + H * 0.5, z, R * 1.03, m(0.15), R * 1.03, [0.35, 0.36, 0.38]);
+      this.prop('sphere', x, y + m(0.6) + H, z, R, R * 0.35, R, steel);
+      this.collide(x - R, y, z - R, x + R, y + m(0.6) + H, z + R, { building: true });
+    } else if (q < 0.6) this.antenna(x, y, z, m(12 + r() * 10));
+    else if (q < 0.8 && W > m(9) && D > m(9)) {
+      // Rows of solar panels tilted to the sun
+      const n = 2 + Math.floor(r() * 3), w = Math.min(W * 0.6, m(10));
+      for (let i = 0; i < n; i++) this.prop('box', x, y + m(0.7), z + (i - (n - 1) / 2) * m(2.4), w, m(0.12), m(1.7), [0.07, 0.11, 0.24], 0, -0.45);
+    } else if (streets.n || streets.s) {
+      // A billboard at the front of the roof, facing the street
+      const w = Math.min(W * 0.8, m(14)), zf = streets.n ? T.z0 + m(1.5) : T.z1 - m(1.5), dir = streets.n ? -1 : 1, yb = y + m(3);
+      for (const dx of [-0.35, 0.35]) this.prop('box', x + dx * w, y + m(1.5), zf, m(0.3), m(3), m(0.3), [0.18, 0.18, 0.2]);
+      const ax = x - (dir * w) / 2, bx = x + (dir * w) / 2;
+      this.screen(ax, zf, bx, zf, yb, w, 0);
+      this.collide(x - w / 2, y, zf - m(0.5), x + w / 2, yb + w * 0.5, zf + m(0.5));
     }
-    this.prop('cyl6', x, y + legs, z, R * 1.1, m(0.25), R * 1.1, steel);
-    this.prop('tube', x, y + legs + H / 2, z, R, H, R, wood);
-    this.prop('ring6', x, y + legs + H * 0.3, z, R * 1.04, m(0.14), R * 1.04, steel);
-    this.prop('ring6', x, y + legs + H * 0.7, z, R * 1.04, m(0.14), R * 1.04, steel);
-    this.prop('cone', x, y + legs + H + m(0.85), z, R * 1.08, m(1.7), R * 1.08, [0.3, 0.24, 0.2]);
-    this.collide(x - R, y, z - R, x + R, y + legs + H + m(1.7), z + R, { building: true });
+  }
+
+  /** A planted roof: grass, a planter edge and a few small trees */
+  roofGarden(x, y, z, s) {
+    const m = (v) => this.m(v), grass = pick(this.r, G.grass), h = s / 2;
+    this.flat(this.bufFor(grass), grass, x - h, z - h, x + h, z + h, y + m(0.05), (xx, zz) => [xx / m(4), -zz / m(4)]);
+    for (const [ax, az, bx, bz] of [[x - h, z + h, x + h, z + h], [x + h, z - h, x - h, z - h], [x + h, z + h, x + h, z - h], [x - h, z - h, x - h, z + h]]) {
+      this.wall(this.buf('surface', this.cur), 'walls53', ax, az, bx, bz, y, y + m(0.5), m(1.2), m(1.2), { ao: false });
+    }
+    const n = 2 + Math.floor(this.r() * 3);
+    for (let i = 0; i < n; i++) this.tree(x + (this.r() - 0.5) * s * 0.7, y, z + (this.r() - 0.5) * s * 0.7, 0.5);
+  }
+
+  /** A communications mast: a pole with cross arms, a dish and a red beacon */
+  antenna(x, y, z, h) {
+    const m = (v) => this.m(v), steel = [0.55, 0.57, 0.6];
+    this.prop('box', x, y + m(0.4), z, m(2.2), m(0.8), m(2.2), [0.3, 0.3, 0.32]);
+    this.prop('cyl6', x, y + h / 2, z, m(0.25), h, m(0.25), steel);
+    for (const f of [0.45, 0.65, 0.85]) this.prop('box', x, y + h * f, z, m(3) * (1.2 - f), m(0.12), m(0.12), steel, f * 2);
+    this.prop('cone', x + m(0.8), y + h * 0.55, z, m(0.9), m(0.35), m(0.9), [0.85, 0.86, 0.88], 0, 0, Math.PI / 2);
+    this.prop('sphere', x, y + h, z, m(0.45), m(0.45), m(0.45), [1.5, 0.25, 0.2]);
+    this.collide(x - m(1.1), y, z - m(1.1), x + m(1.1), y + h, z + m(1.1));
+  }
+
+  /** A helipad marking on a roof, s across, with lights at its corners */
+  helipad(x, y, z, s) {
+    const m = (v) => this.m(v), h = s / 2, yy = y + m(0.06);
+    this.sign('mark', 0, [[x - h, yy, z + h], [x + h, yy, z + h], [x + h, yy, z - h], [x - h, yy, z - h]], [0, 1, 0]);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) this.prop('sphere', x + dx * h * 0.92, y + m(0.2), z + dz * h * 0.92, m(0.25), m(0.2), m(0.25), [0.3, 1.3, 0.5]);
+  }
+
+  /**
+   * A glowing screen in a dark housing on the face of a wall from a to b (seen from outside),
+   * centered on it, w wide and half as tall, its bottom at y, standing out from the wall.
+   */
+  screen(ax, az, bx, bz, y, w, out) {
+    const m = (v) => this.m(v), dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
+    const h = w * 0.5, d = m(0.35), cx = (ax + bx) / 2 + nx * out, cz = (az + bz) / 2 + nz * out, fx = cx + nx * (d / 2 + m(0.03)), fz = cz + nz * (d / 2 + m(0.03));
+    this.prop('box', cx, y + h / 2, cz, w + m(0.6), h + m(0.6), d, [0.07, 0.07, 0.08], Math.atan2(-uz, ux));
+    const p = (sd, yy) => [fx + (ux * sd * w) / 2, yy, fz + (uz * sd * w) / 2];
+    this.sign('screen', 1 + Math.floor(this.rd() * 7), [p(-1, y), p(1, y), p(1, y + h), p(-1, y + h)], [nx, 0, nz]);
+  }
+
+  /** A quad on the sign atlas (2 x 4 cells: 0 a helipad, 1-7 screens): corners [BL, BR, TR, TL] */
+  sign(kind, idx, P, n) {
+    const S = this.signs[kind], i0 = S.pos.length / 3, e = 0.004;
+    const u0 = (idx % 2) / 2 + e, u1 = u0 + 0.5 - 2 * e, v1 = 1 - Math.floor(idx / 2) / 4 - e, v0 = v1 - 0.25 + 2 * e;
+    const uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+    P.forEach((q, k) => { S.pos.push(...q); S.nor.push(...n); S.uv.push(...uv[k]); });
+    S.idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
+  }
+
+  /** Meshes for the screens (unlit, glowing) and the helipad markings */
+  flushSigns() {
+    const tex = signTexture();
+    tex.anisotropy = 4;
+    const mats = {
+      screen: new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.15, 1.15, 1.15) }),
+      mark: new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }),
+    };
+    for (const [k, S] of Object.entries(this.signs)) {
+      if (!S.idx.length) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(S.pos, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(S.nor, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(S.uv, 2));
+      g.setIndex(S.idx);
+      g.computeBoundingSphere();
+      const mesh = new THREE.Mesh(g, mats[k]);
+      mesh.receiveShadow = k === 'mark';
+      mesh.matrixAutoUpdate = false;
+      this.scene.add(mesh);
+      this.meshes.push(mesh);
+    }
+  }
+
+  // ---- facades from panel kits ------------------------------------------------
+
+  /**
+   * Pick a facade from a panel kit: one window bay used throughout (so floors line up),
+   * a pier for the corners and between groups of bays, a solid panel and a vent.
+   * maxW: the narrowest street side in units, so bays and piers fit it.
+   */
+  kitFacade(kit, maxW) {
+    const r = this.r, K = KITS[kit], wm = maxW / this.M;
+    const fit = (list, w) => list.filter((n) => tileMeters(n)[0] <= w);
+    const bays = fit(K.bays, wm * 0.8);
+    const F = { kit, bay: bays.length ? pick(r, bays) : K.bays.reduce((a, b) => (tileMeters(a)[0] < tileMeters(b)[0] ? a : b)), group: 0 };
+    const piers = fit(K.piers, Math.min(5, wm * 0.2));
+    if (piers.length && r() < 0.85) {
+      F.pier = pick(r, piers);
+      // Bays between divider piers; 0 keeps piers to the corners
+      F.group = r() < 0.45 ? 0 : 1 + Math.floor(r() * 4);
+    }
+    F.solid = K.solids.length ? pick(r, K.solids) : F.pier;
+    // Vent floors: prefer louvers about a storey tall
+    const vents = K.vents.filter((n) => tileMeters(n)[1] > 2.4 && tileMeters(n)[1] < 6.5);
+    F.vent = vents.length ? pick(r, vents) : K.vents.length ? pick(r, K.vents) : null;
+    if (F.vent) F.ventH = clamp(tileMeters(F.vent)[1], 3, 6);
+    return F;
+  }
+
+  /**
+   * Stack n repeats of a facade's bay up from y. Optionally a vent floor every `every`
+   * repeats, one on top (a mechanical floor under a setback) and a solid crown band.
+   * Returns the top and the bands as [y0, y1, tile, fit]; a fitted band scales its tile
+   * to the band's height, the others show a slice of it.
+   */
+  kitStack(F, y, n, o = {}) {
+    const m = (x) => this.m(x), bh = m(tileMeters(F.bay)[1]), bands = [];
+    const band = (h, tile, fit) => { bands.push([y, y + h, tile, fit]); y += h; };
+    for (let i = 1; i <= n; i++) {
+      y += bh;
+      if (F.vent && o.every && i % o.every === 0 && i < n) band(m(F.ventH), F.vent, true);
+    }
+    if (F.vent && o.ventTop) band(m(F.ventH), F.vent, true);
+    if (F.solid && o.crown) band(m(1.8), F.solid, false);
+    return { y, bands };
+  }
+
+  /**
+   * One side of a building from its kit facade, a to b (left to right seen from outside),
+   * y0..y1: piers at the corners and between groups of bays, every column tiling up the
+   * floors, with full-width bands (vents, crown) cutting across. o: { tint, base, bands }
+   */
+  kitWall(F, ax, az, bx, bz, y0, y1, o = {}) {
+    const m = (x) => this.m(x), len = Math.hypot(bx - ax, bz - az);
+    if (len < 1e-3 || y1 - y0 < 1e-3) return;
+    const [bw0, bh] = tileMeters(F.bay).map(m);
+    const [pw, ph] = F.pier ? tileMeters(F.pier).map(m) : [0, 0];
+    // Bays and divider piers: the bay count whose natural widths come closest to the side
+    let n = Math.max(1, Math.round(len / bw0)), d = 0, piers = 0;
+    if (F.pier && len > 2 * pw + bw0 * 0.6) {
+      piers = 2;
+      const div = (k) => (F.group ? Math.ceil(k / F.group) - 1 : 0);
+      let best = Infinity;
+      for (let k = 1; k <= Math.ceil(len / bw0) + 1; k++) {
+        const err = Math.abs(len - k * bw0 - (div(k) + 2) * pw);
+        if (err < best) { best = err; n = k; }
+      }
+      d = div(n);
+      // Too squeezed: drop the dividers
+      if ((len - (d + 2) * pw) / n < bw0 * 0.6) { d = 0; n = Math.max(1, Math.round((len - 2 * pw) / bw0)); }
+    }
+    const bw = (len - (d + piers) * pw) / n;
+    // Spread the bays over g groups, symmetric about the middle where the counts allow
+    const g = d + 1, sizes = new Array(g).fill(Math.floor(n / g));
+    let rem = n % g;
+    if (rem % 2 && g % 2) { sizes[d / 2]++; rem--; }
+    for (let i = Math.floor(g / 2) - 1; i >= 0 && rem >= 2; i--, rem -= 2) { sizes[i]++; sizes[g - 1 - i]++; }
+    if (rem) sizes[Math.floor(d / 2)]++;
+    // Vertical spans between the bands
+    const spans = [];
+    let y = y0;
+    for (const [ya, yb] of o.bands || []) { if (ya > y) spans.push([y, Math.min(ya, y1)]); y = Math.max(y, yb); }
+    if (y < y1) spans.push([y, y1]);
+    const dx = (bx - ax) / len, dz = (bz - az) / len, wo = { tint: o.tint, base: o.base, snapU: true };
+    let s = 0;
+    const column = (tile, w, k, th) => {
+      const x0 = ax + dx * s, z0 = az + dz * s;
+      s += w;
+      for (const [ya, yb] of spans) this.wall(this.bufFor(tile), tile, x0, z0, ax + dx * s, az + dz * s, ya, yb, w / k, th, wo);
+    };
+    if (piers) column(F.pier, pw, 1, ph);
+    sizes.forEach((k, i) => {
+      if (i) column(F.pier, pw, 1, ph);
+      column(F.bay, k * bw, k, bh);
+    });
+    if (piers) column(F.pier, pw, 1, ph);
+    for (const [ya, yb, tile, fit] of o.bands || []) {
+      if (ya >= y1) continue;
+      const [tw, th] = tileMeters(tile).map(m), k = fit ? (yb - ya) / th : 1;
+      this.wall(this.bufFor(tile), tile, ax, az, bx, bz, ya, Math.min(yb, y1), tw * k, th * k, wo);
+    }
   }
 
   // ---- towers ----------------------------------------------------------------
@@ -736,8 +1276,8 @@ export class City {
   towerBlock(B, t, kind) {
     const r = this.r, m = (x) => this.m(x);
     const W = B.x1 - B.x0;
-    const tw = Math.min(W * 0.65, m(kind === 'woolworth' ? 46 : 52 + r() * 22));
-    const at = kind === 'woolworth' ? 0.0 : r();
+    const tw = Math.min(W * 0.65, m(52 + r() * 22));
+    const at = r();
     const tx0 = B.x0 + (W - tw) * (at < 0.33 ? 0 : at < 0.66 ? 0.5 : 1), tx1 = tx0 + tw;
     // Fill the rest of the block with mid-rises
     const rest = [[B.x0, tx0], [tx1, B.x1]].filter(([a, b]) => b - a > m(6));
@@ -753,37 +1293,47 @@ export class City {
     const streets = { n: true, s: true, e: tx1 >= B.x1 - 0.01, w: tx0 <= B.x0 + 0.01 };
     const f = { x0: tx0, x1: tx1, z0: B.z0, z1: B.z1 };
     if (kind === 'glass') this.glassTower(f, streets, t);
+    else if (kind === 'twist' || kind === 'prism') this.prismTower(f, t, kind === 'twist');
+    else if (kind === 'stack') this.stackTower(f, streets, t);
+    else if (kind === 'terraces') this.terraceTower(f, streets, t);
     else this.decoTower(f, streets, t, kind);
   }
 
   glassTower(f, streets, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
-    const tile = pick(r, G.officeGlass), th = m(12);
+    // Most towers are composed from a kit, the rest wrapped in one curtain-wall tile
+    const F = r() < 0.7 ? this.kitFacade(pick(r, KIT_STYLE.tower), Math.min(f.x1 - f.x0, f.z1 - f.z0)) : null;
+    const tile = F ? F.bay : pick(r, G.officeGlass), th = m(tileMeters(tile)[1]);
     const band = { tile: 'facade12', h: m(7.2) };
     let tiers = [], fp = { ...f }, y = y0 + band.h;
-    const total = Math.round((120 + t * 150 + r() * 40) / 12);
-    const nt = 1 + Math.floor(r() * 3);
+    const total = Math.round(m(120 + t * 150 + r() * 40) / th);
+    const nt = 1 + Math.floor(r() * 3), every = Math.max(4, Math.round(m(55 + r() * 30) / th));
     let left = total;
-    for (let i = 0; i < nt && fp; i++) {
-      const n = i === nt - 1 ? left : Math.max(4, Math.round(left * (0.45 + r() * 0.2)));
+    for (let i = 0; i < nt && fp && left > 0; i++) {
+      const last = i === nt - 1;
+      const n = last ? left : Math.min(left, Math.max(4, Math.round(left * (0.45 + r() * 0.2))));
       left -= n;
-      y += n * th;
-      tiers.push({ ...fp, y1: y, tile, band: i === 0 ? band : null });
+      // Kit towers get a mechanical floor under each setback and every so often up the shaft
+      const S = F ? this.kitStack(F, y, n, { every, ventTop: !last && left > 0, crown: last || left <= 0 }) : { y: y + n * th };
+      y = S.y;
+      tiers.push({ ...fp, y1: y, tile, F, bands: S.bands, band: i === 0 ? band : null });
       fp = this.inset(fp, m(4 + r() * 4), { n: true, s: true, e: true, w: true });
     }
     this.building({
-      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: 'walls05',
-      tiers, roof: { tile: pick(this.r, G.roof), mech: pick(this.r, G.mech), ac: 2 },
+      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: (F && F.solid) || 'walls05',
+      tiers, roof: { tile: pick(this.r, G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 },
     });
   }
 
   decoTower(f, streets, t, kind) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
-    const tile = kind === 'woolworth' ? 'facade25' : pick(r, G.officeStone);
+    // Half the deco towers are composed from a stone or brick kit, with bays narrow enough for the upper tiers
+    const F = kind === 'deco' && r() < 0.5 ? this.kitFacade(pick(r, KIT_STYLE.deco), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.5) : null;
+    const tile = F ? F.bay : pick(r, G.officeStone);
     const [, thm] = tileMeters(tile), th = m(thm);
     const band = { tile: pick(r, G.stone), h: m(9) };
     // Wedding-cake setbacks: a broad base, then tiers stepping in toward a slim shaft
-    const plan = kind === 'woolworth' ? [7, 3, 9, 3, 2] : kind === 'pyramid' ? [6, 4, 8, 4] : [5, 4, 4, 6, 3];
+    const plan = r() < 0.5 ? [6, 4, 8, 4] : [5, 4, 4, 6, 3];
     const scale = (thm === 12 ? 1 : 12 / thm) * (0.55 + t * 0.45);
     let fp = { ...f }, y = y0 + band.h;
     const tiers = [];
@@ -791,33 +1341,41 @@ export class City {
       if (!fp) return;
       const k = Math.max(2, Math.round(n * scale));
       y += k * th;
-      tiers.push({ ...fp, y1: y, tile, band: i === 0 ? band : null });
+      tiers.push({ ...fp, y1: y, tile, F, band: i === 0 ? band : null });
       const step = i === 0 ? 0.16 : 0.12;
       fp = this.inset(fp, Math.min(fp.x1 - fp.x0, fp.z1 - fp.z0) * step, { n: true, s: true, e: true, w: true });
     });
-    const tint = kind === 'woolworth' ? [1.02, 1.0, 0.94] : this.tint(0.05);
+    const tint = this.tint(0.05);
     this.building({
       x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint, party: 'walls50', tiers,
-      crown: (T) => this.crown(T, kind),
+      crown: (T) => this.crown(T),
     });
   }
 
-  crown(T, kind) {
-    const m = (x) => this.m(x), sb = this.buf('surface', this.cur);
+  /** A deco crown: a copper pyramid with a spire, or a steel lattice lantern around a needle */
+  crown(T) {
+    const m = (x) => this.m(x), sb = this.buf('surface', this.cur), r = this.r;
     const cx = (T.x0 + T.x1) / 2, cz = (T.z0 + T.z1) / 2, W = T.x1 - T.x0, D = T.z1 - T.z0;
-    const roofH = kind === 'woolworth' ? Math.max(W, D) * 1.15 : Math.max(W, D) * 0.9;
-    const copper = kind === 'deco' ? 'roof42' : 'roof43';
-    this.pyramid(sb, copper, T.x0, T.z0, T.x1, T.z1, T.y1, T.y1 + roofH, m(4), kind === 'deco' ? [0.85, 0.85, 0.9] : [1, 1, 1]);
-    this.collide(T.x0 + W * 0.2, T.y1, T.z0 + D * 0.2, T.x1 - W * 0.2, T.y1 + roofH * 0.55, T.z1 - D * 0.2, { building: true });
-    // Spire and corner pinnacles
-    const sh = m(kind === 'woolworth' ? 22 : 30);
-    this.prop('cone4', cx, T.y1 + roofH + sh / 2 - m(2), cz, m(1.4), sh, m(1.4), [0.62, 0.6, 0.5], Math.PI / 4);
-    if (kind === 'woolworth') {
-      for (const [x, z] of [[T.x0, T.z0], [T.x1, T.z0], [T.x0, T.z1], [T.x1, T.z1]]) {
-        this.prop('box', x, T.y1 + m(2.5), z, m(2.6), m(5), m(2.6), [0.92, 0.9, 0.82]);
-        this.prop('cone4', x, T.y1 + m(8), z, m(1.7), m(7), m(1.7), [0.38, 0.6, 0.52], Math.PI / 4);
-      }
+    if (r() < 0.5) {
+      const roofH = Math.max(W, D) * 0.9;
+      this.pyramid(sb, pick(r, ['roof42', 'roof43']), T.x0, T.z0, T.x1, T.z1, T.y1, T.y1 + roofH, m(4), [0.9, 0.9, 0.92]);
+      this.collide(T.x0 + W * 0.2, T.y1, T.z0 + D * 0.2, T.x1 - W * 0.2, T.y1 + roofH * 0.55, T.z1 - D * 0.2, { building: true });
+      const sh = m(30);
+      this.prop('cone4', cx, T.y1 + roofH + sh / 2 - m(2), cz, m(1.4), sh, m(1.4), [0.62, 0.6, 0.5], Math.PI / 4);
+      return;
     }
+    // Lattice lantern: truss cards around a glass drum, a needle through the middle
+    this.flat(sb, 'roof04', T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / m(6), -z / m(6)]);
+    const truss = pick(r, STRUCTS.steeltruss.truss), h = Math.min(W, D) * 0.5, e = m(1);
+    for (const [ax, az, bx, bz] of [[T.x0 + e, T.z1 - e, T.x1 - e, T.z1 - e], [T.x1 - e, T.z0 + e, T.x0 + e, T.z0 + e], [T.x1 - e, T.z1 - e, T.x1 - e, T.z0 + e], [T.x0 + e, T.z0 + e, T.x0 + e, T.z1 - e]]) {
+      this.card(truss, ax, az, bx, bz, T.y1, T.y1 + h, h * cell(truss).aspect);
+    }
+    const dr = Math.min(W, D) * 0.28, glass = pick(r, G.officeGlass);
+    this.prismSeg(cx, cz, 8, dr, dr, 0, T.y1, T.y1 + h * 0.8, glass, m(6), m(6), { top: 'roof04' });
+    this.collide(T.x0, T.y1, T.z0, T.x1, T.y1 + h * 0.8, T.z1, { building: true });
+    const sh = h * 2.4;
+    this.prop('cyl6', cx, T.y1 + h * 0.8 + sh / 2, cz, m(0.8), sh, m(0.8), [0.75, 0.77, 0.8]);
+    this.prop('sphere', cx, T.y1 + h * 0.8 + sh, cz, m(0.9), m(0.9), m(0.9), [1.4, 0.25, 0.2]);
   }
 
   /** Four-sided pyramid with planar-mapped faces */
@@ -835,61 +1393,231 @@ export class City {
     }
   }
 
-  landmarkBlock(B) {
-    const m = (x) => this.m(x), fb = this.buf('facade', this.cur), sb = this.buf('surface', this.cur), y0 = this.L.curb;
+  // ---- signature buildings -------------------------------------------------------
+
+  /**
+   * One segment of a polygonal tower: n sides around (cx, cz), r0 to its corners at ya and r1 at
+   * yb, turned by rot. Faces tile every tw by th with whole repeats across. o: { tint, top, bottom }
+   * where top and bottom are cap tiles.
+   */
+  prismSeg(cx, cz, n, r0, r1, rot, ya, yb, tile, tw, th, o = {}) {
+    const b = this.bufFor(tile), c = cell(tile), tint = o.tint || WHITE;
+    const V = (k, r, y) => { const a = rot + (k / n) * Math.PI * 2; return [cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]; };
+    const nu = Math.max(1, Math.round((2 * Math.max(r0, r1) * Math.sin(Math.PI / n)) / tw)), vt = (yb - ya) / th;
+    const h = yb - ya, dr = (r0 - r1) * Math.cos(Math.PI / n), nl = Math.hypot(h, dr);
+    for (let k = 0; k < n; k++) {
+      // From corner k + 1 to corner k, so the face looks outward
+      const am = rot + ((k + 0.5) / n) * Math.PI * 2;
+      this.quad(b, [V(k + 1, r0, ya), V(k, r0, ya), V(k, r1, yb), V(k + 1, r1, yb)], [Math.cos(am) * h / nl, dr / nl, Math.sin(am) * h / nl],
+        [[0, 0], [nu, 0], [nu, vt], [0, vt]], c, tint);
+    }
+    if (o.top) this.polyCap(cx, cz, n, r1, rot, yb, o.top, true);
+    if (o.bottom) this.polyCap(cx, cz, n, r0, rot, ya, o.bottom, false);
+  }
+
+  /** A flat polygon cap (up or down) for a polygonal tower segment */
+  polyCap(cx, cz, n, r, rot, y, tile, up) {
+    const b = this.bufFor(tile), c = cell(tile), ts = this.m(6), C = new V3(cx, y, cz), want = new V3(0, up ? 1 : -1, 0);
+    const V = (k) => { const a = rot + (k / n) * Math.PI * 2; return new V3(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r); };
+    const uv = (p) => [p.x / ts, -p.z / ts];
+    for (let k = 0; k < n; k++) { const p = V(k), q = V(k + 1); this.tri(b, [C, p, q], [uv(C), uv(p), uv(q)], c, WHITE, 0, want); }
+  }
+
+  /** The largest street-square box inside a polygon of n sides, r to its corners, turned by rot: its half-width */
+  innerHalf(n, r, rot) {
+    const rin = r * Math.cos(Math.PI / n);
+    if (n !== 4) return rin * 0.75;
+    const f = rot + Math.PI / 4;
+    return rin / (Math.abs(Math.cos(f)) + Math.abs(Math.sin(f)));
+  }
+
+  /** A tower that twists as it rises (square floors, each a little turned), or a tapering octagon or hexagon */
+  prismTower(f, t, twist) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
+    const cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2, half = Math.min(f.x1 - f.x0, f.z1 - f.z0) / 2;
+    const n = twist ? 4 : pick(r, [6, 8, 8]), R = half * (twist ? 0.98 : 0.92);
+    const tile = r() < 0.5 ? pick(r, G.officeGlass) : pick(r, KITS[pick(r, KIT_STYLE.tower)].bays);
+    const [tw, th] = tileMeters(tile).map(m), tint = this.tint(0.05);
+    // A glass lobby box over the whole lot
+    this.building({
+      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets: { n: true, s: true, e: true, w: true }, allFacade: true, tint,
+      party: 'walls05', tiers: [{ ...f, y1: y0 + m(10), tile: 'facade12' }], roof: { tile: 'roof04' },
+    });
+    const per = 2 * th, nseg = Math.max(8, Math.round(m(150 + t * 170 + r() * 60) / per));
+    const turn = twist ? (Math.PI / 2) * (0.7 + r() * 0.6) * (r() < 0.5 ? 1 : -1) : 0;
+    let y = y0 + m(10);
+    for (let i = 0; i < nseg; i++) {
+      // Squares start square to the streets; polygons taper over their top fifth
+      const rot = Math.PI / 4 + (turn * i) / nseg, k = (j) => (twist ? 1 : 1 - Math.max(0, j / nseg - 0.8) * 1.6);
+      const ra = R * k(i), rb = R * k(i + 1), last = i === nseg - 1;
+      this.prismSeg(cx, cz, n, ra, rb, rot, y, y + per, tile, tw, th, { tint, top: twist || last ? 'roof04' : null, bottom: twist ? 'walls05' : null });
+      const hh = this.innerHalf(n, Math.min(ra, rb), rot);
+      this.collide(cx - hh, i ? y : 0, cz - hh, cx + hh, y + per, cz + hh, { building: true });
+      y += per;
+    }
+    const rTop = R * (twist ? 1 : 0.68);
+    if (twist && r() < 0.6) this.helipad(cx, y, cz, this.innerHalf(4, rTop, Math.PI / 4 + turn) * 1.6);
+    else {
+      const sh = m(26 + r() * 20);
+      this.prop('cone', cx, y + sh / 2, cz, rTop * 0.35, sh, rTop * 0.35, [0.72, 0.74, 0.78]);
+      this.prop('sphere', cx, y + sh, cz, m(0.8), m(0.8), m(0.8), [1.4, 0.25, 0.2]);
+    }
+  }
+
+  /** A box of a block-built tower: facades all round, a roof, an underside if it floats, and a collider */
+  boxBlock(B, tile, tint, soffit) {
+    const m = (x) => this.m(x), [tw, th] = tileMeters(tile).map(m), base = this.L.curb;
+    for (const [ax, az, bx, bz] of [[B.x0, B.z1, B.x1, B.z1], [B.x1, B.z0, B.x0, B.z0], [B.x1, B.z1, B.x1, B.z0], [B.x0, B.z0, B.x0, B.z1]]) {
+      this.wall(this.bufFor(tile), tile, ax, az, bx, bz, B.ya, B.yb, tw, th, { snapU: true, tint, base });
+    }
+    this.flat(this.buf('surface', this.cur), 'roof04', B.x0, B.z0, B.x1, B.z1, B.yb, (x, z) => [x / m(6), -z / m(6)]);
+    if (soffit) this.under(this.buf('surface', this.cur), 'walls05', B.x0, B.z0, B.x1, B.z1, B.ya, (x, z) => [x / m(3.2), z / m(3.2)], [0.7, 0.7, 0.72]);
+    this.collide(B.x0, soffit ? B.ya : 0, B.z0, B.x1, B.yb, B.z1, { building: true });
+  }
+
+  /**
+   * A stack of shifted boxes, alternating two facades. Boxes above the street wall may hang
+   * out over the sidewalks, but always rest well on the box below.
+   */
+  stackTower(f, streets, t) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = f.x1 - f.x0, D = f.z1 - f.z0;
+    const tiles = [pick(r, G.officeGlass), pick(r, KITS[pick(r, KIT_STYLE.office)].bays)], tint = this.tint(0.05);
+    const top = y0 + m(110 + t * 120 + r() * 40);
+    let y = y0, i = 0, prev = null;
+    while (y < top) {
+      const tile = tiles[i % 2], th = m(tileMeters(tile)[1]), h = Math.max(1, Math.round(m(14 + r() * 14) / th)) * th;
+      const w = W * (0.5 + r() * 0.25), d = D * (0.5 + r() * 0.25), over = y > y0 + m(25) ? m(5) : 0;
+      const lx = f.x0 - (streets.w ? over : 0), hx = f.x1 + (streets.e ? over : 0), lz = f.z0 - over, hz = f.z1 + over;
+      // Each box swings to the other side of the one below, along one axis or the other
+      const side = i % 2 ? 1 : 0, alongX = r() < 0.5;
+      let x0 = alongX ? (side ? hx - w : lx) : lx + r() * (hx - lx - w), z0 = alongX ? lz + r() * (hz - lz - d) : (side ? hz - d : lz);
+      if (prev) {
+        x0 = clamp(x0, prev.x0 - w * 0.6, prev.x1 - w * 0.4);
+        z0 = clamp(z0, prev.z0 - d * 0.6, prev.z1 - d * 0.4);
+        x0 = clamp(x0, lx, hx - w); z0 = clamp(z0, lz, hz - d);
+      }
+      prev = { x0, z0, x1: x0 + w, z1: z0 + d, ya: y, yb: y + h };
+      this.boxBlock(prev, tile, tint, i > 0);
+      y += h; i++;
+    }
+    const cx = (prev.x0 + prev.x1) / 2, cz = (prev.z0 + prev.z1) / 2, s = Math.min(prev.x1 - prev.x0, prev.z1 - prev.z0);
+    if (r() < 0.5) this.helipad(cx, y, cz, s * 0.7);
+    else this.roofGarden(cx, y, cz, s * 0.7);
+  }
+
+  /** A gate: two towers at the ends of the block joined by a bridge of floors high over a plaza */
+  gateBlock(B, t) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0;
+    const tile = pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), span = pick(r, G.officeGlass), tint = this.tint(0.04);
+    const legW = m(28), H = y0 + m(160 + t * 50), hb = m(42);
+    this.boxBlock({ x0: B.x0, x1: B.x0 + legW, z0: B.z0, z1: B.z1, ya: y0, yb: H }, tile, tint, false);
+    this.boxBlock({ x0: B.x1 - legW, x1: B.x1, z0: B.z0, z1: B.z1, ya: y0, yb: H }, tile, tint, false);
+    this.boxBlock({ x0: B.x0 + legW, x1: B.x1 - legW, z0: B.z0 + m(6), z1: B.z1 - m(6), ya: H - hb, yb: H }, span, tint, true);
+    // The plaza under the gate, with trees and a fountain
+    const pave = pick(this.rg, Object.values(GROUND).flatMap((k) => k.plaza).concat(['paveB04']));
+    const [pw, ph] = PANELS[pave] ? tileMeters(pave).map(m) : [m(5), m(5)];
+    this.flat(this.groundBuf(pave, true), pave, B.x0 + legW, B.z0, B.x1 - legW, B.z1, y0 + m(0.05), (x, z) => [x / pw, -z / ph]);
     const cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
-    // Plaza around the tower
+    for (const dz of [-1, 1]) for (let i = 0; i < 4; i++) this.tree(B.x0 + legW + m(8) + i * (W - 2 * legW - m(16)) / 3, y0, cz + dz * m(20), 0.85);
+    this.prop('cyl', cx, y0 + m(0.4), cz, m(7), m(0.8), m(7), [0.62, 0.62, 0.64]);
+    this.prop('cyl', cx, y0 + m(0.85), cz, m(6.3), m(0.08), m(6.3), [0.22, 0.38, 0.45]);
+    this.collide(cx - m(5), 0, cz - m(5), cx + m(5), y0 + m(0.8), cz + m(5), { low: true });
+    this.fountains.push(new V3(cx, y0 + m(1), cz));
+    // A helipad on one leg, a mast on the other
+    this.helipad(B.x0 + legW / 2, H, cz, legW * 0.8);
+    this.antenna(B.x1 - legW / 2, H, cz, m(38));
+  }
+
+  /** Twin towers on a podium, joined by a sky bridge */
+  twinsBlock(B, t) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0, cz = (B.z0 + B.z1) / 2;
+    const all = { n: true, s: true, e: true, w: true }, yp = y0 + m(14), tint = this.tint(0.04);
+    this.building({
+      x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0, streets: all, allFacade: true, tint, party: 'walls05',
+      tiers: [{ x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y1: yp, tile: 'facade12', band: { tile: pick(r, G.ground), h: m(4.5) } }],
+      roof: { tile: 'roof04', ac: 2 },
+    });
+    const tile = r() < 0.5 ? pick(r, G.officeGlass) : pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), th = m(tileMeters(tile)[1]);
+    const s = m(15), H = yp + Math.round(m(180 + t * 60) / th) * th, xs = [B.x0 + W * 0.27, B.x0 + W * 0.73];
+    for (const x of xs) {
+      const f = { x0: x - s, x1: x + s, z0: cz - s, z1: cz + s }, top = this.inset(f, m(3), all);
+      this.building({
+        ...f, y0: yp, streets: all, allFacade: true, tint, party: 'walls05',
+        tiers: [{ ...f, y1: H - 4 * th, tile }, { ...top, y1: H, tile }], roof: { tile: 'roof04', mech: pick(r, G.mech), ac: 1 },
+      });
+    }
+    // Two-floor glass bridge between them, a little over halfway up
+    const yb = yp + Math.round((H - yp) * 0.58 / th) * th;
+    this.boxBlock({ x0: xs[0] + s, x1: xs[1] - s, z0: cz - m(5), z1: cz + m(5), ya: yb, yb: yb + m(9) }, 'facade12', [0.95, 1, 1.05], true);
+  }
+
+  /** A ziggurat stepping in every few floors, each terrace planted with grass and trees */
+  terraceTower(f, streets, t) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, all = { n: true, s: true, e: true, w: true };
+    const F = this.kitFacade(pick(r, ['precast', 'limestone', 'concrete', 'travertine', 'ivory']), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.4);
+    const th = m(tileMeters(F.bay)[1]), per = Math.max(3, Math.round(m(16 + t * 10) / th)), nt = 6 + Math.floor(r() * 3);
+    let fp = { ...f }, y = y0 + m(6);
+    const tiers = [];
+    for (let i = 0; i < nt && fp; i++) {
+      y += per * th;
+      tiers.push({ ...fp, y1: y, tile: F.bay, F, band: i === 0 ? { tile: pick(r, G.stone), h: m(6) } : null, roofTile: pick(r, G.grass) });
+      fp = this.inset(fp, m(4.5), all);
+    }
+    tiers[tiers.length - 1].roofTile = null;
+    this.building({ x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.05), party: 'walls50', tiers, roof: { tile: 'roof04', ac: 1 } });
+    // Trees along the middle of each terrace
+    tiers.slice(0, -1).forEach((T, i) => {
+      const N = tiers[i + 1];
+      for (const z of [(T.z0 + N.z0) / 2, (T.z1 + N.z1) / 2]) for (let x = T.x0 + m(5); x < T.x1 - m(4); x += m(10)) this.tree(x, T.y1, z, 0.55);
+      for (const x of [(T.x0 + N.x0) / 2, (T.x1 + N.x1) / 2]) for (let z = N.z0 + m(4); z < N.z1 - m(3); z += m(10)) this.tree(x, T.y1, z, 0.55);
+    });
+  }
+
+  /**
+   * The city's landmark: an observation needle. A lobby drum, a tapering twelve-sided concrete
+   * shaft, a flared pod with a glass viewing ring and a mast with beacons.
+   */
+  needleBlock(B) {
+    const m = (x) => this.m(x), y0 = this.L.curb, cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
+    const concrete = STRUCTS.overpass.slab[0], glass = 'office00', c4 = m(4);
     this.flat(this.buf('decal'), 'paveB32', B.x0, B.z0, B.x1, B.z1, y0 + m(0.05), (x, z) => [x / m(4), -z / m(4)]);
-    // Podium: a cube of silver fins
-    const half = m(29), ph = m(56);
-    const pod = { x0: cx - half, x1: cx + half, z0: cz - half, z1: cz + half };
-    for (const [ax, az, bx, bz] of [[pod.x0, pod.z1, pod.x1, pod.z1], [pod.x1, pod.z0, pod.x0, pod.z0], [pod.x1, pod.z1, pod.x1, pod.z0], [pod.x0, pod.z0, pod.x0, pod.z1]]) {
-      this.wall(fb, 'office31', ax, az, bx, bz, y0 + m(9), y0 + ph, m(6), m(6), { base: y0 });
-      this.wall(fb, 'facade12', ax, az, bx, bz, y0, y0 + m(9), m(9), m(9), { snapU: true, base: y0 });
+    // Lobby drum with a planted roof
+    this.prismSeg(cx, cz, 12, m(26), m(24), 0, y0, y0 + m(9), 'facade12', m(7.2), m(9), { top: pick(this.r, G.grass) });
+    this.collide(cx - m(18), 0, cz - m(18), cx + m(18), y0 + m(9), cz + m(18), { building: true });
+    // Shaft
+    const yS = y0 + m(250), segs = 10;
+    for (let i = 0; i < segs; i++) {
+      const ya = y0 + m(9) + (yS - y0 - m(9)) * i / segs, yb = y0 + m(9) + (yS - y0 - m(9)) * (i + 1) / segs;
+      const ra = m(12 - 5 * i / segs), rb = m(12 - 5 * (i + 1) / segs);
+      this.prismSeg(cx, cz, 12, ra, rb, 0, ya, yb, concrete, c4, c4);
+      const hh = rb * 0.68;
+      this.collide(cx - hh, ya, cz - hh, cx + hh, yb, cz + hh);
     }
-    this.collide(pod.x0, 0, pod.z0, pod.x1, y0 + ph, pod.z1, { building: true });
-    // Tapered shaft: square base turning into a square rotated 45 degrees at the top (eight triangles)
-    const yb = y0 + ph, yt = yb + m(360), rb = half * Math.SQRT2, rt = half * 0.72;
-    const Bc = [], Tc = [];
+    // Pod: underside flaring out, a viewing ring of glass, a deck and a cap
+    const yp = yS - m(18);
+    this.prismSeg(cx, cz, 12, m(7.5), m(22), 0, yp, yp + m(8), concrete, c4, c4, { bottom: concrete });
+    this.prismSeg(cx, cz, 12, m(22), m(22), 0, yp + m(8), yp + m(18), glass, m(6), m(5));
+    this.prismSeg(cx, cz, 12, m(24), m(24), 0, yp + m(18), yp + m(20), concrete, c4, c4, { bottom: concrete });
+    this.prismSeg(cx, cz, 12, m(17), m(9), 0, yp + m(20), yp + m(28), 'roof42', c4, c4, { top: 'roof04' });
+    this.collide(cx - m(15), yp, cz - m(15), cx + m(15), yp + m(28), cz + m(15), { building: true });
+    // Mast with rings and beacons
+    const ym = yp + m(28), sh = m(70);
+    this.prop('cyl6', cx, ym + sh / 2, cz, m(1.4), sh, m(1.4), [0.82, 0.84, 0.88]);
+    for (const f of [0.2, 0.45, 0.7]) this.prop('cyl', cx, ym + sh * f, cz, m(3.2 - f * 2.5), m(1), m(3.2 - f * 2.5), [0.7, 0.72, 0.76]);
+    this.prop('sphere', cx, ym + sh, cz, m(1.3), m(1.3), m(1.3), [1.5, 0.25, 0.2]);
     for (let k = 0; k < 4; k++) {
-      const a = Math.PI / 4 + k * Math.PI / 2, b = a + Math.PI / 4;
-      Bc.push(new V3(cx + Math.cos(a) * rb, yb, cz + Math.sin(a) * rb));
-      Tc.push(new V3(cx + Math.cos(b) * rt, yt, cz + Math.sin(b) * rt));
+      const a = k * Math.PI / 2;
+      this.prop('sphere', cx + Math.cos(a) * m(24.3), yp + m(19), cz + Math.sin(a) * m(24.3), m(0.6), m(0.6), m(0.6), [1.5, 0.3, 0.2]);
     }
-    const glass = cell('office00'), ts = m(12), tint = [0.92, 0.96, 1.04];
-    const face = (p) => {
-      _a.subVectors(p[1], p[0]); _b.subVectors(p[2], p[0]);
-      const nrm = new V3().crossVectors(_a, _b).normalize();
-      const ctr = new V3().add(p[0]).add(p[1]).add(p[2]).divideScalar(3);
-      if (nrm.dot(_c.set(ctr.x - cx, 0, ctr.z - cz)) < 0) nrm.negate();
-      const R = new V3(-nrm.z, 0, nrm.x).normalize();
-      const uv = p.map((q) => [(q.x * R.x + q.z * R.z) / ts, (q.y - yb) / ts]);
-      this.tri(fb, p, uv, glass, tint, 0, nrm);
-    };
-    for (let k = 0; k < 4; k++) {
-      face([Bc[k], Bc[(k + 1) % 4], Tc[k]]);
-      face([Tc[k], Bc[(k + 1) % 4], Tc[(k + 1) % 4]]);
-    }
-    // Roof parapet, spire with rings
-    const roofC = cell('roof04'), up = new V3(0, 1, 0), ruv = (p) => [p.x / m(6), -p.z / m(6)];
-    this.tri(sb, [Tc[0], Tc[1], Tc[2]], [ruv(Tc[0]), ruv(Tc[1]), ruv(Tc[2])], roofC, WHITE, 0, up);
-    this.tri(sb, [Tc[0], Tc[2], Tc[3]], [ruv(Tc[0]), ruv(Tc[2]), ruv(Tc[3])], roofC, WHITE, 0, up);
-    const sh = m(124);
-    this.prop('cyl', cx, yt + m(6), cz, m(9), m(12), m(9), [0.75, 0.77, 0.8]);
-    this.prop('cyl6', cx, yt + m(12) + sh / 2, cz, m(1.1), sh, m(1.1), [0.82, 0.84, 0.88]);
-    for (const f of [0.25, 0.5, 0.75]) this.prop('cyl', cx, yt + m(12) + sh * f, cz, m(3 - f * 2), m(1.2), m(3 - f * 2), [0.7, 0.72, 0.76]);
-    this.prop('sphere', cx, yt + m(12) + sh, cz, m(1.2), m(1.2), m(1.2), [1, 0.3, 0.25]);
-    // Collide with stacked boxes that follow the taper
-    for (let i = 0; i < 12; i++) {
-      const f0 = i / 12, f1 = (i + 1) / 12, rr = (rb * (1 - f0) + rt * f0) * 0.72;
-      this.collide(cx - rr, yb + (yt - yb) * f0, cz - rr, cx + rr, yb + (yt - yb) * f1, cz + rr, { building: true });
-    }
-    this.landmark = new V3(cx, yt, cz);
+    this.landmark = new V3(cx, yp + m(14), cz);
   }
 
   plazaBlock(B) {
     const m = (x) => this.m(x), r = this.r, g = this.buf('decal'), y0 = this.L.curb;
-    this.flat(g, 'paveB04', B.x0, B.z0 + m(3), B.x1, B.z1 - m(3), y0 + m(0.05), (x, z) => [x / m(5), -z / m(5)]);
+    // Setts, herringbone brick or pavers from the ground kits, at their own size
+    const pave = pick(this.rg, Object.values(GROUND).flatMap((k) => k.plaza).concat(['paveB04']));
+    const [pw, ph] = PANELS[pave] ? tileMeters(pave).map(m) : [m(5), m(5)];
+    this.flat(this.groundBuf(pave, true), pave, B.x0, B.z0 + m(3), B.x1, B.z1 - m(3), y0 + m(0.05), (x, z) => [x / pw, -z / ph]);
     // Granite border bands
     for (const [x0, z0, x1, z1] of [[B.x0, B.z0, B.x1, B.z0 + m(3)], [B.x0, B.z1 - m(3), B.x1, B.z1]]) {
       this.flat(g, 'paveB32', x0, z0, x1, z1, y0 + m(0.05), (x, z) => [x / m(3), -z / m(3)]);
@@ -902,10 +1630,13 @@ export class City {
         this.tree(x, y0 + m(0.8), z, 0.85);
       }
     }
-    // The red cube, balanced on one corner
-    const cx = B.x0 + (B.x1 - B.x0) * 0.82, cz = (B.z0 + B.z1) / 2, s = m(7);
-    this.prop('box', cx, y0 + s * 0.86, cz, s, s, s, [0.82, 0.08, 0.06], 0.3, 0.6155, Math.PI / 4);
-    this.collide(cx - s * 0.6, 0, cz - s * 0.6, cx + s * 0.6, y0 + s * 1.6, cz + s * 0.6, { building: true });
+    // An armillary of three great steel rings on a low drum
+    const cx = B.x0 + (B.x1 - B.x0) * 0.82, cz = (B.z0 + B.z1) / 2, s = m(6.5);
+    this.prop('cyl', cx, y0 + m(0.4), cz, m(3), m(0.8), m(3), [0.3, 0.31, 0.33]);
+    this.prop('torus', cx, y0 + m(0.8) + s, cz, s, s, s, [0.8, 0.82, 0.86], 0.5);
+    this.prop('torus', cx, y0 + m(0.8) + s, cz, s * 0.9, s * 0.9, s * 0.9, [0.8, 0.82, 0.86], 0.5 + Math.PI / 2);
+    this.prop('torus', cx, y0 + m(0.8) + s, cz, s * 0.8, s * 0.8, s * 0.8, [1.1, 0.45, 0.12], 0.5, Math.PI / 2 - 0.35);
+    this.collide(cx - s, 0, cz - s, cx + s, y0 + m(0.8) + 2 * s, cz + s, { building: true });
     this.spawn = new V3((B.x0 + B.x1) / 2 - m(14), y0, cz);
     this.spawnBlock = B;
   }
@@ -915,6 +1646,16 @@ export class City {
     const g = this.buf('decal');
     this.slab(sb, 'walls53', x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0, y0 + m(0.8), m(1.2), { tint: [0.9, 0.9, 0.88] });
     this.flat(g, pick(this.r, ['planter20', 'planter40', 'planter00']), x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0 + m(0.81), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
+  }
+
+  /** A street tree in a pit set into the sidewalk */
+  streetTree(x, z) {
+    const pits = Object.values(GROUND).flatMap((k) => k.pit), y = this.L.curb;
+    if (pits.length) {
+      const t = pick(this.rg, pits), s = this.m(1.3);
+      this.flat(this.groundBuf(t, true), t, x - s / 2, z - s / 2, x + s / 2, z + s / 2, y + this.m(0.02), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
+    }
+    this.tree(x, y, z, 0.8);
   }
 
   tree(x, y, z, scale = 1) {
@@ -948,7 +1689,7 @@ export class City {
       this.prop('cyl', cx, y0 + m(0.45), cz, R, m(0.9), R, [0.72, 0.7, 0.66]);
       this.prop('cyl', cx, y0 + m(0.92), cz, R * 0.9, m(0.08), R * 0.9, [0.22, 0.38, 0.45]);
       this.prop('cyl', cx, y0 + m(2), cz, m(1.5), m(3), m(1.5), [0.72, 0.7, 0.66]);
-      this.fountain = new V3(cx, y0 + m(3.4), cz);
+      this.fountains.push(new V3(cx, y0 + m(3.4), cz));
     }
   }
 
@@ -971,8 +1712,8 @@ export class City {
       for (let x = B.x0 + m(14); x < B.x1 - m(10); x += m(46)) {
         streetLight(x, zs0, 0, -1);
         streetLight(x + m(23), zs1, 0, 1);
-        if (B.playable && r() < 0.55) this.tree(x + m(10), y0, zs0 + m(0.6), 0.8);
-        if (B.playable && r() < 0.55) this.tree(x + m(33), y0, zs1 - m(0.6), 0.8);
+        if (B.playable && r() < 0.55) this.streetTree(x + m(10), zs0 + m(0.6));
+        if (B.playable && r() < 0.55) this.streetTree(x + m(33), zs1 - m(0.6));
       }
       for (let z = B.z0 + m(20); z < B.z1 - m(10); z += m(60)) {
         streetLight(xs0, z, -1, 0);
@@ -992,26 +1733,145 @@ export class City {
       // Subway entrance on some corners
       if (B.playable && r() < 0.18) {
         const x = B.x0 - m(1.5), z = B.z0 + m(6);
-        this.prop('box', x, y0 + m(0.55), z, m(1.8), m(1.1), m(5), [0.12, 0.28, 0.18]);
+        this.prop('box', x, y0 + m(0.55), z, m(1.8), m(1.1), m(5), [0.16, 0.18, 0.22]);
         for (const dz of [-1, 1]) {
-          this.prop('cyl6', x, y0 + m(1.8), z + dz * m(2.3), m(0.07), m(1.4), m(0.07), [0.12, 0.28, 0.18]);
-          this.prop('ico', x, y0 + m(2.6), z + dz * m(2.3), m(0.28), m(0.28), m(0.28), [0.3, 1.1, 0.45]);
+          this.prop('cyl6', x, y0 + m(1.8), z + dz * m(2.3), m(0.07), m(1.4), m(0.07), [0.16, 0.18, 0.22]);
+          this.prop('box', x, y0 + m(2.7), z + dz * m(2.3), m(0.5), m(0.5), m(0.5), [0.35, 0.65, 1.4]);
         }
       }
     }
-    // Orange-and-white steam stacks at a few intersections
-    for (let i = 0; i < 9; i++) {
-      const a = L.aves[1 + Math.floor(r() * 9)], s = L.st(Math.floor(r() * 10));
-      const x = a.r0 + m(2.5) + r() * (a.r1 - a.r0 - m(5)), z = s.z1 + m(14) + r() * m(30);
+    // Kiosks with glowing screens on some avenue sidewalks
+    const rd = this.rd, play = L.blocks.filter((B) => B.playable);
+    for (let i = 0; i < 18; i++) {
+      const B = pick(rd, play), w = rd() < 0.5;
+      const x = w ? B.x0 - L.aveWalk + m(2.6) : B.x1 + L.aveWalk - m(2.6), z = rd() < 0.5 ? B.z0 + m(10) : B.z1 - m(10);
       this.cur = this.chunkOf(x, z);
-      for (let k = 0; k < 4; k++) this.prop('cyl', x, m(0.45) + k * m(0.9), z, m(0.45), m(0.9), m(0.45), k % 2 ? [1, 1, 1] : [1.1, 0.42, 0.08]);
-      this.steam.push({ pos: new V3(x, m(3.6), z), t: r() * 3, stack: true });
+      this.prop('box', x, y0 + m(1.2), z, m(2.8), m(2.4), m(1), [0.12, 0.13, 0.15]);
+      this.prop('box', x, y0 + m(2.5), z, m(3.2), m(0.2), m(1.4), [0.2, 0.21, 0.23]);
+      for (const d of [-1, 1]) {
+        const zf = z + d * m(0.53), hw = m(1.15), yb = y0 + m(0.9);
+        const a = d > 0 ? x - hw : x + hw, b = d > 0 ? x + hw : x - hw;
+        this.sign('screen', 1 + Math.floor(rd() * 7), [[a, yb, zf], [b, yb, zf], [b, yb + hw, zf], [a, yb + hw, zf]], [0, 0, d]);
+      }
+      this.collide(x - m(1.4), 0, z - m(0.5), x + m(1.4), y0 + m(2.6), z + m(0.5));
     }
     // Barricade closing off the north edge of the playable area
     const zb = L.z0 + m(1);
     for (let x = L.x0; x < L.x1; x += m(4)) {
       this.cur = this.chunkOf(x, zb);
       this.prop('box', x + m(2), m(0.55), zb, m(3.6), m(1.1), m(0.7), (Math.floor((x - L.x0) / m(4)) % 2) ? [1.1, 0.45, 0.1] : [1, 1, 1]);
+    }
+  }
+
+  // ---- elevated railway and highway ----------------------------------------------
+
+  /**
+   * An elevated railway down an avenue, after the old Els: double track on a deck carried by
+   * lattice girders, on steel bents every 15 m. The deck clears the mech, which can jump up
+   * onto it and walk along it, and spiders perch on it like a roof.
+   */
+  buildEl() {
+    const L = this.L, m = (x) => this.m(x), rs = this.rs, asp = (t) => cell(t).aspect;
+    const R = STRUCTS.railway, T = STRUCTS.steeltruss;
+    const track = pick(rs, R.track), girder = pick(rs, R.girder), col = pick(rs, R.column), bent = pick(rs, R.bent);
+    const lattice = pick(rs, R.truss.concat(T.truss)), rail = pick(rs, R.rail);
+    const a = L.aves[3], cx = (a.r0 + a.r1) / 2, hw = m(5), cw = m(0.4), xc = hw - m(0.7);
+    // Bents carry a cap beam (yb - 1 m to yb), lattice girders (yb to yl) and the deck slab (yl to yt)
+    const yb = m(14.5), yl = m(16.5), yt = m(17), yr = yt + m(1.2);
+    const z0 = L.zN + m(20), z1 = L.z1 - m(14), n = Math.round((z1 - z0) / m(15)), sp = (z1 - z0) / n;
+    const tl = (2 * hw) / asp(track), plate = [girder, m(3), m(3)];
+    for (let i = 0; i < n; i++) {
+      const za = z0 + i * sp, zb = za + sp;
+      this.cur = this.chunkOf(cx, (za + zb) / 2);
+      this.sbox(cx - hw, yl, za, cx + hw, yt, zb, {
+        ew: [girder, (yt - yl) * asp(girder), yt - yl], ns: i === 0 || i === n - 1 ? [girder, 0, 0] : null, bottom: plate,
+      });
+      this.flat(this.bufFor(track), track, cx - hw, za, cx + hw, zb, yt, (x, z) => [(x - cx + hw) / (2 * hw), -z / tl]);
+      for (const s of [-1, 1]) {
+        const x = cx + s * hw;
+        this.card(lattice, x, za, x, zb, yb, yl, (yl - yb) * asp(lattice));
+        this.card(rail, x, za, x, zb, yt, yr, (yr - yt) * asp(rail));
+        // Railings stop the mech walking off; it can jump them
+        this.collide(s < 0 ? x : x - m(0.25), yt, za, s < 0 ? x + m(0.25) : x, yt + m(1.6), zb);
+      }
+      this.collide(cx - hw, yb, za, cx + hw, yt, zb, { building: true });
+    }
+    // Bents: a pair of steel columns under a cap beam, braced by a steel frame
+    for (let i = 0; i <= n; i++) {
+      const z = z0 + i * sp;
+      this.cur = this.chunkOf(cx, z);
+      for (const s of [-1, 1]) {
+        const x = cx + s * xc, face = [col, 0, (2 * cw) / asp(col)];
+        this.sbox(x - cw, 0, z - cw, x + cw, yb - m(1), z + cw, { ns: face, ew: face });
+        this.collide(x - cw, 0, z - cw, x + cw, yb, z + cw);
+      }
+      this.sbox(cx - hw, yb - m(1), z - m(0.45), cx + hw, yb, z + m(0.45), { ns: [girder, m(1) * asp(girder), m(1)], ew: [girder, 0, 0], bottom: plate });
+      this.card(bent, cx - hw, z, cx + hw, z, yb - (2 * hw) / asp(bent), yb);
+    }
+  }
+
+  /**
+   * An elevated expressway over the east waterfront: four lanes on a deck
+   * carried by girders on hammerhead piers, with lamps along its barriers. At the south end it
+   * comes down to the esplanade on a ramp the mech can walk up.
+   */
+  buildHighway() {
+    const L = this.L, m = (x) => this.m(x), rs = this.rs, asp = (t) => cell(t).aspect;
+    const K = STRUCTS[pick(rs, ['overpass', 'viaduct'])];
+    const deck = pick(rs, K.deck), barrier = pick(rs, K.barrier), girder = pick(rs, K.girder), pier = pick(rs, K.pier);
+    const slab = K.slab[0], lamp = pick(rs, STRUCTS.industrial.lamp);
+    const cx = L.x1 + m(18), hw = m(9), y0 = L.curb;
+    // Girders (yg to ys) under the deck slab (ys to yt), barriers bh tall, piers every 32 m
+    const yg = m(14.4), ys = m(16.3), yt = m(17), bh = m(1.1), bw = m(0.45), gx = m(5.5), gw = m(0.35);
+    const dl = (2 * hw) / asp(deck), fs = [slab, m(4), m(4)], bs = [barrier, bh * asp(barrier), bh];
+    const zA = L.zN - m(300), zR = L.z1 - m(190), zG = L.z1 - m(40);
+    this.ramp = { z0: zR, z1: zG, x0: cx - hw, x1: cx + hw };
+    const n = Math.round((zR - zA) / m(32)), sp = (zR - zA) / n;
+    const barriers = (za, zb, top) => {
+      for (const s of [-1, 1]) {
+        const x0 = s < 0 ? cx - hw : cx + hw - bw, x1 = x0 + bw;
+        this.sbox(x0, top, za, x1, top + bh, zb, { ew: bs, top: fs });
+        this.collide(x0, top, za, x1, top + m(1.6), zb);
+      }
+    };
+    for (let i = 0; i < n; i++) {
+      const za = zA + i * sp, zb = za + sp;
+      this.cur = this.chunkOf(cx, (za + zb) / 2);
+      this.sbox(cx - hw, ys, za, cx + hw, yt, zb, { ew: fs, bottom: fs, ns: i === 0 ? fs : null });
+      this.flat(this.bufFor(deck), deck, cx - hw, za, cx + hw, zb, yt, (x, z) => [(x - cx + hw) / (2 * hw), -z / dl]);
+      for (const s of [-1, 1]) this.sbox(cx + s * gx - gw, yg, za, cx + s * gx + gw, ys, zb, { ew: [girder, (ys - yg) * asp(girder), ys - yg] });
+      barriers(za, zb, yt);
+      this.collide(cx - hw, yg, za, cx + hw, yt, zb, { building: true });
+      // A pier at the north end of each span, and a lamp over every other span
+      this.solid(pier, slab, cx, y0, za, m(17), yg - y0, m(2.6));
+      this.collide(cx - m(2), 0, za - m(1.3), cx + m(2), yg, za + m(1.3));
+      if (i % 2 === 0) this.crossCard(lamp, cx + (i % 4 ? 1 : -1) * (hw - bw / 2), yt + bh, (za + zb) / 2, m(9));
+    }
+    // The ramp: a filled embankment between retaining walls, collided as a flight of shallow steps
+    const yAt = (z) => y0 + (yt - y0) * (zG - z) / (zG - zR);
+    const nr = Math.ceil((zG - zR) / m(2.5)), sr = (zG - zR) / nr;
+    this.cur = this.chunkOf(cx, zR);
+    this.wall(this.bufFor(slab), slab, cx + hw, zR, cx - hw, zR, 0, yt, m(4), m(4), { ao: false });
+    for (let i = 0; i < nr; i++) {
+      const za = zR + i * sr, zb = za + sr, ya = yAt(za), yb = yAt(zb), xw = cx - hw, xe = cx + hw;
+      this.cur = this.chunkOf(cx, za);
+      const nz = (ya - yb) / sr, nl = Math.hypot(1, nz);
+      this.quad(this.bufFor(deck), [[xw, yb, zb], [xe, yb, zb], [xe, ya, za], [xw, ya, za]], [0, 1 / nl, nz / nl],
+        [[0, -zb / dl], [1, -zb / dl], [1, -za / dl], [0, -za / dl]], cell(deck), WHITE);
+      const sb = this.bufFor(slab), bb = this.bufFor(barrier), u = bh * asp(barrier);
+      this.skew(sb, slab, xw, za, xw, zb, 0, ya, 0, yb, m(4), m(4), { world: true });
+      this.skew(sb, slab, xe, zb, xe, za, 0, yb, 0, ya, m(4), m(4), { world: true });
+      // Barriers: outer and inner faces, and their tops
+      this.skew(bb, barrier, xw, za, xw, zb, ya, ya + bh, yb, yb + bh, u, bh);
+      this.skew(bb, barrier, xw + bw, zb, xw + bw, za, yb, yb + bh, ya, ya + bh, u, bh);
+      this.skew(bb, barrier, xe, zb, xe, za, yb, yb + bh, ya, ya + bh, u, bh);
+      this.skew(bb, barrier, xe - bw, za, xe - bw, zb, ya, ya + bh, yb, yb + bh, u, bh);
+      for (const x of [xw, xe - bw]) {
+        this.quad(sb, [[x, yb + bh, zb], [x + bw, yb + bh, zb], [x + bw, ya + bh, za], [x, ya + bh, za]], [0, 1, 0],
+          [[0, -zb / m(4)], [bw / m(4), -zb / m(4)], [bw / m(4), -za / m(4)], [0, -za / m(4)]], cell(slab), WHITE);
+        this.collide(x, 0, za, x + bw, ya + m(1.6), zb);
+      }
+      this.collide(xw, 0, za, xe, ya, zb);
     }
   }
 
@@ -1062,10 +1922,14 @@ export class City {
     const e = m(0.5);
     railRun(X0 + e, L.zN, X0 + e, Z1 - e);
     railRun(X1 - e, L.zN, X1 - e, Z1 - e);
-    railRun(X0 + e, Z1 - e, X1 - e, Z1 - e);
+    this.balustrade(X0 + e, X1 - e, Z1 - e);
     for (let i = 0; i < 26; i++) {
-      const side = r() < 0.5 ? X0 + m(8) : X1 - m(8), z = L.zN + r() * (Z1 - L.zN - m(10));
+      let side = r() < 0.5 ? X0 + m(8) : X1 - m(8);
+      const z = L.zN + r() * (Z1 - L.zN - m(10));
       if (z < L.z0) continue;
+      // Trees under the highway ramp move to the inner edge of the esplanade
+      const R = this.ramp;
+      if (R && side > R.x0 && side < R.x1 && z > R.z0 - m(6) && z < R.z1 + m(6)) side = L.x1 + m(3);
       this.cur = this.chunkOf(side, z);
       this.tree(side, y0, z, 0.9);
     }
@@ -1099,11 +1963,13 @@ export class City {
 
   buildScenery() {
     const L = this.L, m = (x) => this.m(x), r = this.r;
-    // Distant skylines: Jersey City across the Hudson, Brooklyn across the East River, midtown to the north
+    // Distant skylines: the shores across both rivers, and the uptown towers to the north
     const skyline = (x0, x1, z0, z1, n, hmin, hmax) => {
       for (let i = 0; i < n; i++) {
         const w = m(30 + r() * 50), d = m(30 + r() * 40), x = x0 + r() * (x1 - x0), z = z0 + r() * (z1 - z0);
-        const tile = pick(r, r() < 0.7 ? G.officeGlass : G.prewar), [tw, th] = tileMeters(tile);
+        const q = r();
+        const tile = q < 0.4 ? pick(r, G.officeGlass) : q < 0.6 ? pick(r, G.prewar) : pick(r, KITS[pick(r, KIT_STYLE.far)].bays);
+        const [tw, th] = tileMeters(tile);
         const h = m(hmin + Math.pow(r(), 2) * (hmax - hmin));
         this.cur = 'far';
         this.building({
@@ -1125,73 +1991,213 @@ export class City {
     skyline(L.x1 + m(650), L.x1 + m(1100), L.zN - m(200), L.z1 + m(300), 40, 15, 150);
     skyline(L.x0 + m(60), L.x1 - m(60), L.zN - m(500), L.zN - m(60), 60, 20, 120);
     skyline(L.x0 + m(100), L.x1 - m(100), L.zN - m(1500), L.zN - m(500), 70, 40, 280);
-    // Midtown's tallest: a stepped tower with a spire, far to the north
+    // The skyline's tallest, far to the north: a supertall twisting a quarter turn as it rises
     this.cur = 'far';
     const ex = L.x0 + (L.x1 - L.x0) * 0.62, ez = L.zN - m(2200);
-    const fb = this.buf('facade', 'far');
-    let w = m(60), y = 0;
-    for (const [hh, k] of [[86, 1], [180, 0.8], [90, 0.55], [40, 0.35]]) {
-      const ww = w * k;
-      for (const [ax, az, bx, bz] of [[ex - ww, ez + ww, ex + ww, ez + ww], [ex + ww, ez - ww, ex - ww, ez - ww], [ex + ww, ez + ww, ex + ww, ez - ww], [ex - ww, ez - ww, ex - ww, ez + ww]]) {
-        this.wall(fb, 'office20', ax, az, bx, bz, y, y + m(hh), m(12), m(12), { snapU: true, ao: false });
-      }
-      y += m(hh);
+    let y = 0;
+    for (let i = 0; i < 14; i++) {
+      const h = m(34), k0 = 1 - (i / 14) * 0.35, k1 = 1 - ((i + 1) / 14) * 0.35;
+      this.prismSeg(ex, ez, 4, m(62) * k0, m(62) * k1, Math.PI / 4 + (i / 14) * 1.4, y, y + h, 'office20', m(12), m(12), { top: i === 13 ? 'roof04' : null });
+      y += h;
     }
-    this.prop('cone4', ex, y + m(30), ez, m(8), m(60), m(8), [0.7, 0.72, 0.74], Math.PI / 4, 0, 0, 'far');
+    this.prop('cyl6', ex, y + m(45), ez, m(2), m(90), m(2), [0.72, 0.74, 0.76], 0, 0, 0, 'far');
     this.colliders.length = save; // scenery has no collision
-    // Lady Liberty out in the harbor
-    const sx = L.x0 + (L.x1 - L.x0) * 0.3, sz = L.z1 + m(1400), green = [0.45, 0.66, 0.58], stone = [0.62, 0.58, 0.52];
-    const C = 'far';
-    this.prop('cyl6', sx, L.water + m(6), sz, m(60), m(12), m(60), stone, 0, 0, 0, C);
-    this.prop('box', sx, L.water + m(26), sz, m(28), m(28), m(28), stone, 0, 0, 0, C);
-    this.prop('box', sx, L.water + m(52), sz, m(18), m(26), m(18), stone, 0, 0, 0, C);
-    this.prop('cone', sx, L.water + m(85), sz, m(9), m(42), m(9), green, 0, 0, 0, C);
-    this.prop('sphere', sx, L.water + m(108), sz, m(3.6), m(4.2), m(3.6), green, 0, 0, 0, C);
-    this.prop('cyl6', sx + m(4.5), L.water + m(116), sz, m(1.4), m(16), m(1.4), green, 0, 0, -0.18, C);
-    this.prop('cone', sx + m(6), L.water + m(127), sz, m(1.8), m(4), m(1.8), [1.3, 1.0, 0.45], Math.PI, 0, 0, C);
-    for (let i = 0; i < 7; i++) {
-      const a = -Math.PI / 2 + (i - 3) * 0.32;
-      this.prop('cone', sx + Math.sin(a) * m(3), L.water + m(113), sz + Math.cos(a) * m(-3), m(0.5), m(4), m(0.5), green, 0, 0, a, C);
+    // A lighthouse on a rocky islet out in the harbor, and a line of wind turbines beyond it
+    const sx = L.x0 + (L.x1 - L.x0) * 0.3, sz = L.z1 + m(1400), C = 'far', Wl = L.water, rock = [0.36, 0.34, 0.31];
+    this.prop('cyl6', sx, Wl + m(4), sz, m(46), m(8), m(46), rock, 0, 0, 0, C);
+    for (let i = 0; i < 9; i++) {
+      const a = i * 0.7, d = m(30 + (i % 3) * 8);
+      this.prop('ico', sx + Math.cos(a) * d, Wl + m(5), sz + Math.sin(a) * d, m(9), m(6), m(9), rock, a, 0, 0, C);
     }
-    // A suspension bridge across the East River
+    this.prop('box', sx + m(14), Wl + m(12), sz + m(6), m(12), m(8), m(9), [0.85, 0.83, 0.78], 0.3, 0, 0, C);
+    this.prop('cone4', sx + m(14), Wl + m(18), sz + m(6), m(9), m(4), m(7), [0.45, 0.16, 0.12], 0.3 + Math.PI / 4, 0, 0, C);
+    for (let k = 0; k < 6; k++) {
+      const r = m(6 - k * 0.45);
+      this.prop('cyl', sx, Wl + m(8) + k * m(7) + m(3.5), sz, r, m(7), r, k % 2 ? [0.75, 0.12, 0.1] : [0.92, 0.92, 0.9], 0, 0, 0, C);
+    }
+    const yl = Wl + m(50);
+    this.prop('cyl', sx, yl + m(0.4), sz, m(5), m(0.8), m(5), [0.2, 0.2, 0.22], 0, 0, 0, C);
+    this.prop('cyl', sx, yl + m(3), sz, m(3), m(4.4), m(3), [1.6, 1.45, 1.0], 0, 0, 0, C);
+    this.prop('cone', sx, yl + m(6.8), sz, m(3.6), m(3.2), m(3.6), [0.45, 0.16, 0.12], 0, 0, 0, C);
+    // Turbines: towers and nacelles as props, rotors instanced and turned every frame
+    const blades = [];
+    const part = (sx_, sy, sz_, x, y, z, rz, c) => {
+      const g = new THREE.BoxGeometry(sx_, sy, sz_);
+      g.translate(x, y, z); g.rotateZ(rz);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(g.attributes.position.count).fill(c).flat(), 3));
+      blades.push(g);
+    };
+    for (let k = 0; k < 3; k++) part(m(2.6), m(48), m(0.5), 0, m(25), 0, (k * Math.PI * 2) / 3, [0.93, 0.94, 0.95]);
+    part(m(3), m(3), m(3), 0, 0, m(0.5), 0, [0.9, 0.9, 0.92]);
+    const list = [];
+    for (let i = 0; i < 7; i++) {
+      const x = L.x0 + (L.x1 - L.x0) * (0.42 + i * 0.1), z = L.z1 + m(2000 + (i % 2) * 160), hT = m(100);
+      this.prop('cyl', x, Wl + hT / 2, z, m(2.4), hT, m(2.4), [0.9, 0.9, 0.92], 0, 0, 0, C);
+      this.prop('box', x, Wl + hT + m(1.5), z - m(2), m(4), m(4), m(10), [0.88, 0.88, 0.9], 0, 0, 0, C);
+      list.push({ pos: new V3(x, Wl + hT + m(1.5), z + m(3.4)), yaw: 0, speed: 0.45 + (i % 3) * 0.06, phase: i * 1.7 });
+    }
+    const mesh = new THREE.InstancedMesh(mergeBoxes(blades), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), list.length);
+    this.scene.add(mesh);
+    this.rotors = { mesh, list, t: 0 };
+    // A suspension bridge across the east river, and a cable-stayed one across the west river to the north
     this.bridge(L.x1 + L.prom, L.z0 + m(160));
+    this.stayBridge(L.zN + m(60));
   }
 
+  /**
+   * A bridge deck running along x from xa to xb (xa < xb) centered on z, hw wide each way, its top
+   * at yAt(x), in segments so it can rise and fall. o: { deck, fascia, depth, under, barrier,
+   * truss, trussDepth }: the road on top, the fascia tile on its edges (depth deep), the tile
+   * underneath, barrier tile on the edges and an optional stiffening truss card under each edge.
+   */
+  deckRun(xa, xb, z, hw, yAt, o) {
+    const m = (x) => this.m(x), asp = (t) => cell(t).aspect, n = Math.max(1, Math.round((xb - xa) / m(10)));
+    const dl = (2 * hw) / asp(o.deck), bh = m(1), bw = m(0.45), d = o.depth, zs = z - hw, zn = z + hw;
+    const fb = this.bufFor(o.fascia), ub = this.bufFor(o.under), bb = this.bufFor(o.barrier), db = this.bufFor(o.deck);
+    const bu = bh * asp(o.barrier), fu = d * asp(o.fascia);
+    for (let i = 0; i < n; i++) {
+      const x0 = xa + (xb - xa) * i / n, x1 = xa + (xb - xa) * (i + 1) / n, y0 = yAt(x0), y1 = yAt(x1);
+      const s = (y1 - y0) / (x1 - x0), nl = Math.hypot(s, 1);
+      this.quad(db, [[x0, y0, zn], [x1, y1, zn], [x1, y1, zs], [x0, y0, zs]], [-s / nl, 1 / nl, 0],
+        [[1, x0 / dl], [1, x1 / dl], [0, x1 / dl], [0, x0 / dl]], cell(o.deck), WHITE);
+      this.quad(ub, [[x0, y0 - d, zs], [x1, y1 - d, zs], [x1, y1 - d, zn], [x0, y0 - d, zn]], [0, -1, 0],
+        [[x0 / m(4), zs / m(4)], [x1 / m(4), zs / m(4)], [x1 / m(4), zn / m(4)], [x0 / m(4), zn / m(4)]], cell(o.under), WHITE);
+      // Fascia and barriers on both edges: outer faces, inner faces and barrier tops
+      this.skew(fb, o.fascia, x0, zn, x1, zn, y0 - d, y0, y1 - d, y1, fu, d);
+      this.skew(fb, o.fascia, x1, zs, x0, zs, y1 - d, y1, y0 - d, y0, fu, d);
+      this.skew(bb, o.barrier, x0, zn, x1, zn, y0, y0 + bh, y1, y1 + bh, bu, bh);
+      this.skew(bb, o.barrier, x1, zn - bw, x0, zn - bw, y1, y1 + bh, y0, y0 + bh, bu, bh);
+      this.skew(bb, o.barrier, x1, zs, x0, zs, y1, y1 + bh, y0, y0 + bh, bu, bh);
+      this.skew(bb, o.barrier, x0, zs + bw, x1, zs + bw, y0, y0 + bh, y1, y1 + bh, bu, bh);
+      for (const zb of [zs, zn - bw]) {
+        this.quad(ub, [[x0, y0 + bh, zb + bw], [x1, y1 + bh, zb + bw], [x1, y1 + bh, zb], [x0, y0 + bh, zb]], [0, 1, 0],
+          [[x0 / m(4), 0], [x1 / m(4), 0], [x1 / m(4), bw / m(4)], [x0 / m(4), bw / m(4)]], cell(o.under), WHITE);
+      }
+      if (o.truss) {
+        const tb = this.bufFor(o.truss, true), td = o.trussDepth, tu = td * asp(o.truss);
+        for (const zt of [zs, zn]) this.skew(tb, o.truss, x0, zt, x1, zt, y0 - d - td, y0 - d, y1 - d - td, y1 - d, tu, td);
+      }
+    }
+  }
+
+  /** Height (0..1) of the underside of a piece's lowest crossbeam: where its middle first turns solid */
+  crossbeam(name) {
+    for (let v = 0.02; v < 1; v += 0.005) if (!this.opening(name, v)) return v < 0.15 ? 0.5 : v;
+    return 0.5;
+  }
+
+  /** A pile cap in the water under a tower or pylon, from the footing kit */
+  footing(x, z, wx, wz) {
+    const m = (v) => this.m(v), W = this.L.water, F = STRUCTS.footing, cap = pick(this.rs, F.block);
+    this.sbox(x - wx / 2, W - m(4), z - wz / 2, x + wx / 2, W + m(2), z + wz / 2,
+      { ns: [cap, m(6) * cell(cap).aspect, m(6), true], ew: [cap, m(6) * cell(cap).aspect, m(6), true], top: [STRUCTS.suspension.slab[0], m(4), m(4)] });
+  }
+
+  /**
+   * A suspension bridge across the east river: towers from the suspension kit on footings in
+   * the water, a deck stiffened by trusses, main cables over the towers and hangers down to the
+   * deck, and an approach rising from the seawall on piers.
+   */
   bridge(xs, z) {
-    const m = (x) => this.m(x), C = 'bridge', W = this.L.water;
-    const stone = [0.66, 0.6, 0.5], steel = [0.28, 0.3, 0.32];
-    const t1 = xs + m(320), t2 = t1 + m(486), end = t2 + m(330), deck = W + m(40), th = W + m(84), w = m(26);
-    const rampEnd = t1 - m(120), rampLen = Math.hypot(rampEnd - xs, deck - this.L.curb);
-    this.prop('box', (t1 - m(120) + end) / 2, deck, z, end - rampEnd, m(3), w, steel, 0, 0, 0, C);
-    this.prop('box', (xs + rampEnd) / 2, (deck + this.L.curb) / 2, z, rampLen, m(3), w, steel, 0, 0, Math.atan2(deck - this.L.curb, rampEnd - xs), C);
-    for (const tx of [t1, t2]) {
-      this.prop('box', tx, (W + th) / 2, z, m(24), th - W, m(42), stone, 0, 0, 0, C);
-      this.prop('box', tx, deck + m(18), z - m(10), m(24.4), m(30), m(7), [0.18, 0.17, 0.16], 0, 0, 0, C);
-      this.prop('box', tx, deck + m(18), z + m(10), m(24.4), m(30), m(7), [0.18, 0.17, 0.16], 0, 0, 0, C);
-      this.prop('cone4', tx, th + m(4), z, m(18), m(8), m(30), stone, Math.PI / 4, 0, 0, C);
+    const m = (x) => this.m(x), W = this.L.water, rs = this.rs, K = STRUCTS.suspension, asp = (t) => cell(t).aspect;
+    this.cur = 'bridge';
+    const t1 = xs + m(320), t2 = t1 + m(486), end = t2 + m(330), dY = W + m(40), hw = m(9.5);
+    const rampEnd = t1 - m(120), slab = K.slab[0], steel = [0.24, 0.25, 0.27];
+    // Towers: the H tower, tall enough that the deck passes under its lower crossbeam
+    const tower = K.tower.find((t) => OUTLINES[t].length > 1) || K.tower[0];
+    const yB = W + m(2), vc = this.crossbeam(tower), Ht = (dY - yB + m(9)) / vc;
+    const gap = Math.min(this.opening(tower, (dY - yB) / Ht), this.opening(tower, (dY - yB - m(8)) / Ht)) || 0.3;
+    const Wt = Math.max(Ht * asp(tower), (2 * hw + m(3)) / gap), top = yB + Ht - m(2);
+    for (const t of [t1, t2]) {
+      this.footing(t, z, m(18), Wt + m(6));
+      this.solid(tower, slab, t, yB, z, Wt, Ht, m(12), Math.PI / 2, m(6));
     }
-    // Main cables (catenaries) and suspenders as line segments
-    const pts = [], sus = [];
-    const curve = (xa, ya, xb, yb, sag) => {
-      for (let i = 0; i <= 24; i++) {
-        const f = i / 24, x = xa + (xb - xa) * f, y = ya + (yb - ya) * f - sag * 4 * f * (1 - f);
-        pts.push(new V3(x, y, 0));
-      }
-    };
-    curve(rampEnd, deck + m(2), t1, th, m(18));
-    curve(t1, th, t2, th, m(36));
-    curve(t2, th, end, deck + m(2), m(18));
-    const verts = [];
-    for (const dz of [-m(11), m(11)]) {
+    // Deck: the approach rises from the seawall on piers, then runs level over the river
+    const deck = pick(rs, K.deck), o = { deck, fascia: K.barrier[0], depth: m(1.2), under: slab, barrier: pick(rs, K.barrier), truss: pick(rs, K.truss), trussDepth: m(6) };
+    const yAt = (x) => (x < rampEnd ? this.L.curb + (dY - this.L.curb) * (x - xs) / (rampEnd - xs) : dY);
+    this.deckRun(xs, rampEnd, z, hw, yAt, { ...o, truss: null, depth: m(2.5), fascia: slab });
+    this.deckRun(rampEnd, end, z, hw, yAt, o);
+    const pier = pick(rs, STRUCTS.footing.pier);
+    for (let x = xs + m(50); x < rampEnd - m(20); x += m(50)) this.solid(pier, slab, x, W - m(1), z, 2 * hw + m(2), yAt(x) - m(2.5) - W + m(1), m(3), Math.PI / 2);
+    // Anchorages at both ends of the main cables
+    for (const [x0, x1] of [[rampEnd - m(30), rampEnd], [end - m(30), end]]) {
+      this.sbox(x0, W - m(2), z - hw - m(4), x1, dY - m(1.2), z + hw + m(4), { ns: [slab, m(5), m(5)], ew: [slab, m(5), m(5)] });
+    }
+    // Main cables: catenaries from the anchorages over the tower tops, and hangers down to the deck
+    const cableT = pick(rs, K.cable);
+    for (const zc of [z - hw - m(1), z + hw + m(1)]) {
+      const pts = [], hang = [];
+      const curve = (xa, ya, xb, yb, sag) => {
+        for (let i = pts.length ? 1 : 0; i <= 24; i++) {
+          const f = i / 24, p = new V3(xa + (xb - xa) * f, ya + (yb - ya) * f - sag * 4 * f * (1 - f), zc);
+          pts.push(p);
+        }
+      };
+      curve(rampEnd - m(15), dY + m(3), t1, top, m(18));
+      curve(t1, top, t2, top, m(38));
+      curve(t2, top, end - m(15), dY + m(3), m(18));
+      this.sbox(rampEnd - m(20), dY, zc - m(1.5), rampEnd - m(10), dY + m(5), zc + m(1.5), { ns: [slab, m(4), m(4)], ew: [slab, m(4), m(4)], top: [slab, m(4), m(4)] });
+      this.sbox(end - m(20), dY, zc - m(1.5), end - m(10), dY + m(5), zc + m(1.5), { ns: [slab, m(4), m(4)], ew: [slab, m(4), m(4)], top: [slab, m(4), m(4)] });
+      this.cable(cableT, pts, m(0.9), m(8));
       for (let i = 0; i < pts.length - 1; i++) {
-        verts.push(pts[i].x, pts[i].y, z + dz, pts[i + 1].x, pts[i + 1].y, z + dz);
-        if (pts[i].y > deck + m(3) && pts[i].x > rampEnd) sus.push(pts[i].x, pts[i].y, z + dz, pts[i].x, deck, z + dz);
+        const p = pts[i];
+        if (p.y > dY + m(3) && p.x > rampEnd && p.x < end - m(20) && Math.abs(p.x - t1) > m(8) && Math.abs(p.x - t2) > m(8)) hang.push(p);
+      }
+      for (const p of hang) this.prop('pole', p.x, (p.y + dY) / 2, zc, m(0.15), p.y - dY, m(0.15), steel, 0, 0, 0, 'bridge');
+    }
+  }
+
+  /**
+   * A cable-stayed bridge across the west river, north of the playable city: A-frame pylons from the
+   * cable-stay kit on footings, fans of stays down to the deck, and approaches on piers.
+   */
+  stayBridge(z) {
+    const L = this.L, m = (x) => this.m(x), W = L.water, rs = this.rs, K = STRUCTS.cablestay, asp = (t) => cell(t).aspect;
+    this.cur = 'bridge';
+    const xs = L.x0 - L.prom, xe = L.x0 - m(640), dY = W + m(30), hw = m(9), run = m(110);
+    const slab = K.slab[0], pylon = K.pylon.find((t) => OUTLINES[t].length > 1) || K.pylon[0];
+    // Up from the city's seawall, level over the river, down to the far shore
+    const yAt = (x) => (x > xs - run ? L.curb + (dY - L.curb) * (xs - x) / run : x < xe + run ? dY * (x - xe) / run : dY);
+    this.deckRun(xe, xs, z, hw, yAt, { deck: pick(rs, K.deck), fascia: pick(rs, K.girder), depth: m(2.5), under: slab, barrier: pick(rs, K.barrier) });
+    const pier = pick(rs, K.pier);
+    for (const x of [xs - m(55), xs - run, xe + run, xe + m(55)]) {
+      this.solid(pier, slab, x, W - m(1), z, 2 * hw + m(2), yAt(x) - m(2.5) - W + m(1), m(3), Math.PI / 2);
+    }
+    // Pylons: the deck passes under the crossbar, the stays fan out from above the opening
+    const yB = W + m(2), vc = this.crossbeam(pylon), Ht = Math.max((dY - yB + m(12)) / vc, m(115));
+    const gap = this.opening(pylon, (dY - yB - m(3)) / Ht) || 0.4;
+    const Wt = Math.max(Ht * asp(pylon), (2 * hw + m(4)) / gap);
+    let vt = vc;
+    for (let v = vc; v < 0.99; v += 0.005) if (this.opening(pylon, v)) vt = v;
+    const stay = [0.78, 0.8, 0.82];
+    for (const xp of [xs - m(170), xe + m(170)]) {
+      this.footing(xp, z, m(14), Wt + m(6));
+      this.solid(pylon, slab, xp, yB, z, Wt, Ht, m(7), Math.PI / 2, m(6));
+      for (let k = 0; k < 8; k++) {
+        const ya = yB + Ht * (Math.max(vt + 0.03, 0.8) + (0.96 - Math.max(vt + 0.03, 0.8)) * (k / 7));
+        for (const dir of [-1, 1]) {
+          const x = xp + dir * m(24 + k * 13);
+          for (const zz of [z - hw + m(0.6), z + hw - m(0.6)]) this.strut('pole', new V3(xp, ya, z), new V3(x, yAt(x), zz), m(0.18), stay, 'bridge');
+        }
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(verts.concat(sus), 3));
-    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x3a3e44 }));
-    this.scene.add(lines);
+  }
+
+  /** A stone balustrade along the water at z from x0 to x1, with pedestals carrying lamps */
+  balustrade(x0, x1, z) {
+    const m = (v) => this.m(v), y0 = this.L.curb, S = STRUCTS.stonework, rs = this.rs;
+    const bal = pick(rs, S.balustrade), ped = pick(rs, S.block), coping = pick(rs, S.barrier), h = m(1.15), pw = m(0.9), ph = m(1.5);
+    const n = Math.round((x1 - x0) / m(16)), sp = (x1 - x0) / n, lamp = [1.2, 1.15, 0.95], post = [0.15, 0.17, 0.18];
+    for (let i = 0; i <= n; i++) {
+      const x = x0 + i * sp;
+      this.cur = this.chunkOf(x, z);
+      this.sbox(x - pw / 2, y0, z - pw / 2, x + pw / 2, y0 + ph, z + pw / 2, { ns: [ped, 0, 0], ew: [ped, 0, 0], top: [coping, pw, pw] });
+      if (i % 2 === 0) {
+        this.prop('pole', x, y0 + ph + m(2), z, m(0.1), m(4), m(0.1), post);
+        this.prop('ico', x, y0 + ph + m(4.1), z, m(0.32), m(0.32), m(0.32), lamp);
+      }
+      if (i < n) this.card(bal, x + pw / 2, z, x + sp - pw / 2, z, y0, y0 + h, h * cell(bal).aspect);
+    }
   }
 
   // ---- finish ----------------------------------------------------------------
@@ -1203,9 +2209,11 @@ export class City {
       const mesh = new THREE.Mesh(b.geometry(), mat);
       const chunk = key.split('|')[1];
       const far = chunk === 'far' || chunk === 'bridge';
-      mesh.castShadow = !far && b.mat !== 'ground' && b.mat !== 'decal';
+      const decal = b.mat === 'decal' || b.mat.endsWith('Decal');
+      mesh.castShadow = !far && !decal && b.mat !== 'ground' && !b.mat.startsWith('roads');
       mesh.receiveShadow = !far;
-      mesh.renderOrder = b.mat === 'decal' ? 1 : 0;
+      mesh.renderOrder = decal ? 1 : 0;
+      if (this.depthMats[b.mat]) mesh.customDepthMaterial = this.depthMats[b.mat];
       mesh.matrixAutoUpdate = false;
       this.scene.add(mesh);
       this.meshes.push(mesh);
@@ -1246,12 +2254,12 @@ export class City {
         }
       }
     }
-    // Moving taxis are out of scope; parked cars, many of them cabs
+    // Parked cars; the teal ones are taxis
     const n = spots.length;
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.4 });
     const mesh = new THREE.InstancedMesh(geo, mat, n);
     mesh.castShadow = mesh.receiveShadow = true;
-    const palette = [[0.97, 0.7, 0.04], [0.97, 0.7, 0.04], [0.97, 0.7, 0.04], [0.9, 0.9, 0.9], [0.06, 0.06, 0.07], [0.55, 0.57, 0.6], [0.12, 0.2, 0.42], [0.55, 0.06, 0.05]];
+    const palette = [[0.06, 0.52, 0.52], [0.06, 0.52, 0.52], [0.9, 0.9, 0.9], [0.06, 0.06, 0.07], [0.55, 0.57, 0.6], [0.12, 0.2, 0.42], [0.55, 0.06, 0.05], [0.85, 0.42, 0.1]];
     const col = new THREE.Color();
     spots.forEach(([x, z, yaw], i) => {
       const c = pick(r, palette);
@@ -1349,9 +2357,21 @@ export class City {
         (Math.random() - 0.5) * 1.2 + 0.8, m(3.2) + Math.random() * m(1.5), (Math.random() - 0.5) * 1.2,
         3.2 + Math.random(), m(1.0), m(6.5), v, v, v, s.stack ? 0.5 : 0.32, v, v, v, 0, 0.35, 0.15, (Math.random() - 0.5));
     }
-    if (this.fountain && this.fountain.distanceToSquared(P) < m(250) ** 2 && Math.random() < dt * 30) {
-      const f = this.fountain, a = Math.random() * 6.28, s = m(2.4);
+    for (const f of this.fountains) {
+      if (f.distanceToSquared(P) > m(250) ** 2 || Math.random() > dt * 30) continue;
+      const a = Math.random() * 6.28, s = m(2.4);
       fx.smoke.emit(f.x, f.y, f.z, Math.cos(a) * s, m(6), Math.sin(a) * s, 1.1, m(0.4), m(1.4), 0.9, 0.95, 1, 0.45, 0.9, 0.95, 1, 0, 0.2, -m(9));
+    }
+    // Wind turbines in the harbor
+    if (this.rotors) {
+      const R = this.rotors;
+      R.t += dt;
+      R.list.forEach((w, i) => {
+        _q.setFromEuler(new THREE.Euler(0, w.yaw, R.t * w.speed + w.phase));
+        _m.compose(w.pos, _q, _s.set(1, 1, 1));
+        R.mesh.setMatrixAt(i, _m);
+      });
+      R.mesh.instanceMatrix.needsUpdate = true;
     }
   }
 

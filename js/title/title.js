@@ -13,8 +13,8 @@ const canvas = $('#title-canvas');
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-// Same query as the #rotate overlay in style.css: phones held upright.
-const portraitPhone = matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)');
+// Same query as the #rotate overlay in style.css: phones held upright. main.js pauses on it too.
+export const portraitPhone = matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)');
 const FADE_MS = reduceMotion ? 150 : 900;
 
 let resolveDone;
