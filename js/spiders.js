@@ -1236,7 +1236,8 @@ export class SpiderSwarm {
       if (B.gravity) b.vel.y -= B.gravity * dt;
       const step = b.vel.length() * dt;
       _a.copy(b.vel).normalize();
-      const hit = this.ray(b.pos, _a, step);
+      // Unlike the surface rays, shots stop on trees (and set them alight)
+      const hit = this.world.raycast(b.pos, _a, step, { targets: false, trees: true });
       const prev = _b.copy(b.pos);
       b.pos.addScaledVector(b.vel, dt);
       // Player: distance from the bolt to the mech's capsule
@@ -1249,6 +1250,7 @@ export class SpiderSwarm {
         b.ring.material.opacity = (0.35 + 0.65 * Math.abs(Math.sin(u.t * (5 + 20 * k)))) * Math.min(1, u.t * 4);
       }
       if (ph || hit || b.life <= 0) {
+        if (!ph && hit && hit.target && hit.target.kind === 'tree' && !B.web) this.world.damage(hit.target, B.dmg, hit.point);
         this.impact(b, ph ? b.pos : hit ? hit.point : b.pos, hit ? hit.normal : _c.copy(_a).negate(), ph, P);
         this.bolts.splice(i, 1);
         continue;
@@ -1273,6 +1275,7 @@ export class SpiderSwarm {
     if (b.kind === 'shell') {
       fx.explosion(p, 0.85, { normal: nrm });
       this.sound.explosion(p, 0.8);
+      this.world.blastTrees(p, B.splash, B.dmg);
       const d = capsuleDist(p, P.pos);
       if (P.alive && d < B.splash && hurt) hurt(4 + B.dmg * (1 - d / B.splash), b.from, 'shell');
       return;
@@ -1297,7 +1300,7 @@ export class SpiderSwarm {
     slot.line.material.uniforms.uColor.value.set(cfg.line);
     slot.beam.material.uniforms.uColor.value.set(cfg.beam);
     slot.glow.material.uniforms.uColor.value.set(cfg.halo);
-    const L = { s, slot, cfg, phase: 'charge', t: 0, aim: P.chest.clone().add(_a.set(rand(-6, 6), rand(-2, 4), rand(-6, 6))), dir: new V3(), from: new V3(), end: new V3() };
+    const L = { s, slot, cfg, phase: 'charge', t: 0, aim: P.chest.clone().add(_a.set(rand(-6, 6), rand(-2, 4), rand(-6, 6))), dir: new V3(), from: new V3(), end: new V3(), tree: null };
     s.laser = L;
     this.lasers.push(L);
     this.sound.laserCharge(s.c, cfg.charge);
@@ -1325,8 +1328,9 @@ export class SpiderSwarm {
         // The aim drags after the player, then locks just before firing
         if (L.t < cfg.lock) L.aim.lerp(P.chest, 1 - Math.exp(-dt * 3.2));
         L.dir.subVectors(L.aim, L.from).normalize();
-        const hit = this.ray(L.from, L.dir, 320);
+        const hit = this.world.raycast(L.from, L.dir, 320, { targets: false, trees: true });
         L.end.copy(hit ? hit.point : _a.copy(L.from).addScaledVector(L.dir, 320));
+        L.tree = hit && hit.target && hit.target.kind === 'tree' ? hit.target : null;
         const flick = 0.35 + 0.65 * Math.abs(Math.sin(L.t * 40)) * Math.min(1, L.t * 3);
         this.drawBeam(L.slot.line, L.from, L.end, (0.07 + L.t * 0.05) * cfg.width / 0.45, flick * 0.8, 0);
         s.glow = 1 + L.t * 2;
@@ -1347,7 +1351,7 @@ export class SpiderSwarm {
             L.end.copy(onMech);
             this.cb.onPlayerHit && this.cb.onPlayerHit(cfg.dmg, L.from.clone(), 'laser');
             if (cfg.shock) this.cb.onShock && this.cb.onShock(cfg.shock, L.from.clone());
-          }
+          } else if (L.tree) this.world.damage(L.tree, cfg.dmg, L.end);
           this.fx.beamHit(L.end, _a.copy(L.dir).negate(), cfg.beam);
           if (L.end.y < 0.6) this.fx.scorch(L.end.x, L.end.z, 2.5, L.end.y + 0.03);
         }

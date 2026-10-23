@@ -118,8 +118,10 @@ export class World {
     this.colliders = this.city.colliders;
     this.bounds = this.city.bounds;
     this.spawn = this.city.spawn;
+    this.trees = this.city.trees;
     this.buildGrid();
     this.city.query = (x0, z0, x1, z1, fn) => this.query(x0, z0, x1, z1, fn);
+    this.trees.world = this;
 
     // Test-site pad marking on the starting plaza
     const pad = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({
@@ -149,6 +151,25 @@ export class World {
       const [a, b, e, f] = this.cellRange(c.min.x, c.min.z, c.max.x, c.max.z);
       for (let j = b; j <= f; j++) for (let i = a; i <= e; i++) this.grid[j * this.gw + i].push(c);
     }
+    // Trees keep their own lists on the same cells; loose ones move between cells as they roll
+    this.treeGrid = Array.from({ length: this.gw * this.gh }, () => []);
+    for (const t of this.trees.list) this.binTree(t);
+  }
+
+  /** File a tree under the cells its bounds (t.box) cover. Call again whenever it moves. */
+  binTree(t) {
+    const b = t.box, r = this.cellRange(b.x0, b.z0, b.x1, b.z1), o = t.cells;
+    if (o && o[0] === r[0] && o[1] === r[1] && o[2] === r[2] && o[3] === r[3]) return;
+    if (o) {
+      for (let j = o[1]; j <= o[3]; j++) {
+        for (let i = o[0]; i <= o[2]; i++) {
+          const cell = this.treeGrid[j * this.gw + i];
+          cell.splice(cell.indexOf(t), 1);
+        }
+      }
+    }
+    for (let j = r[1]; j <= r[3]; j++) for (let i = r[0]; i <= r[2]; i++) this.treeGrid[j * this.gw + i].push(t);
+    t.cells = r;
   }
 
   cellRange(x0, z0, x1, z1) {
@@ -168,6 +189,23 @@ export class World {
           c.stamp = st;
           if (c.max.x < x0 || c.min.x > x1 || c.max.z < z0 || c.min.z > z1) continue;
           fn(c);
+        }
+      }
+    }
+  }
+
+  /** Visit each tree whose bounds overlap an XZ rectangle once */
+  queryTrees(x0, z0, x1, z1, fn) {
+    const st = ++this.stamp;
+    const [a, b, e, f] = this.cellRange(x0, z0, x1, z1);
+    for (let j = b; j <= f; j++) {
+      for (let i = a; i <= e; i++) {
+        for (const t of this.treeGrid[j * this.gw + i]) {
+          if (t.stamp === st) continue;
+          t.stamp = st;
+          const B = t.box;
+          if (B.x1 < x0 || B.x0 > x1 || B.z1 < z0 || B.z0 > z1) continue;
+          fn(t);
         }
       }
     }
@@ -238,10 +276,11 @@ export class World {
 
   /**
    * Ray against targets (spheres), colliders (AABBs, walked through a grid with a
-   * 2D DDA) and the ground or water. Returns { dist, point, normal, target, collider }
-   * or null; collider is the box that was hit, if any.
+   * 2D DDA), trees and the ground or water. Returns { dist, point, normal, target, collider }
+   * or null; collider is the box that was hit, if any. Trees are hit (as the target)
+   * when `trees` is set, which it is by default for rays that hit targets.
    */
-  raycast(o, d, maxDist, { targets = true, pad = 0 } = {}) {
+  raycast(o, d, maxDist, { targets = true, pad = 0, trees = targets } = {}) {
     let best = maxDist, normal = null, target = null, collider = null;
     if (targets) {
       for (const t of this.targets) {
@@ -279,6 +318,14 @@ export class World {
             target = c.ref && c.ref.alive ? c.ref : null;
             normal = hit.n;
             collider = c;
+          }
+        }
+        if (trees) {
+          for (const t of this.treeGrid[j * this.gw + i]) {
+            if (t.stamp === st) continue;
+            t.stamp = st;
+            const tt = this.trees.rayHit(t, o, d, best, pad);
+            if (tt >= 0) { best = tt; target = t; normal = this.trees.hitN.clone(); collider = null; }
           }
         }
       } else if ((sx > 0 && i >= this.gw) || (sx < 0 && i < 0) || (sz > 0 && j >= this.gh) || (sz < 0 && j < 0)) break;
@@ -320,6 +367,7 @@ export class World {
   damage(t, amount, point) {
     if (!t || !t.alive) return false;
     if (t.kind === 'car') return this.city.damageCar(t, amount, point);
+    if (t.kind === 'tree') return this.trees.hit(t, amount, point);
     this.cb.onHit && this.cb.onHit(t, point);
     return this.spiders.damage(t, amount, point);
   }
@@ -331,12 +379,18 @@ export class World {
       const d = t.pos.distanceTo(point) - t.radius;
       if (d < radius) this.damage(t, amount * (1 - Math.max(0, d) / radius) * 0.85 + amount * 0.15, t.pos);
     }
+    this.trees.blast(point, radius, amount);
     if (point.y > 6) return;
     this.query(point.x - radius, point.z - radius, point.x + radius, point.z + radius, (c) => {
       if (!c.ref || !c.ref.alive) return;
       const d = Math.max(0, c.ref.pos.distanceTo(point) - 2);
       if (d < radius) this.city.damageCar(c.ref, amount * (1 - d / radius) + 8, point);
     });
+  }
+
+  /** A blast that only trees feel (spider mortar shells, burning ground): knocks them loose and sets them burning */
+  blastTrees(point, radius, amount) {
+    this.trees.blast(point, radius, amount);
   }
 
   update(dt, player, ctx) {

@@ -65,6 +65,10 @@ points `three` at the same 0.170.0 build as `js/three.js`; keep the two versions
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
 | Camera zoom | Mouse wheel | |
 
+Dashing and jump-jetting draw on one boost gauge. A full gauge holds about nine
+seconds of dash and refills in about three once the mech is back on the ground. If
+it runs dry the boosters overheat and stay off until the gauge is back to 40.
+
 The lock-on button holds one target. Aimed weapons lead it, the arms track it,
 the camera keeps it in view, and single missiles go to it first. When it is
 destroyed the lock moves to the next target in view.
@@ -133,6 +137,8 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
 - **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
 - **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, steam vents, and parked cars (the teal ones are taxis).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
+  - Running into a tree rips it out of the ground, leaving a stump, and it tumbles and rolls away. Walk or dash into a fallen tree to kick it along.
+  - Any shot, blast or beam that hits a tree knocks it loose and sets it burning, and so do spider fire, a Scorcher's flames and the burning ground they leave. A burning tree chars and drops its leaves, and sets alight any tree it rolls into.
 - **Scenery:** skylines on the far shores of both rivers, uptown towers to the north led by a twisting supertall, and out in the harbor a lighthouse on a rocky islet and a line of wind turbines whose rotors turn.
   - A suspension bridge across the east river: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
   - A cable-stayed bridge across the west river, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
@@ -375,8 +381,9 @@ in the hangar settings.
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
+| `js/trees.js` | Street and park trees: instanced trunks and leaves, uprooting, rigid-body tumbling and rolling, burning |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
-| `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
+| `js/world.js` | Sky, lights, spatial collision grid (colliders and trees), raycasts, damage routing |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders and scorpions |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
 | `js/frameParts.js` | Shared by spiders and scorpions: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, the mech's hit capsule |

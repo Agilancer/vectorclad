@@ -163,6 +163,24 @@ export class Sound {
     this.noiseHit({ type: 'bandpass', freq: 3200, q: 2, peak: 0.25, decay: 0.18, pos });
     this.tone({ type: 'square', freq: 180, freqEnd: 60, peak: 0.12, decay: 0.2, pos });
   }
+  // Trees. A blast can fell a dozen at once, so these are gated like the spider sounds.
+  treeSnap(pos) {
+    if (!this.gate('treeSnap', 0.06, pos)) return;
+    // The trunk splitting at the roots: a dry crack over a woody thump
+    this.noiseHit({ type: 'bandpass', freq: 2800, freqEnd: 700, q: 1.4, peak: 0.4, decay: 0.16, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 700, freqEnd: 120, peak: 0.35, decay: 0.45, pos });
+    this.tone({ type: 'triangle', freq: 150, freqEnd: 50, peak: 0.2, decay: 0.3, pos });
+  }
+  treeThud(pos, k = 1) {
+    if (!this.gate('treeThud', 0.08, pos)) return;
+    this.tone({ type: 'sine', freq: 110, freqEnd: 45, peak: 0.28 * k, decay: 0.25, pos });
+    this.noiseHit({ type: 'lowpass', freq: 600, freqEnd: 150, peak: 0.22 * k, decay: 0.25, pos });
+  }
+  ignite(pos) {
+    if (!this.gate('ignite', 0.1, pos)) return;
+    // Leaves going up: a rising whoosh
+    this.noiseHit({ type: 'bandpass', freq: 400, freqEnd: 1600, q: 0.7, peak: 0.35, attack: 0.05, decay: 0.8, pos });
+  }
   servo(pos) {
     this.tone({ type: 'sawtooth', freq: 260, freqEnd: 420, peak: 0.035, attack: 0.03, decay: 0.25, pos });
   }

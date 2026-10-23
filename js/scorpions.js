@@ -850,15 +850,17 @@ export class ScorpionNest {
     a.tick = (a.tick || 0) - dt;
     if (a.tick > 0) return;
     a.tick = 0.15;
-    const hit = sw.ray(o, dir, FLAME_RANGE);
+    // The stream stops on a tree and sets it alight
+    const hit = sw.world.raycast(o, dir, FLAME_RANGE, { targets: false, trees: true });
     const reach = hit ? hit.dist : FLAME_RANGE;
+    if (hit && hit.target && hit.target.kind === 'tree') sw.world.damage(hit.target, 6, hit.point);
     // Burn the mech if it stands in the stream (it widens with distance)
     if (P.alive) {
       for (let t = 2; t < reach; t += 2.5) {
         if (capsuleDist(_d.copy(o).addScaledVector(dir, t), P.pos) < 1.4 + t * 0.07) { sw.cb.onPlayerHit && sw.cb.onPlayerHit(2.4, s.c.clone(), 'fire'); break; }
       }
     }
-    if (hit && hit.normal.y > 0.7) this.ignite(hit.point);
+    if (hit && hit.normal.y > 0.7 && !(hit.target && hit.target.kind === 'tree')) this.ignite(hit.point);
   }
 
   ignite(p) {
@@ -866,6 +868,7 @@ export class ScorpionNest {
     if (this.patches.length >= 36) this.patches.shift();
     this.patches.push({ p: p.clone(), life: 4.5 });
     this.sw.fx.scorch(p.x, p.z, 2.4, p.y + 0.03);
+    this.sw.world.blastTrees(p, 2, 0);
   }
 
   // ---- burrowing ----------------------------------------------------------------------------

@@ -32,6 +32,11 @@ const REGEN_RATE = 26;
 const SHIELD_ARC = 1.2;
 const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second
 
+// Boost gauge (0-100). Dashes and jump jets burn it at BOOST_DRAIN times their base
+// rates, so a full gauge lasts 2.5x as long; regen is unchanged, so a refill takes
+// the same time.
+const BOOST_DRAIN = 1 / 2.5;
+
 // Saves live under vectorclad.* keys. Builds before the move to this repo saved under
 // fs07.*: read those when no vectorclad.* save exists yet; the next save writes the new key.
 const LEGACY_KEYS = { 'vectorclad.settings': 'fs07.settings', 'vectorclad.loadout': 'fs07.loadout.ac' };
@@ -437,9 +442,9 @@ function updatePlayer(dt, c) {
 
   // Boost / dash
   const canBoost = P.boost > 0 && !P.overheat;
-  if (playing && c.dashPressed && canBoost && P.boost > 6 && !pinned) {
+  if (playing && c.dashPressed && canBoost && P.boost > 6 * BOOST_DRAIN && !pinned) {
     sound.boostIgnite();
-    P.boost -= 6;
+    P.boost -= 6 * BOOST_DRAIN;
     const dir = wishLen > 0.1 ? _t.copy(_w).normalize() : _t.copy(_f);
     P.vel.x += dir.x * 14; P.vel.z += dir.z * 14;
     if (P.grounded) fx.dust(P.pos, 0.8, 8);
@@ -483,7 +488,7 @@ function updatePlayer(dt, c) {
         P.vel.y = 15;
         P.grounded = false;
         P.launchT = 0.35;
-        if (canBoost) P.boost -= 4;
+        if (canBoost) P.boost -= 4 * BOOST_DRAIN;
         sound.boostIgnite();
         fx.dust(P.pos, 1.2, 14);
         shake(null, 0.25);
@@ -496,14 +501,14 @@ function updatePlayer(dt, c) {
       P.ascending = true;
       P.vel.y = Math.min(14, P.vel.y + 62 * dt);
       g = 0;
-      P.boost -= 24 * dt;
+      P.boost -= 24 * BOOST_DRAIN * dt;
     } else if (P.dashing) {
       g = 9;
       P.vel.y = Math.max(P.vel.y, -6);
     }
     P.vel.y -= g * dt;
   }
-  if (P.dashing) P.boost -= 26 * dt;
+  if (P.dashing) P.boost -= 26 * BOOST_DRAIN * dt;
 
   // Integrate
   const prevY = P.pos.y;
@@ -873,7 +878,7 @@ function frame(now) {
     shake(null, (0.16 + gait * 0.12) * k);
   }
 
-  world.update(dt, P.pos, { grounded: P.grounded, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)] });
+  world.update(dt, P.pos, { grounded: P.grounded, vel: P.vel, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)] });
   fx.update(dt);
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {
