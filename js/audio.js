@@ -251,6 +251,30 @@ export class Sound {
     this.tone({ type: 'square', freq: 1500, freqEnd: 80, peak: 0.08, decay: 0.45, pos });
     this.noiseHit({ type: 'highpass', freq: 2200, peak: 0.25, decay: 0.3, pos });
   }
+  skitterChirp(pos) {
+    if (!this.gate('chirp', 0.12, pos)) return;
+    const f = 1 + Math.random() * 0.5;
+    for (let i = 0; i < 3; i++) this.tone({ type: 'square', freq: 3200 * f, freqEnd: 2100 * f, peak: 0.035, decay: 0.03, pos, delay: i * 0.045 });
+    this.noiseHit({ type: 'highpass', freq: 5000, peak: 0.06, decay: 0.12, pos });
+  }
+  webShot(pos) {
+    if (!this.gate('web', 0.08, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 900, freqEnd: 2400, q: 3, peak: 0.22, attack: 0.01, decay: 0.16, pos });
+    this.tone({ type: 'sine', freq: 300, freqEnd: 900, peak: 0.08, decay: 0.12, pos });
+  }
+  mortarLaunch(pos) {
+    if (!this.gate('mortar', 0.1, pos)) return;
+    this.tone({ type: 'sine', freq: 95, freqEnd: 40, peak: 0.45, decay: 0.3, pos });
+    this.noiseHit({ type: 'lowpass', freq: 900, freqEnd: 150, peak: 0.35, decay: 0.28, pos });
+    this.noiseHit({ type: 'bandpass', freq: 1800, freqEnd: 600, q: 2, peak: 0.1, attack: 0.05, decay: 0.6, pos });
+  }
+  broodRoar(pos, k = 1) {
+    if (!this.gate('roar', 0.5, pos, 0.03)) return;
+    this.tone({ type: 'sawtooth', freq: 620, freqEnd: 110, peak: 0.18 * k, attack: 0.08, decay: 1.1, pos });
+    this.tone({ type: 'sawtooth', freq: 655, freqEnd: 120, peak: 0.14 * k, attack: 0.1, decay: 1.0, pos });
+    this.tone({ type: 'square', freq: 310, freqEnd: 55, peak: 0.06 * k, attack: 0.05, decay: 1.2, pos });
+    this.noiseHit({ type: 'bandpass', freq: 1400, freqEnd: 300, q: 3, peak: 0.35 * k, attack: 0.06, decay: 1.1, pos });
+  }
   playerHit(heavy = 1) {
     if (!this.gate('phit', 0.05)) return;
     this.noiseHit({ type: 'bandpass', freq: 1300, q: 1.5, peak: 0.35 * heavy, decay: 0.2 });

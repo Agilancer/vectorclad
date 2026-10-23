@@ -134,7 +134,7 @@ const P = {
   phase: 0, gaitDir: 1, legYaw: 0,
   dashing: false, ascending: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
-  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0,
+  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0,
   chest: new V3(),
 };
 const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
@@ -187,13 +187,27 @@ async function init() {
   spiders = new SpiderSwarm({
     scene, world, fx, sound, tex, glowTex: fx.glowTex,
     cb: {
-      onWave: (n) => { hud.toast(`WAVE ${n}`, 2.4); sound.warning(); },
+      onWave: (n, fresh, boss) => {
+        // Name what is new this wave: a boss, or the variants joining the fight
+        const extra = boss ? ' · BROODMOTHER INBOUND' : fresh.length ? ` · ${fresh.join(', ')} SIGHTED` : '';
+        hud.toast(`WAVE ${n}${extra}`, boss || fresh.length ? 3.4 : 2.4);
+        sound.warning();
+      },
       onWaveClear: (n) => {
         P.ap = Math.min(AP_MAX, P.ap + AP_MAX * 0.3);
         hud.toast(`WAVE ${n} CLEARED · ARMOR PATCHED`, 2.8);
       },
-      onKill: () => { hud.hit(true); hud.addKill(); },
+      onKill: (s) => {
+        hud.hit(true);
+        hud.addKill();
+        if (s.boss) { hud.toast('BROODMOTHER DOWN', 2.6); shake(s.pos, 1); }
+      },
       onPlayerHit: hurt,
+      onWeb: (dur) => {
+        if (!P.alive) return;
+        if (P.webT <= 0) hud.toast('WEBBED · DASH TO BREAK FREE', 1.6);
+        P.webT = Math.max(P.webT, dur);
+      },
     },
   });
   world.spiders = spiders;
@@ -272,7 +286,7 @@ function startPlay() {
 /** Fresh frame on the starting plaza, fresh waves */
 function redeploy() {
   deployed = true;
-  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, boost: 100, overheat: false, grounded: true, jumpT: 0, landT: 0 });
+  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, boost: 100, overheat: false, grounded: true, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
   P.vel.set(0, 0, 0);
   if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
@@ -304,8 +318,9 @@ function hurt(amount, from, kind) {
     sound.shieldBlock();
     shake(null, 0.06);
   } else {
-    sound.playerHit(kind === 'laser' ? 1.3 : 0.8);
-    shake(null, kind === 'laser' ? 0.4 : 0.14);
+    const heavy = kind === 'laser' || kind === 'shell' || kind === 'blast';
+    sound.playerHit(heavy ? 1.3 : 0.8);
+    shake(null, heavy ? 0.4 : 0.14);
   }
   if (P.ap <= 0) die();
 }
@@ -378,7 +393,16 @@ function updatePlayer(dt, c) {
     if (P.grounded) fx.dust(P.pos, 0.8, 8);
   }
   P.dashing = playing && !!c.dash && canBoost;
-  const maxSpeed = P.dashing ? 36 : 7.5;
+  // Web slows the mech; dashing tears through it faster
+  const webbed = P.webT > 0;
+  if (webbed) {
+    P.webT = Math.max(0, P.webT - dt * (P.dashing ? 3 : 1));
+    if (Math.random() < dt * 14) {
+      const a = Math.random() * Math.PI * 2;
+      fx.smoke.emit(P.pos.x + Math.cos(a) * 1.6, P.pos.y + 1 + Math.random() * 5, P.pos.z + Math.sin(a) * 1.6, 0, -0.5, 0, 0.9, 1.2, 2.2, 0.9, 0.95, 1, 0.55, 0.85, 0.9, 1, 0, 1, 0);
+    }
+  }
+  const maxSpeed = (P.dashing ? 36 : 7.5) * (webbed ? 0.45 : 1);
   const accel = P.grounded ? (P.dashing ? 70 : 30) : (P.dashing ? 45 : 14);
   const target = _t.set(0, 0, 0);
   if (wishLen > 0.08) target.copy(_w).multiplyScalar(maxSpeed);
@@ -460,7 +484,7 @@ function updatePlayer(dt, c) {
   if (P.dashing || P.ascending) P.boostDelay = 0.6;
   else if (P.grounded) {
     P.boostDelay -= dt;
-    if (P.boostDelay <= 0) P.boost = Math.min(100, P.boost + 42 * dt);
+    if (P.boostDelay <= 0) P.boost = Math.min(100, P.boost + 42 * dt * (P.webT > 0 ? 0.4 : 1));
   }
   if (P.boost <= 0 && !P.overheat) {
     P.boost = 0;
@@ -765,7 +789,7 @@ function frame(now) {
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {
     hud.update(dt, {
-      ap: P.ap, apMax: AP_MAX, wave: spiders.wave, hostiles: spiders.hostiles,
+      ap: P.ap, apMax: AP_MAX, wave: spiders.wave, hostiles: spiders.hostiles, boss: spiders.boss,
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,

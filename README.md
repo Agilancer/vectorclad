@@ -108,13 +108,26 @@ The enemies are six-legged spider machines cut from the spider texture sheets.
 They are weak alone (one beam rifle bolt, one missile or a short burst drops
 each one) but come in waves that keep growing:
 
-- **Waves:** wave *n* sends 6 + 6*n* spiders, in packs of one to three, with up to
-  6 + 5*n* alive at once (64 at most). Packs spawn out of sight, 75 to 230 units
-  away, on walls and roofs, and the gap between packs shrinks each wave. Clearing
-  a wave patches 30% of the mech's armor.
-- **Weapons:** red plasma bolts in bursts of one to three, led at the mech, and
-  a laser that shows a flickering aiming line for about a second, locks just
-  before it fires, then burns along that line. Both get more frequent each wave.
+- **Waves:** wave *n* sends 6 + 6*n* spiders, in packs, with up to 6 + 5*n*
+  alive at once (64 at most). Packs spawn out of sight, 75 to 230 units away, on
+  walls and roofs, and the gap between packs shrinks each wave. New kinds join as
+  the waves go on, and a Broodmother leads every fifth wave. Clearing a wave
+  patches 30% of the mech's armor.
+- **Variants:** each kind has its own palette, proportions, tactics and weapon.
+  Every one of them has the same glowing red eyes.
+
+| Variant | Palette | From wave | What it does |
+| --- | --- | --- | --- |
+| **Stalker** | Gunmetal, red glow | 1 | The all-rounder. Crawls the towers, leaps between perches, fires plasma bursts, and charges a red laser from its perch. |
+| **Skitterer** | Rust, toxic green glow | 1 | Small, fast and fragile. Rushes the mech in packs of two to four along streets and walls, pounces on it from up to 60 units away (even off a wall), and bursts on contact. It also bursts when shot, hurting anything nearby, mech and spiders alike. |
+| **Weaver** | Bone white, cyan glow | 2 | Long-legged with a long abdomen; leaps the most. Spits pairs of web globs that slow the mech and its boost regen for about three seconds. Dashing tears free faster. |
+| **Lancer** | Blue steel, violet glow | 3 | Big and slow, with a dorsal lance over its head. Climbs high and perches far off (55 to 170 units), then charges a heavy violet beam for 1.7 seconds. Takes two rifle bolts. |
+| **Bombardier** | Brass, orange glow | 4 | Bulbous mortar sac. Stays on rooftops and lobs shells at where the mech is heading. A pulsing orange ring marks each landing spot. Takes two rifle bolts. |
+| **Broodmother** | Near black, magenta glow | Every 5th wave | A boss two and a half times a stalker's size with 320 HP. Fires five-bolt fans and sets down pairs of skitterers every seven to ten seconds. |
+
+- **Weapons:** plasma bolts are led at the mech. Lasers show a flickering aiming
+  line while they charge, lock just before they fire, then burn along that line,
+  so a dash at the right moment dodges them. Fire rates rise with each wave.
 - **Armor:** the mech has 1000 AP, regenerating after four seconds out of
   contact. The raised shield turns away hits from the front. Hits flash the
   screen edges and show arcs around the reticle pointing at the shooter. At 0 AP
@@ -143,7 +156,10 @@ them, move:
   undersides to the landing surface in the air, grab on with every foot at once,
   and leave a silk dragline behind.
 - **Behavior:** they climb to perches that can see the mech and fire from there,
-  rear up to aim, leap to new perches, or drop to the street and rush in.
+  rear up to aim, leap to new perches, or drop to the street and rush in. How far
+  they like to perch, how often they leap and how long they stay depend on the
+  variant: lancers and bombardiers keep to high perches, and skitterers never
+  perch at all.
 
 ### Building them from the sheets
 
@@ -157,6 +173,13 @@ striped claws for the lower legs (each crossed with a second plate so it has
 body from any angle), the skull face, brow, fangs and spine crest. The ribbed
 dome and the slit plate are wrapped onto the abdomen and the carapace. The eyes
 are additive glow points.
+
+Palette swaps happen per spider in the shader. Each instance carries a tint for
+the bare metal, an accent that replaces the red paint (picked out by how much
+redder a texel is than its green and blue), and a glow color for the lit tubes.
+So every variant shares the same atlas and the same instanced meshes. Variants
+also differ in leg length, abdomen shape and size, and lancers carry an extra
+dorsal lance plate.
 
 Every spider part is an `InstancedMesh` shared by the whole swarm, so 64 spiders
 cost about fifteen draw calls.
@@ -211,7 +234,7 @@ in the hangar settings.
 | `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, waterfront, distant scenery |
 | `js/cityTiles.js` | Generated: atlas layouts and tile positions for the city |
 | `js/world.js` | Sky, lights, spatial collision grid, raycasts, damage routing |
-| `js/spiders.js` | Spider-frames: instanced model, surface crawling, tripod gait with IK legs, jumps, plasma and lasers, waves |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, waves |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
