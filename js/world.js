@@ -4,6 +4,22 @@ import { City } from './city.js';
 
 const V3 = THREE.Vector3;
 const _n = new V3();
+
+/** A ray o + d t (t in [0, max]) passes through a box, starting inside it or not */
+function rayEnters(o, d, mn, mx, max) {
+  let t0 = 0, t1 = max;
+  for (let a = 0; a < 3; a++) {
+    const oa = a === 0 ? o.x : a === 1 ? o.y : o.z, da = a === 0 ? d.x : a === 1 ? d.y : d.z;
+    const lo = a === 0 ? mn.x : a === 1 ? mn.y : mn.z, hi = a === 0 ? mx.x : a === 1 ? mx.y : mx.z;
+    if (Math.abs(da) < 1e-12) { if (oa < lo || oa > hi) return false; continue; }
+    let ta = (lo - oa) / da, tb = (hi - oa) / da;
+    if (ta > tb) { const t = ta; ta = tb; tb = t; }
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+    if (t0 > t1) return false;
+  }
+  return true;
+}
 // How far below a surface's top the feet can be and still step up onto it
 export const STEP = 0.7;
 
@@ -121,6 +137,8 @@ export class World {
     this.trees = this.city.trees;
     this.buildGrid();
     this.city.query = (x0, z0, x1, z1, fn) => this.query(x0, z0, x1, z1, fn);
+    this.destruct = null; // js/destruct, set up by main.js once the renderer exists
+    this.vstamp = 0;
     this.trees.world = this;
 
     // Test-site pad marking on the starting plaza
@@ -172,6 +190,30 @@ export class World {
     t.cells = r;
   }
 
+  /** Add a collider after the grid was built (a destructible structure's whole box) */
+  addCollider(c) {
+    c.stamp = 0;
+    this.colliders.push(c);
+    const [a, b, e, f] = this.cellRange(c.min.x, c.min.z, c.max.x, c.max.z);
+    for (let j = b; j <= f; j++) for (let i = a; i <= e; i++) this.grid[j * this.gw + i].push(c);
+  }
+
+  /** Destructible structures (once each) and fallen pieces near an XZ box */
+  voxNear(x0, z0, x1, z1, fn) {
+    const D = this.destruct;
+    if (!D) return;
+    const st = ++this.vstamp;
+    this.query(x0, z0, x1, z1, (c) => {
+      if (!c.vox || c.vox.dead || c.vox.qstamp === st) return;
+      c.vox.qstamp = st;
+      fn(c.vox);
+    });
+    for (const b of D.physics.bodies) {
+      if (b.max.x < x0 || b.min.x > x1 || b.max.z < z0 || b.min.z > z1) continue;
+      fn(b.s);
+    }
+  }
+
   cellRange(x0, z0, x1, z1) {
     const C = this.cell, cl = (v, n) => Math.max(0, Math.min(n - 1, v));
     return [cl(Math.floor((x0 - this.gx0) / C), this.gw), cl(Math.floor((z0 - this.gz0) / C), this.gh),
@@ -217,9 +259,10 @@ export class World {
   groundHeight(x, z, y, r = 1.0) {
     let h = 0;
     this.query(x - r, z - r, x + r, z + r, (c) => {
-      if (c.walk) return;
+      if (c.walk || c.vox) return;
       if (y >= c.max.y - STEP) h = Math.max(h, c.max.y);
     });
+    this.voxNear(x - r, z - r, x + r, z + r, (s) => { h = Math.max(h, this.destruct.floorUnder(s, x, z, y, r, STEP)); });
     return h;
   }
 
@@ -231,7 +274,7 @@ export class World {
   ledge(x, z, y, r) {
     let best = null;
     this.query(x - r, z - r, x + r, z + r, (c) => {
-      if (c.walk || y < c.max.y - STEP || (best && c.max.y <= best.top)) return;
+      if (c.walk || c.vox || y < c.max.y - STEP || (best && c.max.y <= best.top)) return;
       const dx = x - Math.max(c.min.x, Math.min(x, c.max.x));
       const dz = z - Math.max(c.min.z, Math.min(z, c.max.z));
       const d = Math.hypot(dx, dz);
@@ -247,8 +290,9 @@ export class World {
    */
   resolve(pos, r, height, stepY = pos.y) {
     let hit = false;
+    this.voxNear(pos.x - r, pos.z - r, pos.x + r, pos.z + r, (s) => { if (this.destruct.pushCylinder(s, pos, r, height, stepY, STEP)) hit = true; });
     this.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, (c) => {
-      if (c.walk || stepY >= c.max.y - STEP || pos.y + height <= c.min.y) return;
+      if (c.walk || c.vox || stepY >= c.max.y - STEP || pos.y + height <= c.min.y) return;
       const cx = Math.max(c.min.x, Math.min(pos.x, c.max.x));
       const cz = Math.max(c.min.z, Math.min(pos.z, c.max.z));
       const dx = pos.x - cx, dz = pos.z - cz;
@@ -280,8 +324,8 @@ export class World {
    * or null; collider is the box that was hit, if any. Trees are hit (as the target)
    * when `trees` is set, which it is by default for rays that hit targets.
    */
-  raycast(o, d, maxDist, { targets = true, pad = 0, trees = targets } = {}) {
-    let best = maxDist, normal = null, target = null, collider = null;
+  raycast(o, d, maxDist, { targets = true, pad = 0, trees = targets, props = false } = {}) {
+    let best = maxDist, normal = null, target = null, collider = null, struct = null;
     if (targets) {
       for (const t of this.targets) {
         if (!t.alive) continue;
@@ -312,12 +356,28 @@ export class World {
         for (const c of this.grid[j * this.gw + i]) {
           if (c.stamp === st) continue;
           c.stamp = st;
+          if (c.prop && !props) continue;
+          if (c.vox) {
+            // A structure being destroyed: walk its cells, once per ray
+            const s = c.vox;
+            if (s.dead || s.rstamp === st) continue;
+            s.rstamp = st;
+            if (!rayEnters(o, d, s.box.min, s.box.max, best)) continue;
+            const h = this.destruct.rayStruct(s, o, d, best);
+            if (h && h.t < best) {
+              best = h.t; target = null; struct = s;
+              normal = new V3(h.nx, h.ny, h.nz);
+              collider = this.structCollider(s, o, d, h.t);
+            }
+            continue;
+          }
           const hit = this.rayBox(o, d, c, best);
           if (hit) {
             best = hit.t;
             target = c.ref && c.ref.alive ? c.ref : null;
             normal = hit.n;
             collider = c;
+            struct = null;
           }
         }
         if (trees) {
@@ -325,7 +385,7 @@ export class World {
             if (t.stamp === st) continue;
             t.stamp = st;
             const tt = this.trees.rayHit(t, o, d, best, pad);
-            if (tt >= 0) { best = tt; target = t; normal = this.trees.hitN.clone(); collider = null; }
+            if (tt >= 0) { best = tt; target = t; normal = this.trees.hitN.clone(); collider = null; struct = null; }
           }
         }
       } else if ((sx > 0 && i >= this.gw) || (sx < 0 && i < 0) || (sz > 0 && j >= this.gh) || (sz < 0 && j < 0)) break;
@@ -333,16 +393,29 @@ export class World {
       if (tCell > best) break;
       if (tmx < tmz) { tmx += tdx; i += sx; } else { tmz += tdz; j += sz; }
     }
+    // Fallen and falling pieces
+    if (this.destruct) {
+      const h = this.destruct.rayBodies(o, d, best);
+      if (h) { best = h.t; target = null; struct = h.s; normal = new V3(h.nx, h.ny, h.nz); collider = h.s.ref; }
+    }
     // Ground inside the city, water outside it
     if (d.y < -1e-6) {
       const B = this.bounds;
       let tg = -o.y / d.y;
       const px = o.x + d.x * tg, pz = o.z + d.z * tg;
       if (px < B.minX - 30 || px > B.maxX + 30 || pz > B.maxZ + 30) tg = (this.city.L.water - o.y) / d.y;
-      if (tg >= 0 && tg < best) { best = tg; target = null; collider = null; normal = new V3(0, 1, 0); }
+      if (tg >= 0 && tg < best) { best = tg; target = null; collider = null; struct = null; normal = new V3(0, 1, 0); }
     }
     if (!normal) return null;
-    return { dist: best, point: new V3().copy(o).addScaledVector(d, best), normal, target, collider };
+    return { dist: best, point: new V3().copy(o).addScaledVector(d, best), normal, target, collider, struct };
+  }
+
+  /** The collider of a structure a ray hit at t: the building box holding the point, for spiders' footing */
+  structCollider(s, o, d, t) {
+    const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t, e = 0.6;
+    const cs = s.owner.colliders;
+    for (const c of cs) if (c.building && x >= c.min.x - e && x <= c.max.x + e && y >= c.min.y - e && y <= c.max.y + e && z >= c.min.z - e && z <= c.max.z + e) return c;
+    return cs[0] || s.ref;
   }
 
   rayBox(o, d, c, best) {
@@ -395,6 +468,7 @@ export class World {
 
   update(dt, player, ctx) {
     this.city.update(dt, Object.assign({ player }, ctx));
+    if (this.destruct) this.destruct.update(dt, ctx);
     // Keep the shadow frustum centered on the player, far enough back to catch the tall towers
     this.sun.position.copy(player).addScaledVector(SUN_DIR, 700);
     this.sun.target.position.copy(player);

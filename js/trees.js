@@ -69,6 +69,9 @@ function closestOnSegment(p, a, b, out) {
   return out.multiplyScalar(t).add(a);
 }
 
+let VSTAMP = 0;
+const _vo = {};
+
 export class Trees {
   /** spots: from City.tree(). blocks: low boxes trees land on that the mech walks through. */
   constructor(city, spots, blocks) {
@@ -303,11 +306,29 @@ export class Trees {
     let touching = false;
     const P = ctx.player, mv = ctx.vel, B = this.city.bounds;
     for (const [h, r] of t.spheres) {
-      const c = this.axisPoint(t, h, _p);
+      const c = this.axisPoint(t, h, _p), stamp = ++VSTAMP;
       // Ground: the highest box top under the sphere's center that it is above
       let g = 0;
+      const D = this.world.destruct;
       const wall = (b) => {
         if (b.walk) return;
+        // A building being shot apart: its real floors and walls, not its box
+        if (b.vox) {
+          const s = b.vox;
+          if (!D || s.dead || s.tstamp === stamp) return;
+          s.tstamp = stamp;
+          const top = D.floorUnder(s, c.x, c.z, c.y - r + 0.4, r * 0.6, 0);
+          if (top > g) g = top;
+          const o = s.g.pushOut(c.x, c.y, c.z, 4, _vo);
+          if (o && o.ny === 0 && o.depth >= 0) {
+            const push = o.depth + r * 0.5;
+            t.pos.x += o.nx * push; t.pos.z += o.nz * push;
+            c.x += o.nx * push; c.z += o.nz * push;
+            this.contact(t, _e.set(c.x - o.nx * r, c.y, c.z - o.nz * r), _n.set(o.nx, 0, o.nz), 0.3, 0.4);
+            touching = true;
+          }
+          return;
+        }
         const inside = c.x > b.min.x && c.x < b.max.x && c.z > b.min.z && c.z < b.max.z;
         if (c.y - r >= b.max.y - 0.4) { if (inside && b.max.y > g) g = b.max.y; return; }
         if (c.y + r <= b.min.y) return;

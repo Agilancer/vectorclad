@@ -102,6 +102,18 @@ const KIT_STYLE = {
   far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine'],
 };
 
+// What a facade is built of, for destruction: glass curtain walls shatter, masonry crumbles
+const GLASS_KITS = new Set(['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass']);
+const STONE_KITS = new Set(['limestone', 'masonry', 'travertine', 'ivory', 'sandstone']);
+function wallMat(tile, F) {
+  if (F) return GLASS_KITS.has(F.kit) ? 'glass' : F.kit === 'brick' ? 'brick' : STONE_KITS.has(F.kit) ? 'stone' : 'panel';
+  if (!tile) return 'panel';
+  if (G.officeGlass.includes(tile) || G.officePanel.includes(tile) || G.modern.includes(tile) || G.mech.includes(tile) || tile === 'facade12') return 'glass';
+  if (tile.startsWith('walls1')) return 'brick';
+  if (tile.startsWith('shop') || tile.startsWith('walls5') || G.prewar.includes(tile) || G.officeStone.includes(tile)) return 'stone';
+  return 'panel';
+}
+
 // Ground kits for clean, worn and broken pavement
 const GROUND_WEAR = [
   ['crisp', 'fresh', 'buslane', 'tactile', 'redcurb'],
@@ -212,6 +224,7 @@ function atlasMaterial(tex, o = {}) {
     }
   };
   m.customProgramCacheKey = () => `atlas-${o.decal ? 1 : 0}-${o.glass ? 1 : 0}-${o.cut ? 1 : 0}`;
+  m.userData.atlasShader = atlasShader; // for masked shadow materials (js/destruct/skin.js)
   return m;
 }
 
@@ -296,6 +309,12 @@ export class City {
     this.treeBlocks = []; // low props trees land and roll on but the mech walks through (planters, fountain)
     this.bufs = new Map();
     this.meshes = [];
+    // Destruction: every building and prop is an owner that records its triangles, colliders and
+    // the volumes it is built from, so js/destruct can turn it into voxels when it is first hit
+    this.owners = [];
+    this.owner = null;
+    this.ownerDepth = 0;
+    this.rw = mulberry(2027); // water towers, apart from the layout so it doesn't shift
     this.mats = {
       facade: atlasMaterial(tex.facade, { roughness: 0.75, glass: true }),
       surface: atlasMaterial(tex.surface, { roughness: 0.85 }),
@@ -375,7 +394,40 @@ export class City {
     const key = `${mat}|${chunk}`;
     let b = this.bufs.get(key);
     if (!b) { b = new Buf(mat !== 'props'); b.mat = mat; this.bufs.set(key, b); }
+    // An owner's triangles are one unbroken run in each buffer it draws into
+    if (this.owner && !this.owner.bufs.has(b)) this.owner.bufs.set(b, b.idx.length);
     return b;
+  }
+
+  // ---- owners (destructible pieces) ------------------------------------------
+
+  /** Start recording a destructible owner; nested calls fold into the outer one */
+  beginOwner(kind) {
+    if (this.noOwners) return;
+    if (this.owner) { this.ownerDepth++; return; }
+    this.owner = { id: this.owners.length, kind, vols: [], bufs: new Map(), signs: { screen: this.signs.screen.idx.length, mark: this.signs.mark.idx.length }, colliders: [] };
+    this.ownerDepth = 1;
+  }
+
+  endOwner() {
+    if (this.noOwners || --this.ownerDepth > 0) return;
+    const o = this.owner;
+    this.owner = null;
+    o.ranges = [...o.bufs].map(([b, i0]) => ({ b, i0, i1: b.idx.length })).filter((r) => r.i1 > r.i0);
+    o.signRanges = Object.entries(o.signs).map(([k, i0]) => ({ kind: k, i0, i1: this.signs[k].idx.length })).filter((r) => r.i1 > r.i0);
+    delete o.bufs; delete o.signs;
+    if (o.vols.length) this.owners.push(o);
+    else o.id = -1;
+  }
+
+  /** Record a volume the current owner is built from (in game units); see js/destruct/voxelize.js */
+  vol(v) { if (this.owner) this.owner.vols.push(v); }
+
+  /** Floor levels from y0 (or the top of a ground band) up to y1, every floor of a tile th tall */
+  floorsFor(y0, y1, thm) {
+    const fh = this.m(thm <= 5.5 ? Math.max(3, thm) : thm / Math.max(1, Math.round(thm / 4))), out = [];
+    for (let y = y0; y < y1 - fh * 0.6; y += fh) out.push(y);
+    return out;
   }
 
   /** The current chunk's buffer for the atlas a wall tile lives in; cut: its see-through card material */
@@ -465,6 +517,7 @@ export class City {
 
   /** Box with every face textured with one tile repeating at world scale */
   slab(b, tile, x0, z0, x1, z1, y0, y1, ts, o = {}) {
+    this.vol({ t: 'solid', x0, x1, z0, z1, y0, y1, mat: o.mat || (tile === 'walls47' ? 'steel' : wallMat(tile)) });
     const tint = o.tint || WHITE, c = cell(tile), top = o.top ? cell(o.top) : c;
     const S = [[x0, z1, x1, z1], [x1, z0, x0, z0], [x1, z1, x1, z0], [x0, z0, x0, z1]];
     for (const [ax, az, bx, bz] of S) this.wall(b, tile, ax, az, bx, bz, y0, y1, ts, ts, { tint, ao: false });
@@ -489,6 +542,12 @@ export class City {
     const g = SHAPES[shape];
     const b = this.buf('props', chunk);
     _m.compose(pos, q, scale);
+    if (this.owner) {
+      // What it is made of, read from its shape and color unless the builder said
+      const [r, gg, bb] = color;
+      const mat = this.propMat || (Math.max(r, gg, bb) > 1 ? 'light' : shape === 'ico' && gg > r && gg > bb ? 'leaf' : shape === 'pole' && r > bb + 0.05 && r < 0.5 ? 'wood' : 'steel');
+      this.vol({ t: 'shape', shape, e: Float32Array.from(_m.elements), mat });
+    }
     const nm = new THREE.Matrix3().getNormalMatrix(_m);
     const P = g.attributes.position, N = g.attributes.normal, I = g.index;
     const i0 = b.n;
@@ -516,6 +575,7 @@ export class City {
    * fourth entry true to fit whole repeats along a side. Top and bottom repeat along x and z.
    */
   sbox(x0, y0, z0, x1, y1, z1, f, tint = WHITE) {
+    this.vol({ t: 'solid', x0, x1, z0, z1, y0, y1, mat: this.sboxMat || 'concrete' });
     const side = (spec, ax, az, bx, bz) => {
       if (!spec) return;
       const [t, tw, th, snap] = spec, w = Math.hypot(bx - ax, bz - az);
@@ -554,6 +614,7 @@ export class City {
 
   /** A see-through card (a truss, a railing) standing from a to b over y0..y1, repeating every tw (0: once) */
   card(tile, ax, az, bx, bz, y0, y1, tw = 0) {
+    this.vol({ t: 'plate', ax, az, bx, bz, y0, y1, mat: 'steel' });
     const w = Math.hypot(bx - ax, bz - az);
     this.wall(this.bufFor(tile, true), tile, ax, az, bx, bz, y0, y1, tw || w, y1 - y0, { ao: false, snapU: true });
   }
@@ -571,6 +632,7 @@ export class City {
    * the side tile, repeating every ts. The side tile must be on the piece's atlas page.
    */
   solid(name, side, x, y, z, w, h, d, ry = 0, ts = this.m(4)) {
+    this.vol({ t: 'outline', name, x, y, z, w, h, d, ry, mat: 'concrete' });
     const O = OUTLINES[name], ring = (r) => r.map(([u, v]) => new THREE.Vector2((u - 0.5) * w, v * h));
     const shape = new THREE.Shape(ring(O[0]));
     for (const hole of O.slice(1)) shape.holes.push(new THREE.Path(ring(hole)));
@@ -639,6 +701,7 @@ export class City {
   collide(x0, y0, z0, x1, y1, z1, extra) {
     const c = Object.assign({ min: new V3(x0, y0, z0), max: new V3(x1, y1, z1) }, extra);
     this.colliders.push(c);
+    if (this.owner) { c.owner = this.owner; this.owner.colliders.push(c); }
     return c;
   }
 
@@ -976,6 +1039,7 @@ export class City {
    */
   building(o) {
     const m = (x) => this.m(x), r = this.r;
+    this.beginOwner('building');
     const sb = this.buf('surface', this.cur);
     let ylo = o.y0;
     o.tiers.forEach((T, ti) => {
@@ -985,6 +1049,13 @@ export class City {
         ['s', T.x0, T.z1, T.x1, T.z1], ['n', T.x1, T.z0, T.x0, T.z0], ['e', T.x1, T.z1, T.x1, T.z0], ['w', T.x0, T.z0, T.x0, T.z1],
       ];
       const [tw, th] = tileMeters(T.tile);
+      const band = T.band && ti === 0 ? { y: ylo + T.band.h, mat: wallMat(T.band.tile) } : null;
+      const sideMat = {};
+      for (const [side] of sides) sideMat[side] = all || o.streets[side] ? wallMat(T.tile, T.F) : wallMat(o.party);
+      this.vol({
+        t: 'box', x0: T.x0, x1: T.x1, z0: T.z0, z1: T.z1, y0: ti === 0 ? 0 : ylo, y1: T.y1, sides: sideMat, band,
+        floors: this.floorsFor(band ? band.y : ylo, T.y1, th), roof: !(ti === o.tiers.length - 1 && o.crown),
+      });
       for (const [side, ax, az, bx, bz] of sides) {
         const street = all || o.streets[side];
         if (street) {
@@ -1017,8 +1088,9 @@ export class City {
     });
     const top = o.tiers[o.tiers.length - 1];
     if (o.cornice) this.cornice(o, o.tiers[0]);
-    if (o.roof) this.roofClutter(top, o.roof, o.streets);
+    if (o.roof) this.roofClutter(top, o.roof, o.streets, o.style);
     if (o.crown) o.crown(top);
+    this.endOwner();
   }
 
   cornice(o, T) {
@@ -1031,16 +1103,23 @@ export class City {
     if (o.streets.w) this.slab(sb, tile, T.x0 - d, T.z0, T.x0, T.z1, y0, y1, ts, { tint, bottom: true });
   }
 
-  roofClutter(T, R, streets) {
+  roofClutter(T, R, streets, style) {
     const m = (x) => this.m(x), r = this.r, sb = this.buf('surface', this.cur);
     const W = T.x1 - T.x0, D = T.z1 - T.z0, y = T.y1;
     const at = (fx, fz) => [T.x0 + W * fx, T.z0 + D * fz];
+    // Walk-ups and prewar buildings may carry an old timber water tower on a steel frame
+    if ((style === 'walkup' || style === 'prewar') && W > m(9) && D > m(9) && this.rw() < 0.5) {
+      const rw = this.rw;
+      this.waterTower(T.x0 + W * (rw() < 0.5 ? 0.24 : 0.76), y, T.z0 + D * (rw() < 0.5 ? 0.26 : 0.74), 0.85 + rw() * 0.35);
+    }
     if (R.mech) {
       // Mechanical penthouse wrapped in louvers
       const i = Math.min(W, D) * 0.22;
       const h = m(12);
       const [mw, mh] = tileMeters(R.mech);
       const x0 = T.x0 + i, x1 = T.x1 - i, z0 = T.z0 + i, z1 = T.z1 - i;
+      const pm = wallMat(R.mech);
+      this.vol({ t: 'box', x0, x1, z0, z1, y0: y, y1: y + h, sides: { n: pm, s: pm, e: pm, w: pm }, band: null, floors: [], roof: true });
       for (const [ax, az, bx, bz] of [[x0, z1, x1, z1], [x1, z0, x0, z0], [x1, z1, x1, z0], [x0, z0, x0, z1]]) {
         this.wall(this.bufFor(R.mech), R.mech, ax, az, bx, bz, y, y + h, m(mw), m(mh), { snapU: true, ao: false });
       }
@@ -1101,6 +1180,45 @@ export class City {
     }
   }
 
+  /**
+   * A rooftop water tower: a timber tank bound with steel hoops under a conical cap, on a
+   * platform carried by braced steel legs. s scales it (1: a 4.8 m tank on 5 m legs).
+   */
+  waterTower(x, y, z, s = 1) {
+    const m = (v) => this.m(v) * s, rw = this.rw;
+    const R = m(2.4), legH = m(4.6 + rw() * 1.6), tH = m(4.8), n = rw() < 0.5 ? 4 : 6, legR = R * 0.92;
+    const steel = [0.06, 0.06, 0.065], wood = [0.17 + rw() * 0.05, 0.095 + rw() * 0.025, 0.05], hoop = [0.025, 0.025, 0.028], cap = [0.045, 0.04, 0.036];
+    this.propMat = 'steel';
+    const legs = [];
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.PI / n;
+      legs.push(new V3(x + Math.cos(a) * legR, y, z + Math.sin(a) * legR));
+    }
+    for (const p of legs) {
+      this.prop('cyl6', p.x, y + legH / 2, p.z, m(0.16), legH, m(0.16), steel);
+      this.prop('box', p.x, y + m(0.15), p.z, m(0.6), m(0.3), m(0.6), steel);
+    }
+    // Cross braces between neighboring legs, and a ring girder under the platform
+    for (let k = 0; k < n; k++) {
+      const a = legs[k], b = legs[(k + 1) % n];
+      const ch = this.chunkOf(x, z);
+      this.strut('cyl6', new V3(a.x, y + m(0.5), a.z), new V3(b.x, y + legH - m(0.4), b.z), m(0.06), steel, ch);
+      this.strut('cyl6', new V3(b.x, y + m(0.5), b.z), new V3(a.x, y + legH - m(0.4), a.z), m(0.06), steel, ch);
+      this.strut('box', new V3(a.x, y + legH, a.z), new V3(b.x, y + legH, b.z), m(0.22), steel, ch);
+    }
+    this.prop('cyl', x, y + legH + m(0.15), z, R * 1.08, m(0.3), R * 1.08, [0.09, 0.08, 0.07]);
+    // The tank, its hoops and the cap
+    this.propMat = 'wood';
+    const ty = y + legH + m(0.3);
+    this.prop('cyl', x, ty + tH / 2, z, R, tH, R, wood);
+    this.prop('cone', x, ty + tH + m(0.7), z, R * 1.12, m(1.4), R * 1.12, cap);
+    this.propMat = 'steel';
+    for (let k = 0; k < 5; k++) this.prop('ring6', x, ty + m(0.4) + k * (tH - m(0.8)) / 4, z, R * 1.025, m(0.12), R * 1.025, hoop);
+    this.prop('sphere', x, ty + tH + m(1.45), z, m(0.18), m(0.18), m(0.18), hoop);
+    this.propMat = null;
+    this.collide(x - R, y, z - R, x + R, ty + tH + m(1.4), z + R, { tower: true });
+  }
+
   /** A planted roof: grass, a planter edge and a few small trees */
   roofGarden(x, y, z, s) {
     const m = (v) => this.m(v), grass = pick(this.r, G.grass), h = s / 2;
@@ -1144,6 +1262,7 @@ export class City {
 
   /** A quad on the sign atlas (2 x 4 cells: 0 a helipad, 1-7 screens): corners [BL, BR, TR, TL] */
   sign(kind, idx, P, n) {
+    if (this.owner && kind === 'screen') this.vol({ t: 'plate', ax: P[0][0], az: P[0][2], bx: P[1][0], bz: P[1][2], y0: P[0][1], y1: P[2][1], mat: 'light' });
     const S = this.signs[kind], i0 = S.pos.length / 3, e = 0.004;
     const u0 = (idx % 2) / 2 + e, u1 = u0 + 0.5 - 2 * e, v1 = 1 - Math.floor(idx / 2) / 4 - e, v0 = v1 - 0.25 + 2 * e;
     const uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
@@ -1170,9 +1289,12 @@ export class City {
       const mesh = new THREE.Mesh(g, mats[k]);
       mesh.receiveShadow = k === 'mark';
       mesh.matrixAutoUpdate = false;
+      mesh.userData.mat = k;
       this.scene.add(mesh);
       this.meshes.push(mesh);
+      S.mesh = mesh;
     }
+    for (const o of this.owners) o.ranges.push(...o.signRanges.filter((r) => this.signs[r.kind].mesh).map((r) => ({ mesh: this.signs[r.kind].mesh, i0: r.i0, i1: r.i1 })));
   }
 
   // ---- facades from panel kits ------------------------------------------------
@@ -1296,11 +1418,13 @@ export class City {
     }
     const streets = { n: true, s: true, e: tx1 >= B.x1 - 0.01, w: tx0 <= B.x0 + 0.01 };
     const f = { x0: tx0, x1: tx1, z0: B.z0, z1: B.z1 };
+    this.beginOwner('tower');
     if (kind === 'glass') this.glassTower(f, streets, t);
     else if (kind === 'twist' || kind === 'prism') this.prismTower(f, t, kind === 'twist');
     else if (kind === 'stack') this.stackTower(f, streets, t);
     else if (kind === 'terraces') this.terraceTower(f, streets, t);
     else this.decoTower(f, streets, t, kind);
+    this.endOwner();
   }
 
   glassTower(f, streets, t) {
@@ -1384,6 +1508,7 @@ export class City {
 
   /** Four-sided pyramid with planar-mapped faces */
   pyramid(b, tile, x0, z0, x1, z1, y0, y1, ts, tint = WHITE) {
+    this.vol({ t: 'pyr', x0, x1, z0, z1, y0, y1, mat: 'panel' });
     const c = cell(tile), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const apex = new V3(cx, y1, cz);
     const P = [new V3(x0, y0, z1), new V3(x1, y0, z1), new V3(x1, y0, z0), new V3(x0, y0, z0)];
@@ -1405,6 +1530,7 @@ export class City {
    * where top and bottom are cap tiles.
    */
   prismSeg(cx, cz, n, r0, r1, rot, ya, yb, tile, tw, th, o = {}) {
+    this.vol({ t: 'prism', cx, cz, n, r0, r1, rot, y0: ya, y1: yb, mat: o.mat || wallMat(tile), floors: o.floors || this.floorsFor(ya, yb, th / this.M) });
     const b = this.bufFor(tile), c = cell(tile), tint = o.tint || WHITE;
     const V = (k, r, y) => { const a = rot + (k / n) * Math.PI * 2; return [cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]; };
     const nu = Math.max(1, Math.round((2 * Math.max(r0, r1) * Math.sin(Math.PI / n)) / tw)), vt = (yb - ya) / th;
@@ -1471,6 +1597,8 @@ export class City {
   /** A box of a block-built tower: facades all round, a roof, an underside if it floats, and a collider */
   boxBlock(B, tile, tint, soffit) {
     const m = (x) => this.m(x), [tw, th] = tileMeters(tile).map(m), base = this.L.curb;
+    const wm = wallMat(tile);
+    this.vol({ t: 'box', x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0: soffit ? B.ya : 0, y1: B.yb, sides: { n: wm, s: wm, e: wm, w: wm }, band: null, floors: this.floorsFor(B.ya, B.yb, th / this.M), roof: true });
     for (const [ax, az, bx, bz] of [[B.x0, B.z1, B.x1, B.z1], [B.x1, B.z0, B.x0, B.z0], [B.x1, B.z1, B.x1, B.z0], [B.x0, B.z0, B.x0, B.z1]]) {
       this.wall(this.bufFor(tile), tile, ax, az, bx, bz, B.ya, B.yb, tw, th, { snapU: true, tint, base });
     }
@@ -1514,28 +1642,35 @@ export class City {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0;
     const tile = pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), span = pick(r, G.officeGlass), tint = this.tint(0.04);
     const legW = m(28), H = y0 + m(160 + t * 50), hb = m(42);
+    this.beginOwner('gate');
     this.boxBlock({ x0: B.x0, x1: B.x0 + legW, z0: B.z0, z1: B.z1, ya: y0, yb: H }, tile, tint, false);
     this.boxBlock({ x0: B.x1 - legW, x1: B.x1, z0: B.z0, z1: B.z1, ya: y0, yb: H }, tile, tint, false);
     this.boxBlock({ x0: B.x0 + legW, x1: B.x1 - legW, z0: B.z0 + m(6), z1: B.z1 - m(6), ya: H - hb, yb: H }, span, tint, true);
+    // A helipad on one leg, a mast on the other
+    this.helipad(B.x0 + legW / 2, H, (B.z0 + B.z1) / 2, legW * 0.8);
+    this.antenna(B.x1 - legW / 2, H, (B.z0 + B.z1) / 2, m(38));
+    this.endOwner();
     // The plaza under the gate, with trees and a fountain
     const pave = pick(this.rg, Object.values(GROUND).flatMap((k) => k.plaza).concat(['paveB04']));
     const [pw, ph] = PANELS[pave] ? tileMeters(pave).map(m) : [m(5), m(5)];
     this.flat(this.groundBuf(pave, true), pave, B.x0 + legW, B.z0, B.x1 - legW, B.z1, y0 + m(0.05), (x, z) => [x / pw, -z / ph]);
     const cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
     for (const dz of [-1, 1]) for (let i = 0; i < 4; i++) this.tree(B.x0 + legW + m(8) + i * (W - 2 * legW - m(16)) / 3, y0, cz + dz * m(20), 0.85);
+    this.beginOwner('fountain');
+    this.propMat = 'stone';
     this.prop('cyl', cx, y0 + m(0.4), cz, m(7), m(0.8), m(7), [0.62, 0.62, 0.64]);
     this.prop('cyl', cx, y0 + m(0.85), cz, m(6.3), m(0.08), m(6.3), [0.22, 0.38, 0.45]);
+    this.propMat = null;
     this.collide(cx - m(5), 0, cz - m(5), cx + m(5), y0 + m(0.8), cz + m(5), { low: true });
+    this.endOwner();
     this.fountains.push(new V3(cx, y0 + m(1), cz));
-    // A helipad on one leg, a mast on the other
-    this.helipad(B.x0 + legW / 2, H, cz, legW * 0.8);
-    this.antenna(B.x1 - legW / 2, H, cz, m(38));
   }
 
   /** Twin towers on a podium, joined by a sky bridge */
   twinsBlock(B, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0, cz = (B.z0 + B.z1) / 2;
     const all = { n: true, s: true, e: true, w: true }, yp = y0 + m(14), tint = this.tint(0.04);
+    this.beginOwner('twins');
     this.building({
       x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0, streets: all, allFacade: true, tint, party: 'walls05',
       tiers: [{ x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y1: yp, tile: 'facade12', band: { tile: pick(r, G.ground), h: m(4.5) } }],
@@ -1553,6 +1688,7 @@ export class City {
     // Two-floor glass bridge between them, a little over halfway up
     const yb = yp + Math.round((H - yp) * 0.58 / th) * th;
     this.boxBlock({ x0: xs[0] + s, x1: xs[1] - s, z0: cz - m(5), z1: cz + m(5), ya: yb, yb: yb + m(9) }, 'facade12', [0.95, 1, 1.05], true);
+    this.endOwner();
   }
 
   /** A ziggurat stepping in every few floors, each terrace planted with grass and trees */
@@ -1585,6 +1721,7 @@ export class City {
     const m = (x) => this.m(x), y0 = this.L.curb, cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
     const concrete = STRUCTS.overpass.slab[0], glass = 'office00', c4 = m(4);
     this.flat(this.buf('decal'), 'paveB32', B.x0, B.z0, B.x1, B.z1, y0 + m(0.05), (x, z) => [x / m(4), -z / m(4)]);
+    this.beginOwner('needle');
     // Lobby drum with a planted roof
     this.prismSeg(cx, cz, 12, m(26), m(24), 0, y0, y0 + m(9), 'facade12', m(7.2), m(9), { top: pick(this.r, G.grass) });
     this.collide(cx - m(18), 0, cz - m(18), cx + m(18), y0 + m(9), cz + m(18), { building: true });
@@ -1593,7 +1730,7 @@ export class City {
     for (let i = 0; i < segs; i++) {
       const ya = y0 + m(9) + (yS - y0 - m(9)) * i / segs, yb = y0 + m(9) + (yS - y0 - m(9)) * (i + 1) / segs;
       const ra = m(12 - 5 * i / segs), rb = m(12 - 5 * (i + 1) / segs);
-      this.prismSeg(cx, cz, 12, ra, rb, 0, ya, yb, concrete, c4, c4);
+      this.prismSeg(cx, cz, 12, ra, rb, 0, ya, yb, concrete, c4, c4, { mat: 'concrete', floors: [ya] });
       const hh = rb * 0.68;
       this.collide(cx - hh, ya, cz - hh, cx + hh, yb, cz + hh);
     }
@@ -1613,6 +1750,7 @@ export class City {
       const a = k * Math.PI / 2;
       this.prop('sphere', cx + Math.cos(a) * m(24.3), yp + m(19), cz + Math.sin(a) * m(24.3), m(0.6), m(0.6), m(0.6), [1.5, 0.3, 0.2]);
     }
+    this.endOwner();
     this.landmark = new V3(cx, yp + m(14), cz);
   }
 
@@ -1636,21 +1774,26 @@ export class City {
     }
     // An armillary of three great steel rings on a low drum
     const cx = B.x0 + (B.x1 - B.x0) * 0.82, cz = (B.z0 + B.z1) / 2, s = m(6.5);
+    this.beginOwner('armillary');
     this.prop('cyl', cx, y0 + m(0.4), cz, m(3), m(0.8), m(3), [0.3, 0.31, 0.33]);
     this.prop('torus', cx, y0 + m(0.8) + s, cz, s, s, s, [0.8, 0.82, 0.86], 0.5);
     this.prop('torus', cx, y0 + m(0.8) + s, cz, s * 0.9, s * 0.9, s * 0.9, [0.8, 0.82, 0.86], 0.5 + Math.PI / 2);
     this.prop('torus', cx, y0 + m(0.8) + s, cz, s * 0.8, s * 0.8, s * 0.8, [1.1, 0.45, 0.12], 0.5, Math.PI / 2 - 0.35);
     this.collide(cx - s, 0, cz - s, cx + s, y0 + m(0.8) + 2 * s, cz + s, { building: true });
+    this.endOwner();
     this.spawn = new V3((B.x0 + B.x1) / 2 - m(14), y0, cz);
     this.spawnBlock = B;
   }
 
   planter(x, z, s) {
-    const m = (v) => this.m(v), sb = this.buf('surface', this.cur), y0 = this.L.curb;
-    const g = this.buf('decal');
-    this.slab(sb, 'walls53', x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0, y0 + m(0.8), m(1.2), { tint: [0.9, 0.9, 0.88] });
+    const m = (v) => this.m(v), y0 = this.L.curb;
+    this.beginOwner('planter');
+    const sb = this.buf('surface', this.cur), g = this.buf('decal');
+    this.slab(sb, 'walls53', x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0, y0 + m(0.8), m(1.2), { tint: [0.9, 0.9, 0.88], mat: 'stone' });
     this.flat(g, pick(this.r, ['planter20', 'planter40', 'planter00']), x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0 + m(0.81), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
+    this.collide(x - s / 2, y0, z - s / 2, x + s / 2, y0 + m(0.8), z + s / 2, { prop: true, walk: true });
     this.treeBlocks.push({ min: new V3(x - s / 2, y0, z - s / 2), max: new V3(x + s / 2, y0 + m(0.8), z + s / 2) });
+    this.endOwner();
   }
 
   /** A street tree in a pit set into the sidewalk */
@@ -1695,9 +1838,13 @@ export class City {
     }
     if (fountain) {
       const R = m(9);
+      this.beginOwner('fountain');
+      this.propMat = 'stone';
       this.prop('cyl', cx, y0 + m(0.45), cz, R, m(0.9), R, [0.72, 0.7, 0.66]);
       this.prop('cyl', cx, y0 + m(0.92), cz, R * 0.9, m(0.08), R * 0.9, [0.22, 0.38, 0.45]);
       this.prop('cyl', cx, y0 + m(2), cz, m(1.5), m(3), m(1.5), [0.72, 0.7, 0.66]);
+      this.propMat = null;
+      this.endOwner();
       this.fountains.push(new V3(cx, y0 + m(3.4), cz));
       this.treeBlocks.push({ min: new V3(cx - R * 0.8, 0, cz - R * 0.8), max: new V3(cx + R * 0.8, y0 + m(0.9), cz + R * 0.8) });
       this.treeBlocks.push({ min: new V3(cx - m(1.5), 0, cz - m(1.5)), max: new V3(cx + m(1.5), y0 + m(3.5), cz + m(1.5)) });
@@ -1711,9 +1858,12 @@ export class City {
     const gray = [0.33, 0.35, 0.37], dark = [0.13, 0.13, 0.14], lamp = [1.25, 1.18, 0.95];
     const streetLight = (x, z, dx, dz) => {
       const h = m(9);
+      this.beginOwner('lamp');
       this.prop('pole', x, y0 + h / 2, z, m(0.13), h, m(0.13), gray);
       this.prop('box', x + dx * m(1.3), y0 + h, z + dz * m(1.3), Math.abs(dx) * m(2.6) + m(0.14), m(0.14), Math.abs(dz) * m(2.6) + m(0.14), gray);
       this.prop('box', x + dx * m(2.6), y0 + h - m(0.12), z + dz * m(2.6), m(0.7), m(0.22), m(0.7), lamp);
+      this.collide(Math.min(x, x + dx * m(3)) - m(0.4), y0, Math.min(z, z + dz * m(3)) - m(0.4), Math.max(x, x + dx * m(3)) + m(0.4), y0 + h + m(0.3), Math.max(z, z + dz * m(3)) + m(0.4), { prop: true, walk: true });
+      this.endOwner();
     };
     for (const B of L.blocks) {
       this.cur = this.chunkOf((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2);
@@ -1733,6 +1883,7 @@ export class City {
       // Traffic signals on two corners, mast arms over the roadway
       for (const [x, z, dx, dz] of [[xs0, zs0, 1, 0], [xs1, zs1, -1, 0]]) {
         const h = m(6.6), len = m(7);
+        this.beginOwner('signal');
         this.prop('pole', x, y0 + h / 2, z, m(0.2), h, m(0.2), dark);
         const ax = x + (x === xs0 ? -1 : 1) * len / 2;
         this.prop('box', ax, y0 + h, z, len, m(0.2), m(0.2), dark);
@@ -1740,15 +1891,21 @@ export class City {
         this.prop('box', hx, y0 + h - m(0.75), z, m(0.45), m(1.2), m(0.45), [0.85, 0.7, 0.1]);
         this.prop('box', hx, y0 + h - m(0.4), z + m(0.24), m(0.2), m(0.2), m(0.06), [1.6, 0.2, 0.15]);
         this.prop('box', x, y0 + m(3.2), z - m(0.3), m(0.5), m(0.5), m(0.2), [1.0, 0.75, 0.3]);
+        const ex = x + (x === xs0 ? -1 : 1) * len;
+        this.collide(Math.min(x, ex) - m(0.4), y0, z - m(0.6), Math.max(x, ex) + m(0.4), y0 + h + m(0.3), z + m(0.6), { prop: true, walk: true });
+        this.endOwner();
       }
       // Subway entrance on some corners
       if (B.playable && r() < 0.18) {
         const x = B.x0 - m(1.5), z = B.z0 + m(6);
+        this.beginOwner('subway');
         this.prop('box', x, y0 + m(0.55), z, m(1.8), m(1.1), m(5), [0.16, 0.18, 0.22]);
         for (const dz of [-1, 1]) {
           this.prop('cyl6', x, y0 + m(1.8), z + dz * m(2.3), m(0.07), m(1.4), m(0.07), [0.16, 0.18, 0.22]);
           this.prop('box', x, y0 + m(2.7), z + dz * m(2.3), m(0.5), m(0.5), m(0.5), [0.35, 0.65, 1.4]);
         }
+        this.collide(x - m(1), y0, z - m(2.8), x + m(1), y0 + m(3), z + m(2.8), { prop: true, walk: true });
+        this.endOwner();
       }
     }
     // Kiosks with glowing screens on some avenue sidewalks
@@ -1757,6 +1914,7 @@ export class City {
       const B = pick(rd, play), w = rd() < 0.5;
       const x = w ? B.x0 - L.aveWalk + m(2.6) : B.x1 + L.aveWalk - m(2.6), z = rd() < 0.5 ? B.z0 + m(10) : B.z1 - m(10);
       this.cur = this.chunkOf(x, z);
+      this.beginOwner('kiosk');
       this.prop('box', x, y0 + m(1.2), z, m(2.8), m(2.4), m(1), [0.12, 0.13, 0.15]);
       this.prop('box', x, y0 + m(2.5), z, m(3.2), m(0.2), m(1.4), [0.2, 0.21, 0.23]);
       for (const d of [-1, 1]) {
@@ -1765,6 +1923,7 @@ export class City {
         this.sign('screen', 1 + Math.floor(rd() * 7), [[a, yb, zf], [b, yb, zf], [b, yb + hw, zf], [a, yb + hw, zf]], [0, 0, d]);
       }
       this.collide(x - m(1.4), 0, z - m(0.5), x + m(1.4), y0 + m(2.6), z + m(0.5));
+      this.endOwner();
     }
     // Barricade closing off the north edge of the playable area
     const zb = L.z0 + m(1);
@@ -1791,6 +1950,8 @@ export class City {
     const yb = m(14.5), yl = m(16.5), yt = m(17), yr = yt + m(1.2);
     const z0 = L.zN + m(20), z1 = L.z1 - m(14), n = Math.round((z1 - z0) / m(15)), sp = (z1 - z0) / n;
     const tl = (2 * hw) / asp(track), plate = [girder, m(3), m(3)];
+    this.beginOwner('el');
+    this.sboxMat = 'steel';
     for (let i = 0; i < n; i++) {
       const za = z0 + i * sp, zb = za + sp;
       this.cur = this.chunkOf(cx, (za + zb) / 2);
@@ -1819,6 +1980,8 @@ export class City {
       this.sbox(cx - hw, yb - m(1), z - m(0.45), cx + hw, yb, z + m(0.45), { ns: [girder, m(1) * asp(girder), m(1)], ew: [girder, 0, 0], bottom: plate });
       this.card(bent, cx - hw, z, cx + hw, z, yb - (2 * hw) / asp(bent), yb);
     }
+    this.sboxMat = null;
+    this.endOwner();
   }
 
   /**
@@ -1838,6 +2001,7 @@ export class City {
     const zA = L.zN - m(300), zR = L.z1 - m(190), zG = L.z1 - m(40);
     this.ramp = { z0: zR, z1: zG, x0: cx - hw, x1: cx + hw };
     const n = Math.round((zR - zA) / m(32)), sp = (zR - zA) / n;
+    this.beginOwner('highway');
     const barriers = (za, zb, top) => {
       for (const s of [-1, 1]) {
         const x0 = s < 0 ? cx - hw : cx + hw - bw, x1 = x0 + bw;
@@ -1883,7 +2047,9 @@ export class City {
         this.collide(x, 0, za, x + bw, ya + m(1.6), zb);
       }
       this.collide(xw, 0, za, xe, ya, zb);
+      this.vol({ t: 'solid', x0: xw, x1: xe, z0: za, z1: zb, y0: 0, y1: (ya + yb) / 2, mat: 'concrete' });
     }
+    this.endOwner();
   }
 
   // ---- waterfront and scenery ------------------------------------------------
@@ -1974,6 +2140,7 @@ export class City {
 
   buildScenery() {
     const L = this.L, m = (x) => this.m(x), r = this.r;
+    this.noOwners = true;
     // Distant skylines: the shores across both rivers, and the uptown towers to the north
     const skyline = (x0, x1, z0, z1, n, hmin, hmax) => {
       for (let i = 0; i < n; i++) {
@@ -2053,6 +2220,7 @@ export class City {
     // A suspension bridge across the east river, and a cable-stayed one across the west river to the north
     this.bridge(L.x1 + L.prom, L.z0 + m(160));
     this.stayBridge(L.zN + m(60));
+    this.noOwners = false;
   }
 
   /**
@@ -2226,10 +2394,14 @@ export class City {
       mesh.renderOrder = decal ? 1 : 0;
       if (this.depthMats[b.mat]) mesh.customDepthMaterial = this.depthMats[b.mat];
       mesh.matrixAutoUpdate = false;
+      mesh.userData.mat = b.mat;
       this.scene.add(mesh);
       this.meshes.push(mesh);
+      b.mesh = mesh;
     }
     this.bufs.clear();
+    // Owners keep their meshes and index runs, not the build buffers
+    for (const o of this.owners) o.ranges = o.ranges.map((r) => r.b ? { mesh: r.b.mesh, i0: r.i0, i1: r.i1 } : r).filter((r) => r.mesh);
   }
 
   // ---- cars ------------------------------------------------------------------

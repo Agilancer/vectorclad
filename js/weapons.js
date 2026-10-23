@@ -610,7 +610,7 @@ export class WeaponSystem {
     const b = s.beam, def = s.def;
     b.age += dt;
     const { pos, dir } = this.muzzleRay(s, aim);
-    const hit = this.world.raycast(pos, dir, 600);
+    const hit = this.world.raycast(pos, dir, 600, { props: true });
     const len = hit ? hit.dist : 600;
     const fadeIn = Math.min(1, b.age / 0.08), fadeOut = Math.min(1, s.beamT / 0.25);
     const k = fadeIn * fadeOut;
@@ -640,7 +640,9 @@ export class WeaponSystem {
       if (Math.random() < 0.5) this.fx.smoke.emit(p.x, p.y, p.z, rand(-2, 2), rand(3, 7), rand(-2, 2), rand(2, 3.5), 2, 9, 0.25, 0.24, 0.22, 0.6, 0.45, 0.45, 0.45, 0, 0.8, 0.5);
       if (Math.random() < 0.4) this.fx.sparksBurst(p, hit.normal, 4, 0xffc070, 40);
       if (hit.target) this.world.damage(hit.target, def.dps * dt, p);
-      if (hit.normal.y > 0.9 && !hit.target && Math.random() < 0.15) this.fx.scorch(p.x, p.z, rand(3, 5), p.y + 0.03);
+      // It cuts through whatever it touches: walls, floors, whole buildings
+      else if (this.world.destruct) this.world.destruct.beam(hit, dir, dt);
+      if (hit.normal.y > 0.9 && !hit.target && !hit.struct && Math.random() < 0.15) this.fx.scorch(p.x, p.z, rand(3, 5), p.y + 0.03);
       this.fx.light(p, 0xffa040, 60 * k, 0.08, 35);
     }
     this.onShake(pos, 0.08);
@@ -800,6 +802,14 @@ export class WeaponSystem {
     this.fx.explosion(pos, scale, { normal });
     this.sound.explosion(pos, scale);
     this.world.damageRadius(pos, def.splash || 4, def.dmg);
+    // A crater in whatever it went off against, a little into the surface
+    const D = this.world.destruct;
+    if (D) {
+      const R = ((def.splash || 4) * 0.3) / D.M;
+      _p.copy(pos);
+      if (normal) _p.addScaledVector(normal, -R * D.M * 0.25);
+      D.blast(_p, R, 90 + def.dmg * 2.6);
+    }
   }
 
   updateProjectiles(dt, aim) {
@@ -810,7 +820,7 @@ export class WeaponSystem {
       const b = this.bolts[i];
       b.age += dt;
       const step = b.def.speed * dt;
-      const hit = W_.raycast(b.pos, b.dir, step);
+      const hit = W_.raycast(b.pos, b.dir, step, { props: true });
       b.len = Math.min(9, b.len + step);
       const done = hit || b.age > 1.6;
       if (hit) {
@@ -818,7 +828,11 @@ export class WeaponSystem {
         fx.beamHit(hit.point, hit.normal, b.def.color);
         this.sound.impact(hit.point);
         if (hit.target) W_.damage(hit.target, b.def.dmg, hit.point);
-        else if (hit.normal.y > 0.9) fx.scorch(hit.point.x, hit.point.z, 2.2, hit.point.y + 0.03);
+        else {
+          // Bolts blow fist-sized... mech-fist-sized holes
+          if (W_.destruct) W_.destruct.bullet(hit, { radius: 1.45, power: 150, dir: b.dir, speed: 9, chunks: 8 });
+          if (hit.normal.y > 0.9 && !hit.struct) fx.scorch(hit.point.x, hit.point.z, 2.2, hit.point.y + 0.03);
+        }
       } else b.pos.addScaledVector(b.dir, step);
       if (done) {
         this.scene.remove(b.obj);
@@ -837,11 +851,13 @@ export class WeaponSystem {
       const t = this.tracers[i];
       t.age += dt;
       const step = t.def.speed * dt;
-      const hit = W_.raycast(t.pos, t.dir, step);
+      const hit = W_.raycast(t.pos, t.dir, step, { props: true });
       if (hit) {
         fx.sparksBurst(hit.point, hit.normal, 6, 0xffb060, 25);
         if (Math.random() < 0.4) fx.smoke.emit(hit.point.x, hit.point.y, hit.point.z, rand(-1, 1), rand(1, 3), rand(-1, 1), 1, 0.6, 2.2, 0.55, 0.52, 0.48, 0.5, 0.6, 0.58, 0.55, 0, 1.5, 0.3);
         if (hit.target) W_.damage(hit.target, t.def.dmg, hit.point);
+        // Every round takes its own bite out of what it hits
+        else if (W_.destruct) W_.destruct.bullet(hit, { radius: 0.65 + t.def.dmg * 0.035, power: 45 + t.def.dmg * 6, dir: t.dir, speed: 7, chunks: 3 });
       } else t.pos.addScaledVector(t.dir, step);
       if (hit || t.age > t.life) {
         this.scene.remove(t.obj);
@@ -864,7 +880,7 @@ export class WeaponSystem {
       } else r.vel.y -= 32 * dt;
       const step = r.vel.length() * dt;
       _d.copy(r.vel).normalize();
-      const hit = W_.raycast(r.pos, _d, step + 0.3, { pad: 0.6 });
+      const hit = W_.raycast(r.pos, _d, step + 0.3, { pad: 0.6, props: true });
       r.pos.addScaledVector(r.vel, dt);
       r.obj.position.copy(r.pos);
       r.obj.quaternion.setFromUnitVectors(FWD, _d);
@@ -925,7 +941,7 @@ export class WeaponSystem {
       m.obj.quaternion.setFromUnitVectors(FWD, m.dir);
       const step = m.prev.distanceTo(m.pos);
       _d.subVectors(m.pos, m.prev).normalize();
-      const hit = m.age > 0.1 ? W_.raycast(m.prev, _d, step + 0.4, { pad: 0.8 }) : null;
+      const hit = m.age > 0.1 ? W_.raycast(m.prev, _d, step + 0.4, { pad: 0.8, props: true }) : null;
       const near = m.target && m.target.alive && m.pos.distanceTo(m.target.pos) < m.target.radius + 1.2;
       if (hit || near || m.age > 7.5) {
         const p = hit ? hit.point : m.pos;
