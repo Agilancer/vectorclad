@@ -5,7 +5,7 @@ loose in a Lower Manhattan overrun by spider-frames, six-legged machines that
 climb the towers and swarm in growing waves. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from twenty-two more in `textures/city-src/`, and the spiders
+`textures/`, the city from thirty-two more in `textures/city-src/`, and the spiders
 from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
@@ -106,11 +106,11 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Art deco "wedding cake" towers with copper pyramid crowns.
   - A Woolworth-style gothic tower and a One WTC-style tapered landmark.
   - Party walls are brick, but buildings taller than their neighbors get windows on every side.
-  - Many facades are composed from ten panel kits (steel, precast, graphite, brick, concrete, limestone, teal glass, aluminum, navy, and a sheet of whole facades):
+  - Many facades are composed from twenty panel kits, each a family of materials: steel, precast, graphite, brick, concrete, limestone, teal glass, aluminum, navy, slate, sandstone, indigo, silver, travertine, seaglass, masonry, ivory, basalt, azure, and a sheet of whole facades.
     - Each building picks one kit and one window bay, so its floors line up.
     - Piers frame the corners and split long sides into evenly sized groups of bays.
     - Offices and towers get a louvered mechanical floor every 40 to 85 m and under each setback, and their penthouses wear the kit's louvers.
-    - Walk-ups and prewar buildings draw from the brick, limestone, precast and concrete kits, art deco towers from limestone and brick, and offices and towers from the glass and metal ones.
+    - Walk-ups draw from the brick, limestone and masonry kits; prewar buildings and art deco towers from the masonry and warm stone kits; offices and towers from the glass, metal and dark stone ones.
 - **Open spaces:** a starting plaza with a red cube and planters, a park with a fountain, and a small green.
 - **Waterfront:** an esplanade with railings on three sides. North of the playable area the city carries on past a barricade.
 - **Street life:** streetlights, traffic signals, subway entrances, street trees, steam stacks and vents, and parked cars (many of them cabs).
@@ -120,16 +120,20 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
 All city surfaces sample four texture atlases (`textures/city-facade.jpg`,
 `city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`) through a shader that tiles
 inside one atlas cell with `textureGrad`, so the whole city is merged into a few dozen
-meshes. Each vertex carries its cell's rectangle, so cells can be any size.
+meshes. Each vertex carries its cell's rectangle, so cells can be any size. If the
+panels ever outgrow one 4096 px page, the build splits them over `city-panels2.jpg`
+and on, keeping each kit on one page, and the city gives each page a material.
 `tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
 source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
 
-The panel kits (`steel.jpg` through `swatches.jpg` in `textures/city-src/`) are
+The panel kits (the sheets named in `KITS` in `tools/build_city_atlas.py`) are
 sheets of loose panels on dark gutters. `python3 tools/build_city_atlas.py --segment
 <review dir>` cuts them out along the gutter network (it needs OpenCV), writes each
 panel's rectangle to `tools/city-panels.json`, and draws numbered sheets into the
-review directory. The last field of each panel is its role, picked by hand: `B` window
+review directory. Each kit sets the gray level that counts as gutter and, for sheets
+whose gutters fade in places, a gap bridge that closes short breaks along a gutter
+line; `PANEL_FIXES` lists the rare panels the cut still gets wrong. The last field of each panel is its role, picked by hand: `B` window
 bay, `P` pier, `S` solid wall, `V` vent, `x` unused. Roles carry over when the sheets
 are cut again. The normal build packs every panel in use into `city-panels.jpg` at its
 own aspect ratio, scaled to a common texel density from each kit's measured floor

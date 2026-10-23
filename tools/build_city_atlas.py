@@ -37,28 +37,42 @@ SHEETS = {
   'planter': ('planter.jpg', 5, 5, 'dark'),
 }
 
-# Facade panel kits. key: (file, gutter gray level, sheet px per meter, atlas px per meter)
+# Facade panel kits. key: (file, gutter gray level, gutter gap bridge px, sheet px per meter, atlas px per meter)
 # Each kit is one family of materials; a building composes its facade from one kit.
+# The gap bridge closes short light breaks along a gutter line, where the art's
+# gutters fade, so neighbouring panels don't run together.
 KITS = {
-  'steel':     ('steel.jpg', 46, 26, 18),      # blue-gray curtain walls and ribbon windows, stone and metal strips
-  'precast':   ('precast.jpg', 46, 26, 18),    # beige precast concrete
-  'graphite':  ('graphite.jpg', 38, 25, 18),   # charcoal steel and dark glass
-  'brick':     ('brick.jpg', 54, 45, 26),      # red brick with limestone surrounds and pilasters
-  'concrete':  ('concrete.jpg', 46, 24, 18),   # board-formed concrete
-  'limestone': ('limestone.jpg', 46, 28, 18),  # art deco limestone piers and spandrels
-  'teal':      ('teal.jpg', 38, 25, 18),       # teal glass and pale stone
-  'aluminum':  ('aluminum.jpg', 46, 27, 18),   # concrete and brushed metal
-  'navy':      ('navy.jpg', 38, 25, 18),       # navy panels and stone
-  'swatches':  ('swatches.jpg', 46, 20, 16),   # whole facades, one per panel
+  'steel':      ('steel.jpg', 46, 0, 26, 18),      # blue-gray curtain walls and ribbon windows, stone and metal strips
+  'precast':    ('precast.jpg', 46, 0, 26, 18),    # beige precast concrete
+  'graphite':   ('graphite.jpg', 38, 0, 25, 18),   # charcoal steel and dark glass
+  'brick':      ('brick.jpg', 54, 0, 45, 26),      # red brick with limestone surrounds and pilasters
+  'concrete':   ('concrete.jpg', 46, 0, 24, 18),   # board-formed concrete
+  'limestone':  ('limestone.jpg', 46, 0, 28, 18),  # art deco limestone piers and spandrels
+  'teal':       ('teal.jpg', 38, 0, 25, 18),       # teal glass and pale stone
+  'aluminum':   ('aluminum.jpg', 46, 0, 27, 18),   # concrete and brushed metal
+  'navy':       ('navy.jpg', 38, 0, 25, 18),       # navy panels and stone
+  'swatches':   ('swatches.jpg', 46, 0, 20, 16),   # whole facades, one per panel
+  'slate':      ('slate.jpg', 46, 9, 29, 18),      # pale gray stone, charcoal metal and dark glass
+  'sandstone':  ('sandstone.jpg', 46, 9, 30, 18),  # warm sandstone and gunmetal
+  'indigo':     ('indigo.jpg', 46, 9, 28, 18),     # indigo panels and fins with gray stone
+  'silver':     ('silver.jpg', 46, 9, 28, 18),     # gray stone and brushed steel pipes
+  'travertine': ('travertine.jpg', 46, 9, 31, 18), # travertine and bronze-black frames
+  'seaglass':   ('seaglass.jpg', 46, 9, 26, 18),   # the precast layout in gray stone and sea-green glass
+  'masonry':    ('masonry.jpg', 54, 9, 32, 18),    # red brick banded with stone
+  'ivory':      ('ivory.jpg', 46, 9, 32, 18),      # cream stone and bronze
+  'basalt':     ('basalt.jpg', 30, 9, 29, 18),     # dark basalt and charcoal steel
+  'azure':      ('azure.jpg', 46, 9, 29, 18),      # pale stone and azure glass
 }
 # Detected regions that swallowed a neighbour, replaced by their true rectangles
 PANEL_FIXES = {
   'brick': [[104, 654, 186, 883], [195, 654, 246, 886], [254, 654, 304, 883], [307, 654, 425, 886],
             [9, 889, 186, 1075], [193, 887, 314, 1078], [323, 887, 426, 1078]],
+  'basalt': [[7, 124, 309, 239], [7, 245, 149, 464], [158, 245, 180, 464], [187, 245, 242, 464]],
 }
 # Panel roles in tools/city-panels.json
 ROLES = {'B': 'bays', 'P': 'piers', 'S': 'solids', 'V': 'vents'}  # anything else ('x') is unused
-PANEL_INSET, PANEL_PAD, PANEL_ATLAS_W = 3, 8, 4096
+# Panel atlas pages are at most this big: 4096 px textures work on practically every current device
+PANEL_INSET, PANEL_PAD, PANEL_ATLAS_W, PANEL_ATLAS_H = 3, 8, 4096, 4096
 
 def seps(img, n, axis, kind):
     g = np.asarray(img.convert('L'), dtype=np.float32)
@@ -130,7 +144,7 @@ def cut_panels(key):
     """Panels are the regions the gutter network encloses. The network is the dark area
     touching the sheet border plus any long, thin dark component."""
     import cv2
-    f, thr = KITS[key][:2]
+    f, thr, bridge = KITS[key][:3]
     img = cv2.imread(SRC + f)
     g = cv2.GaussianBlur(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (3, 3), 0)
     # Only thick dark runs carry the network, so it can't slip through a thin seam in a frame
@@ -142,6 +156,10 @@ def cut_panels(key):
         x, y, w, h, a = st[i]
         if max(w, h) > 0.2 * max(H, W) and a < 0.3 * w * h: net.add(i)
     gut = np.isin(lab, list(net))
+    if bridge:
+        u = gut.astype(np.uint8)
+        for k in (np.ones((1, bridge), np.uint8), np.ones((bridge, 1), np.uint8)):
+            gut |= cv2.morphologyEx(u, cv2.MORPH_CLOSE, k) > 0
     n, lab, st, _ = cv2.connectedComponentsWithStats((~gut).astype(np.uint8), connectivity=4)
     rects = [[int(x), int(y), int(x + w), int(y + h)] for x, y, w, h, a in st[1:] if w >= 18 and h >= 18 and a >= 0.5 * w * h]
     rects = [r for r in rects if not any(o is not r and o[0] <= r[0] and o[1] <= r[1] and o[2] >= r[2] and o[3] >= r[3] for o in rects)]
@@ -188,11 +206,25 @@ def segment(review):
             f'  "{k}": [\n' + ',\n'.join(f'    {json.dumps(p)}' for p in v) + '\n  ]' for k, v in out.items()) + '\n}\n')
 
 
+def skyline(items, W, pad):
+    """Skyline packing, tallest first: each panel drops to the lowest spot it fits.
+    Sets each item's 'at' and returns the height used."""
+    sky = np.zeros(W, np.int32)  # height filled so far in each pixel column
+    for it in sorted(items, key=lambda it: (-it['px'].shape[0], -it['px'].shape[1])):
+        h, w = it['px'].shape[0] + 2 * pad, it['px'].shape[1] + 2 * pad
+        tops = np.lib.stride_tricks.sliding_window_view(sky, w).max(axis=1)
+        x = int(np.argmin(tops))
+        it['at'] = [x + pad, int(tops[x]) + pad]
+        sky[x:x + w] = tops[x] + h
+    return int(sky.max())
+
+
 def build_panels():
-    """Pack the panels in use into the panel atlas, each scaled to its kit's texel density."""
+    """Pack the panels in use into panel atlas pages, each scaled to its kit's texel
+    density. A kit's panels share one page, so a building samples one texture."""
     kits = json.load(open(PANELS_JSON))
     items = []
-    for key, (f, _thr, sheet_ppm, atlas_ppm) in KITS.items():
+    for key, (f, _thr, _bridge, sheet_ppm, atlas_ppm) in KITS.items():
         im = Image.open(SRC + f).convert('RGB')
         s = atlas_ppm / sheet_ppm
         for i, (x0, y0, x1, y1, role) in enumerate(kits[key]):
@@ -203,26 +235,41 @@ def build_panels():
             t = np.asarray(crop.resize((w, h), Image.LANCZOS))
             items.append(dict(name=f'{key}{i}', kit=key, role=role, px=t,
                               m=[round(crop.width / sheet_ppm, 2), round(crop.height / sheet_ppm, 2)]))
-    # Skyline packing, tallest first: each panel drops to the lowest spot it fits
     pad, W = PANEL_PAD, PANEL_ATLAS_W
-    sky = np.zeros(W, np.int32)  # height filled so far in each pixel column
-    for it in sorted(items, key=lambda it: (-it['px'].shape[0], -it['px'].shape[1])):
-        h, w = it['px'].shape[0] + 2 * pad, it['px'].shape[1] + 2 * pad
-        tops = np.lib.stride_tricks.sliding_window_view(sky, w).max(axis=1)
-        x = int(np.argmin(tops))
-        it['at'] = [x + pad, int(tops[x]) + pad]
-        sky[x:x + w] = tops[x] + h
-    H = int(sky.max())
-    atlas = np.zeros((H, W, 3), np.uint8)
-    for it in items:
-        h, w = it['px'].shape[:2]
-        x, y = it['at']
-        atlas[y - pad:y + h + pad, x - pad:x + w + pad] = np.pad(it['px'], ((pad, pad), (pad, pad), (0, 0)), mode='wrap')
-    Image.fromarray(atlas).save(OUT + 'city-panels.jpg', quality=84, optimize=True, progressive=True)
-    print('panels', len(items), 'panels', W, 'x', H)
-    meta = dict(url='textures/city-panels.jpg', w=W, h=H, pad=pad)
+    # Split the kits, in order, into as few pages of similar size as fit
+    size = {k: sum((it['px'].shape[0] + 2 * pad) * (it['px'].shape[1] + 2 * pad) for it in items if it['kit'] == k) for k in KITS}
+    n = 1
+    while True:
+        target, pages, cur, acc = sum(size.values()) / n, [], [], 0
+        for k in KITS:
+            if cur and acc + size[k] / 2 > target * (len(pages) + 1) and len(pages) < n - 1:
+                pages.append(cur); cur = []
+            cur.append(k); acc += size[k]
+        pages.append(cur)
+        heights = [skyline([it for it in items if it['kit'] in p], W, pad) for p in pages]
+        if max(heights) <= PANEL_ATLAS_H: break
+        if n >= len(KITS): raise ValueError('a single kit is taller than a panel atlas page')
+        n += 1
+    metas = {}
+    for i, (page, H) in enumerate(zip(pages, heights)):
+        name = 'panels' if i == 0 else f'panels{i + 1}'
+        on = [it for it in items if it['kit'] in page]
+        skyline(on, W, pad)
+        atlas = np.zeros((H, W, 3), np.uint8)
+        for it in on:
+            it['atlas'] = name
+            h, w = it['px'].shape[:2]
+            x, y = it['at']
+            atlas[y - pad:y + h + pad, x - pad:x + w + pad] = np.pad(it['px'], ((pad, pad), (pad, pad), (0, 0)), mode='wrap')
+        Image.fromarray(atlas).save(OUT + f'city-{name}.jpg', quality=84, optimize=True, progressive=True)
+        metas[name] = dict(url=f'textures/city-{name}.jpg', w=W, h=H, pad=pad)
+        print(name, len(on), 'panels', W, 'x', H, '(' + ', '.join(page) + ')')
+    # Drop pages left over from a build that needed more of them
+    import glob
+    for f in glob.glob(OUT + 'city-panels*.jpg'):
+        if os.path.basename(f)[5:-4] not in metas: os.remove(f)
     kit_roles = {k: {r: [it['name'] for it in items if it['kit'] == k and it['role'] == c] for c, r in ROLES.items()} for k in KITS}
-    return meta, items, kit_roles
+    return metas, items, kit_roles
 
 
 if '--segment' in sys.argv:
@@ -287,7 +334,8 @@ for name, A in ATLASES.items():
     manifest['atlases'][name] = dict(url=f'textures/city-{name}.jpg', w=W, h=H, cell=cell, pad=pad, content=C, cols=ncols)
     print(name, len(tiles), 'tiles', W, 'x', H)
 
-manifest['atlases']['panels'], panels, kit_roles = build_panels()
+metas, panels, kit_roles = build_panels()
+manifest['atlases'].update(metas)
 
 js = '// Generated from the city texture sheets: atlas layouts and where each tile sits.\n'
 js += '// Tile names are <sheet><row><col> in the original sheet; the value is [atlas, cell index, source aspect].\n'
@@ -296,11 +344,11 @@ js += 'export const TILES = {\n'
 for k, v in manifest['tiles'].items():
     js += f"  {k}: ['{v[0]}', {v[1]}, {v[2]}],\n"
 js += '};\n\n'
-js += '// Facade panels, named <kit><panel number in tools/city-panels.json>:\n'
-js += '// [x, y, w, h] in the panel atlas in pixels, then the panel\'s width and height in meters.\n'
+js += '// Facade panels, named <kit><panel number in tools/city-panels.json>: [atlas page,\n'
+js += '// x, y, w, h in the page in pixels, then the panel\'s width and height in meters].\n'
 js += 'export const PANELS = {\n'
 for it in panels:
-    js += f"  {it['name']}: [{it['at'][0]}, {it['at'][1]}, {it['px'].shape[1]}, {it['px'].shape[0]}, {it['m'][0]}, {it['m'][1]}],\n"
+    js += f"  {it['name']}: ['{it['atlas']}', {it['at'][0]}, {it['at'][1]}, {it['px'].shape[1]}, {it['px'].shape[0]}, {it['m'][0]}, {it['m'][1]}],\n"
 js += '};\n\n'
 js += '// Panels of each kit by role: window bays, piers (narrow strips), solid walls and vents (louvers).\n'
 js += 'export const KITS = {\n'

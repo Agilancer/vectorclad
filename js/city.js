@@ -42,9 +42,9 @@ function cell(name) {
   if (c) return c;
   const p = PANELS[name];
   if (p) {
-    // A facade panel: its own rectangle in the panel atlas
-    const A = ATLASES.panels;
-    c = { atlas: 'panels', u: p[0] / A.w, v: 1 - (p[1] + p[3]) / A.h, w: p[2] / A.w, h: p[3] / A.h };
+    // A facade panel: its own rectangle on its page of the panel atlas
+    const A = ATLASES[p[0]];
+    c = { atlas: p[0], u: p[1] / A.w, v: 1 - (p[2] + p[4]) / A.h, w: p[3] / A.w, h: p[4] / A.h };
   } else {
     const t = TILES[name];
     if (!t) throw new Error(`Unknown city tile ${name}`);
@@ -90,18 +90,18 @@ const pick = (r, a) => a[Math.floor(r() * a.length)];
 
 // Panel kits that suit each kind of building (repeats weight the pick)
 const KIT_STYLE = {
-  walkup: ['brick', 'brick', 'brick', 'limestone'],
-  prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete'],
-  modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches'],
-  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches'],
-  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum'],
-  deco: ['limestone', 'limestone', 'brick'],
-  far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches'],
+  walkup: ['brick', 'brick', 'limestone', 'masonry'],
+  prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete', 'masonry', 'travertine', 'ivory', 'sandstone'],
+  modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches', 'seaglass', 'silver', 'azure', 'travertine', 'masonry', 'sandstone'],
+  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass'],
+  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'slate', 'indigo', 'silver', 'basalt', 'azure'],
+  deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone'],
+  far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine'],
 };
 
 // World size of one repeat of a tile, in meters: [width, height]
 function tileMeters(name) {
-  if (PANELS[name]) return [PANELS[name][4], PANELS[name][5]];
+  if (PANELS[name]) return [PANELS[name][5], PANELS[name][6]];
   if (name.startsWith('office')) return [12, 12];
   if (name.startsWith('facade')) return [7.2, 7.2];
   if (name.startsWith('shop')) {
@@ -221,12 +221,13 @@ export class City {
     this.meshes = [];
     this.mats = {
       facade: atlasMaterial(tex.facade, { roughness: 0.75, glass: true }),
-      panels: atlasMaterial(tex.panels, { roughness: 0.75, glass: true }),
       surface: atlasMaterial(tex.surface, { roughness: 0.85 }),
       ground: atlasMaterial(tex.ground, { roughness: 0.92 }),
       decal: atlasMaterial(tex.ground, { roughness: 0.6, decal: true }),
       props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.15 }),
     };
+    // One material per page of the panel atlas
+    for (const k of Object.keys(ATLASES)) if (k.startsWith('panels')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.75, glass: true });
     this.layout();
     this.buildGround();
     this.buildBlocks();
