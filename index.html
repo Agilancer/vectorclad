@@ -22,6 +22,18 @@
 <body>
 <canvas id="c"></canvas>
 
+<section id="boot" aria-label="Loading">
+  <div class="load-box">
+    <div class="eyebrow">VECTORCLAD · BOOT</div>
+    <div id="boot-title" class="load-title">Loading title theme</div>
+    <div class="bar"><i id="boot-bar"></i></div>
+    <div class="boot-song mono">Vectors <span>// THEDEMONMECHANIZEDMACHINEDESTROYER</span></div>
+  </div>
+  <button id="boot-start" type="button" hidden>
+    <span class="title-prompt"><i aria-hidden="true"></i><span id="boot-prompt">Tap to power up</span><i aria-hidden="true"></i></span>
+  </button>
+</section>
+
 <section id="title" aria-label="Title screen">
   <canvas id="title-canvas" aria-hidden="true"></canvas>
   <h1 class="title-word">VECTOR<span>CLAD</span></h1>
@@ -180,7 +192,7 @@
   <div class="hangar-body" id="hangar-body"></div>
 </aside>
 
-<script type="module" src="js/title/title.js"></script>
-<script type="module" src="js/main.js"></script>
+<!-- boot.js loads the title theme first, then js/title/title.js and js/main.js. -->
+<script type="module" src="js/boot.js"></script>
 </body>
 </html>

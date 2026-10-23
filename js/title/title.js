@@ -1,9 +1,12 @@
-// Title screen: the first thing on screen. Shows the live VECTORCLAD logo while the game
-// loads behind it. A tap, click or key press fades it out and hands over to the game
-// (the loading screen if textures are still coming in, otherwise the intro card).
+// Title screen: the first thing on screen after boot.js has loaded the title theme. Shows the
+// live VECTORCLAD logo while the game loads behind it. A tap, click or key press fades it out,
+// drops the music under the effects, and hands over to the game (the loading screen if
+// textures are still coming in, otherwise the intro card).
 //
 // main.js waits on `titleDone` before it starts rendering, and listens for the
 // `vectorclad:start` window event to unlock audio inside the same user gesture.
+
+import { music } from '../music.js';
 
 const $ = (s) => document.querySelector(s);
 const titleEl = $('#title');
@@ -61,6 +64,8 @@ async function preferLandscape() {
 function start() {
   if (started || portraitPhone.matches) return;
   started = true;
+  music.unlock();
+  music.duck();
   window.dispatchEvent(new CustomEvent('vectorclad:start'));
   if (isTouch) preferLandscape();
   window.removeEventListener('keydown', onKey);

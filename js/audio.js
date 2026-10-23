@@ -1,5 +1,13 @@
 // Synthesized sound effects. Nothing is loaded from disk; every sound is
-// built from oscillators and filtered noise when it plays.
+// built from oscillators and filtered noise when it plays. The soundtrack is in music.js.
+
+let shared = null;
+/** The page's one AudioContext, shared with music.js (which needs it on iOS). */
+export function audioContext() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!shared && AC) shared = new AC();
+  return shared;
+}
 
 export class Sound {
   constructor() {
@@ -14,9 +22,9 @@ export class Sound {
       if (this.ctx.state === 'suspended') this.ctx.resume();
       return;
     }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    const ctx = (this.ctx = new AC());
+    const ctx = (this.ctx = audioContext());
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
     this.master = ctx.createGain();
     this.master.gain.value = this.enabled ? this.volume : 0;
     const comp = ctx.createDynamicsCompressor();

@@ -439,10 +439,10 @@ body.touch .score { padding: 3px 10px; }
 }
 
 /* ---------------------------------------------------------------------------
-   Title screen (the first screen) and the rotate-to-landscape overlay.
+   Boot screen (loads the title theme), title screen and the rotate-to-landscape overlay.
    Colors are the VECTORCLAD brand neon palette (vectorclad-brand kit, tokens/palette.json).
 --------------------------------------------------------------------------- */
-#title {
+#title, #boot {
   --vc-void: #050507;
   --vc-ink: #e6e7ee;
   --vc-dim: #8b8e9d;
@@ -458,6 +458,14 @@ body.touch .score { padding: 3px 10px; }
     var(--vc-void);
   transition: opacity 0.9s ease, filter 0.9s ease;
 }
+
+/* Boot screen: sits over the title until the title theme has downloaded (js/boot.js). */
+#boot { z-index: 70; display: grid; place-items: center; transition-duration: 0.4s; }
+#boot.is-leaving { opacity: 0; pointer-events: none; }
+#boot .eyebrow { color: var(--vc-yellow); }
+#boot .bar i { background: var(--vc-purple); box-shadow: 0 0 10px rgba(180, 77, 255, 0.7); }
+.boot-song { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--vc-ink); }
+.boot-song span { color: var(--vc-dim); }
 #title-canvas {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block;
   opacity: 0; transition: opacity 0.8s ease;
@@ -477,7 +485,7 @@ body.touch .score { padding: 3px 10px; }
 #title.is-live .title-word { opacity: 0; }
 
 /* The whole screen is the start button. */
-#title-start {
+#title-start, #boot-start {
   position: absolute; inset: 0; width: 100%; margin: 0; border: 0; background: transparent; color: inherit;
   display: flex; align-items: flex-end; justify-content: center;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -485,8 +493,8 @@ body.touch .score { padding: 3px 10px; }
   padding-block: 0 calc(clamp(64px, 17vh, 150px) + env(safe-area-inset-bottom, 0px));
   -webkit-tap-highlight-color: transparent;
 }
-#title-start:focus-visible { outline: none; }
-#title-start:focus-visible .title-prompt { outline: 2px solid var(--vc-yellow); outline-offset: 8px; }
+#title-start:focus-visible, #boot-start:focus-visible { outline: none; }
+#title-start:focus-visible .title-prompt, #boot-start:focus-visible .title-prompt { outline: 2px solid var(--vc-yellow); outline-offset: 8px; }
 .title-prompt {
   display: inline-flex; align-items: center; gap: 14px;
   font: 14px var(--font-mono); letter-spacing: 0.5em; text-transform: uppercase;
@@ -522,7 +530,7 @@ body.touch .score { padding: 3px 10px; }
 }
 
 @media (max-height: 500px) {
-  #title-start { padding-block: 0 calc(52px + env(safe-area-inset-bottom, 0px)); }
+  #title-start, #boot-start { padding-block: 0 calc(52px + env(safe-area-inset-bottom, 0px)); }
   .title-prompt { font-size: 12px; }
   .title-tag { font-size: 10px; padding-block: 0 calc(12px + env(safe-area-inset-bottom, 0px)); }
 }
@@ -560,6 +568,6 @@ body.touch .score { padding: 3px 10px; }
 .rotate-sub { margin: 0; font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: #8b8e9d; }
 
 @media (prefers-reduced-motion: reduce) {
-  #title, #title-canvas, .title-word { transition-duration: 0.15s; }
+  #title, #boot, #title-canvas, .title-word { transition-duration: 0.15s; }
   .title-prompt, #title.is-leaving .title-prompt, .rotate-phone { animation: none; }
 }
