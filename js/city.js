@@ -1,6 +1,7 @@
 import * as THREE from './three.js';
 import { ATLASES, TILES } from './cityTiles.js';
 import { canvasTexture } from './atlas.js';
+import { Trees } from './trees.js';
 
 // ---------------------------------------------------------------------------
 // Lower Manhattan, built from the city texture sheets.
@@ -196,6 +197,8 @@ export class City {
     this.cars = [];
     this.pending = [];
     this.burning = [];
+    this.treeSpots = [];
+    this.treeBlocks = []; // low props trees land and roll on but the mech walks through (planters, fountain)
     this.bufs = new Map();
     this.meshes = [];
     this.mats = {
@@ -213,6 +216,7 @@ export class City {
     this.buildScenery();
     this.flush();
     this.buildCars();
+    this.trees = new Trees(this, this.treeSpots, this.treeBlocks);
   }
 
   /** Meters to game units */
@@ -915,16 +919,21 @@ export class City {
     const g = this.buf('decal');
     this.slab(sb, 'walls53', x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0, y0 + m(0.8), m(1.2), { tint: [0.9, 0.9, 0.88] });
     this.flat(g, pick(this.r, ['planter20', 'planter40', 'planter00']), x - s / 2, z - s / 2, x + s / 2, z + s / 2, y0 + m(0.81), (xx, zz) => [(xx - x + s / 2) / s, (z + s / 2 - zz) / s]);
+    this.treeBlocks.push({ min: new V3(x - s / 2, y0, z - s / 2), max: new V3(x + s / 2, y0 + m(0.8), z + s / 2) });
   }
 
+  /** A tree: a trunk under three leafy blobs. Trees are drawn and simulated by trees.js. */
   tree(x, y, z, scale = 1) {
     const m = (v) => this.m(v) * scale, r = this.r;
-    this.prop('pole', x, y + m(2), z, m(0.35), m(4), m(0.35), [0.32, 0.25, 0.18]);
     const g = 0.75 + r() * 0.35;
+    const blobs = [];
     for (let i = 0; i < 3; i++) {
+      // Same draws in the same order as when trees were merged props, so the rest of the city stays put
       const a = r() * 6.28, d = m(1.2) * (i ? 1 : 0), s = m(2.2 + r() * 1.2);
-      this.prop('ico', x + Math.cos(a) * d, y + m(5.2 + r() * 1.8), z + Math.sin(a) * d, s, s * 0.85, s, [0.2 * g, (0.3 + r() * 0.08) * g, 0.14 * g], r() * 6, r() * 3);
+      const y1 = m(5.2 + r() * 1.8), color = [0.2 * g, (0.3 + r() * 0.08) * g, 0.14 * g];
+      blobs.push({ x: Math.cos(a) * d, y: y1, z: Math.sin(a) * d, s, color, ry: r() * 6, rx: r() * 3 });
     }
+    this.treeSpots.push({ x, y, z, u: this.m(scale), trunk: [0.32, 0.25, 0.18], blobs });
   }
 
   parkBlock(B, fountain) {
@@ -949,6 +958,8 @@ export class City {
       this.prop('cyl', cx, y0 + m(0.92), cz, R * 0.9, m(0.08), R * 0.9, [0.22, 0.38, 0.45]);
       this.prop('cyl', cx, y0 + m(2), cz, m(1.5), m(3), m(1.5), [0.72, 0.7, 0.66]);
       this.fountain = new V3(cx, y0 + m(3.4), cz);
+      this.treeBlocks.push({ min: new V3(cx - R * 0.8, 0, cz - R * 0.8), max: new V3(cx + R * 0.8, y0 + m(0.9), cz + R * 0.8) });
+      this.treeBlocks.push({ min: new V3(cx - m(1.5), 0, cz - m(1.5)), max: new V3(cx + m(1.5), y0 + m(3.5), cz + m(1.5)) });
     }
   }
 
@@ -1306,6 +1317,7 @@ export class City {
     this.fx.explosion(p, 1.05);
     this.sound.explosion(p, 1.1);
     this.burning.push({ car, t: 14 + Math.random() * 8 });
+    this.trees.blast(p, m(10), 30);
     this.onCarBlast && this.onCarBlast(car.pos.clone());
   }
 
@@ -1324,6 +1336,7 @@ export class City {
         });
       }
     }
+    this.trees.update(dt, ctx);
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const p = this.pending[i];
       p.t -= dt;
