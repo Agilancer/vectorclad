@@ -231,9 +231,16 @@ The city is full of people, at their true size beside the 12 m mech (`js/people.
   moved on to blocks near the mech again, out of its sight.
 - **In the buildings:** when a building is first broken open, its floors round the hole
   fill with people and furniture, some buildings far more than others (offices most, homes
-  fewer). The ones by the hole are thrown out of it or slide backward off the broken floor
-  and fall; the rest stay inside until the next blast throws them or the floor under them
-  goes.
+  fewer), with a crowd right by the hole. Every hole spills them, the more the bigger it
+  is: about one person for every six cubic meters it blew away in a busy office, fewer in a
+  quiet home, so a bullet hole lets out none or one and a rocket's crater a crowd. On the
+  floors it broke into, within three times its radius, about half slide backward toward it
+  as the floor sags, faster and faster, and go over the edge; the newcomers nearest it are
+  thrown out through it, skidding and tumbling across the floor and dropping into the
+  street; the rest scramble away from the edge, and many who come to it slide off. Later
+  blasts throw whoever is still inside out through the hole (away from the building's
+  middle, give or take 30°), never deeper in, and leave about half of those on the floor
+  they tear open to slide into it. When the floor under someone goes, they fall.
 - **What happens to them:** explosions throw and kill them, rounds and beams cut them down,
   the mech's feet squash them, falling pieces of building and train cars crush them, and a
   fall from more than a storey or so ends in a little red splat on the pavement. Blasts,
@@ -242,9 +249,12 @@ The city is full of people, at their true size beside the 12 m mech (`js/people.
 **Furniture** (`js/furniture.js`): sixteen pieces modeled in three.js from boxes and
 cylinders: desks with monitors and office chairs, filing cabinets, bookshelves full of
 books, water coolers and potted plants for the offices; sofas, armchairs, beds, tables
-and chairs, televisions, fridges, wardrobes and floor lamps for the homes. Blasts throw
-them out through the holes, tumbling; a piece whose floor is shot away falls; they bounce
-and come to rest on the street, on the rubble or on the floors below.
+and chairs, televisions, fridges, wardrobes and floor lamps for the homes. A fresh hole
+throws the pieces right by it on the floors it broke into out through it, one for about
+every six cubic meters it blew away, and later blasts throw the pieces still indoors out
+through the hole too, tumbling and skidding across the floor; a piece whose floor is shot
+away falls; they bounce, skid and come to rest on the street, on the rubble or on the
+floors below.
 
 ### Trains
 

@@ -12,10 +12,11 @@ import * as THREE from './three.js';
 //
 // When a building is first broken open (js/people.js fills it with people at
 // the same time), the floors round the hole are furnished, offices or homes
-// by the kind of building. Blasts throw the pieces out through the holes,
-// tumbling, and a piece whose floor is shot out from under it falls. They
-// bounce, slide and come to rest on the street, on rubble or on the floors
-// below.
+// by the kind of building. The pieces nearest the hole are thrown out through
+// it, as many as it is big, and later blasts throw those still indoors out
+// through it too, tumbling and skidding across the floor; a piece whose floor
+// is shot out from under it falls. They bounce, skid and come to rest on the
+// street, on rubble or on the floors below.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -164,16 +165,13 @@ export class Furniture {
   }
 
   /**
-   * Furnish the floors of s round (x, y, z): spots from people.floorSpots. home: a house or
-   * apartments rather than offices. Pieces by the hole are thrown out of it.
+   * Furnish the floors of s round a hole at (x, y, z), r across: spots from people.floorSpots, and
+   * by, more right by the hole. home: a house or apartments rather than offices. The pieces by the
+   * hole on the floors it broke into are thrown out through it.
    */
-  furnish(s, spots, x, y, z, r, home) {
-    const B = s.box;
-    _w.set(x - (B.min.x + B.max.x) / 2, 0, z - (B.min.z + B.max.z) / 2);
-    if (_w.lengthSq() < 1e-6) _w.set(1, 0, 0);
-    _w.normalize();
-    for (const p of spots) {
-      const kind = this.kind(home);
+  furnish(s, spots, x, y, z, r, home, by = []) {
+    for (let k = 0; k < by.length + spots.length; k++) {
+      const p = k < by.length ? by[k] : spots[k - by.length], kind = this.kind(home);
       // Offices: a desk comes with a monitor on it, facing the chair drawn up to its front
       const yaw = Math.floor(Math.random() * 4) * Math.PI / 2 + rand(-0.15, 0.15);
       const it = this.add(kind, p, yaw, s);
@@ -183,9 +181,35 @@ export class Furniture {
         if (mon) mon.on = it;
         this.add('officeChair', _v.set(p.x + Math.sin(yaw) * this.m(0.75), p.y, p.z + Math.cos(yaw) * this.m(0.75)), yaw + Math.PI + rand(-0.5, 0.5), s);
       }
-      const d = Math.hypot(p.x - x, p.y - y, p.z - z);
-      if (d < r * 1.8) this.throw(it, _w.x * this.m(rand(3, 10)), this.m(rand(1, 5)), _w.z * this.m(rand(3, 10)));
+      if (k >= by.length || Math.abs(p.y - y) > r * 0.75) continue;
+      // Thrown low across the floor, skidding (see update), to go out of the hole and come down in the street below
+      this.outward(s, p, x, z, _w);
+      const v = Math.sqrt(this.m(rand(2, 5)) ** 2 + 2 * this.m(5) * (Math.hypot(p.x - x, p.z - z) + this.m(2)));
+      this.throw(it, _w.x * v, this.m(rand(0.5, 2.5)), _w.z * v);
     }
+  }
+
+  /** The standing building a piece is in (over its footprint, not out in the street), or null */
+  indoors(it) {
+    const s = it.s, p = it.pos;
+    if (!s || s.dead) return null;
+    const B = s.box;
+    return p.x > B.min.x && p.x < B.max.x && p.z > B.min.z && p.z < B.max.z ? s : null;
+  }
+
+  /**
+   * The way out of s through a hole at (hx, hz) from p inside it (into out): from the building's
+   * middle toward the hole, give or take 30°, and drawn in toward the hole from off to its side
+   */
+  outward(s, p, hx, hz, out) {
+    const B = s.box;
+    out.set(hx - (B.min.x + B.max.x) / 2, 0, hz - (B.min.z + B.max.z) / 2);
+    if (out.lengthSq() < 1e-6) out.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+    out.normalize();
+    // Aimed past the hole: the part of the way to it across the way out
+    const dx = hx - p.x, dz = hz - p.z, t = dx * out.x + dz * out.z, D = this.m(10);
+    const a = Math.atan2(out.x * D + dx - out.x * t, out.z * D + dz - out.z * t) + rand(-Math.PI / 6, Math.PI / 6);
+    return out.set(Math.sin(a), 0, Math.cos(a));
   }
 
   throw(it, vx, vy, vz) {
@@ -196,16 +220,21 @@ export class Furniture {
     it.spin.set(rand(-6, 6), rand(-4, 4), rand(-6, 6));
   }
 
-  /** An explosion: pieces near it fly */
+  /** An explosion: pieces near it fly, those indoors out through the hole it tears */
   blast(p, radius, amount) {
     const R = Math.max(radius * 1.3, this.m(6));
     for (const it of this.items) {
       const d = it.pos.distanceTo(p);
       if (d > R) continue;
+      const k = (1 - d / R) * Math.min(1.6, 0.6 + amount / 80), s = this.indoors(it);
+      if (s) {
+        this.outward(s, it.pos, p.x, p.z, _v);
+        this.throw(it, _v.x * this.m(6 + 20 * k), this.m(2 + 6 * k), _v.z * this.m(6 + 20 * k));
+        continue;
+      }
       _v.subVectors(it.pos, p);
       if (_v.lengthSq() < 1e-6) _v.set(Math.random() - 0.5, 0.2, Math.random() - 0.5);
       _v.normalize();
-      const k = (1 - d / R) * Math.min(1.6, 0.6 + amount / 80);
       this.throw(it, _v.x * this.m(6 + 20 * k), Math.max(_v.y, 0.2) * this.m(6 + 16 * k), _v.z * this.m(6 + 20 * k));
     }
   }
@@ -258,9 +287,15 @@ export class Furniture {
       if (g < 0 && it.pos.y + lo <= g) { this.remove(it); continue; } // into the river
       if (it.pos.y + lo <= g) {
         it.pos.y = g - lo;
+        const h = Math.hypot(it.vel.x, it.vel.z);
         if (it.vel.y < -m(3)) {
           // Bounce and tumble on
           it.vel.y *= -0.28; it.vel.x *= 0.55; it.vel.z *= 0.55; it.spin.multiplyScalar(0.55);
+        } else if (h > m(1.5)) {
+          // Skidding along the floor (out through the hole it was blown at), slowing
+          const k = Math.max(0, h - m(5) * dt) / h;
+          it.vel.x *= k; it.vel.z *= k; it.vel.y = 0;
+          it.spin.multiplyScalar(Math.exp(-dt * 6));
         } else {
           it.vel.set(0, 0, 0);
           it.air = false;
