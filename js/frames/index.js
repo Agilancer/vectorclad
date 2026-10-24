@@ -31,8 +31,8 @@ export const FRAMES = [
   {
     id: 'locust', code: 'RJ-6', name: 'Locust', class: 'light', make: (m, g) => new Locust(m, g),
     ap: 720, walk: 9, dash: 41, kick: 16, boost: 2, regen: 1.45, jump: 23, climb: 1.05, weight: 0.65,
-    slots: ['rightHand', 'leftHand', 'legL', 'legR'], paint: 'crimson',
-    blurb: 'Reverse-joint hopper. Its legs throw it higher than any other frame can jump. No shoulder mounts: its ordnance rides on its thighs.',
+    slots: ['rightHand', 'leftHand', 'legL', 'legR'], paint: 'zombot',
+    blurb: 'Reverse-joint hopper with shoulder drums and blades on its forearms. Its legs throw it higher than any other frame can jump. No shoulder mounts: its ordnance rides on its thighs.',
     presets: [
       { name: 'Grasshopper', slots: { rightHand: ['sawLauncher', 'crimson'], leftHand: ['flamer', 'crimson'], legL: ['mines', 'crimson'], legR: ['missilePod', 'crimson'] } },
       { name: 'Cricket', slots: { rightHand: ['beamRifle', 'arctic'], leftHand: ['shield', 'arctic'], legL: ['microPod', 'arctic'], legR: ['microPod', 'arctic'] } },

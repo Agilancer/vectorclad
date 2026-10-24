@@ -326,7 +326,7 @@ export const PAINTS = [
   { id: 'glint', name: 'Glint White', armor: '#f2f3f5', second: '#5a6680', frame: '#7d8594', trim: '#4fa8ff', eye: '#7fd8ff' },
   { id: 'desert', name: 'Desert Ops', armor: '#c2ad85', second: '#51473b', frame: '#6a6156', trim: '#e2782c', eye: '#9dff8a' },
   { id: 'crimson', name: 'Crimson', armor: '#9a3633', second: '#322d2c', frame: '#56504c', trim: '#d39a45', eye: '#ffe08a' },
-  { id: 'scout', name: 'Field Khaki', armor: '#a39a83', second: '#55524c', frame: '#6c675e', trim: '#d6d0bf', eye: '#3fd2ff' },
+  { id: 'scout', name: 'Field Khaki', armor: '#a39a83', accent: '#b8743f', second: '#4f4c47', frame: '#6c675e', trim: '#d6d0bf', eye: '#3fd2ff', port: '#e89a52' },
   { id: 'storm', name: 'Storm Indigo', armor: '#4f5a78', second: '#2c303b', frame: '#5a6175', trim: '#a3acc0', eye: '#ff8a3a' },
   { id: 'zeus', name: 'Zeus Maroon', armor: '#7a2335', accent: '#e8e6e2', second: '#34353c', frame: '#5d6068', trim: '#d9a53e', eye: '#62ff9a', port: '#f08a2a' },
   { id: 'neozeon', name: 'Neo Red', armor: '#b5252b', accent: '#e9e6df', second: '#3b3537', frame: '#605a58', trim: '#d7a84a', eye: '#ff5ab8', port: '#d8b27a' },

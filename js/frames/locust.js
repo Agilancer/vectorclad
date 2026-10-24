@@ -1,15 +1,17 @@
 import * as THREE from '../three.js';
 import { B, frontPrism, chamferBox, cylX, cylZ, loft, place } from '../atlas.js';
-import { Mech, Thruster, Piston, P, blade, loftZ } from '../mech.js';
+import { Mech, Thruster, Piston, P, blade, loftZ, mirror } from '../mech.js';
+import { port, vfin, strip, slats } from './kit.js';
 
 const V3 = THREE.Vector3;
 
 // ---------------------------------------------------------------------------
 // RJ-6 Locust: a reverse-joint light. Its knees bend backward like a bird's,
-// with a shock ram behind each one, over three-toed talons. A low wedge body
-// rides between big thighs that carry the leg hardpoints; the head is a
-// cluster of four eyes like a jumping spider's, and a pair of jump-jet
-// nacelles on its back throw it high.
+// with a shock ram behind each one, down to pointed tip-toe feet. A hunched
+// chevron torso hangs between two great ribbed shoulder drums; the head rides
+// low and forward under swept V-fins with a single green eye. Long thin arms
+// carry blades along their forearms, and a jump pack with raked vanes on its
+// back throws it high.
 // ---------------------------------------------------------------------------
 
 const RIG = {
@@ -23,8 +25,10 @@ const RIG = {
   // Knees fold back: thighs swing back and shins forward
   fk: { air: [[0.75, -1.4], [1.05, -1.85]], dash: [[0.45, -0.95], [0.7, -1.25]], crouch: [-0.6, 1.2] },
   crouchDrop: 0.9,
-  hunch: 0.16, hunchIdle: 0.06, armOut: 0.17,
+  hunch: 0.22, hunchIdle: 0.08, armOut: 0.2,
 };
+
+const PA = { all: B.plainA }, PB = { all: B.plainB };
 
 export class Locust extends Mech {
   constructor(mats, glowTex) { super(mats, glowTex, RIG); }
@@ -46,9 +50,12 @@ export class Locust extends Mech {
       { y: -0.26, w: 0.46, d: 0.56, c: 0.13 },
     ]), M.second, { all: B.mechA }));
     place(p, P(cylX(0.2, 1.4), M.joint), 0, -0.1, 0);
-    place(p, P(frontPrism([[-0.24, 0.14], [0.24, 0.14], [0.16, -0.18], [0, -0.34], [-0.16, -0.18]], 0.12, 0.03), M.armor, { all: B.plainA }), 0, 0, 0.44);
-    // Tail plate over the hips at the back
-    place(p, P(blade([[0.0, 0.2], [-0.5, 0.16], [-0.9, -0.08], [-0.4, -0.2], [0.0, -0.12]], 0.36, [0.5, 1]), M.armor, { all: B.plainA }), 0, 0.02, -0.36);
+    // Chevron codpiece in two layers
+    place(p, P(frontPrism([[-0.3, 0.16], [0.3, 0.16], [0.18, -0.16], [0, -0.4], [-0.18, -0.16]], 0.14, 0.03), M.armor, PA), 0, 0, 0.42);
+    place(p, P(frontPrism([[-0.2, 0.08], [0, -0.16], [0.2, 0.08], [0.2, -0.02], [0, -0.26], [-0.2, -0.02]], 0.05, 0.01), M.accent, PA), 0, 0, 0.5);
+    // Tail plate raking back over the hips
+    place(p, P(blade([[0.0, 0.2], [-0.5, 0.16], [-1.0, -0.12], [-0.44, -0.22], [0.0, -0.12]], 0.4, [0.5, 1]), M.armor, PA), 0, 0.02, -0.36);
+    place(p, P(blade([[-0.3, 0.17], [-0.9, -0.08], [-0.86, -0.12], [-0.3, 0.11]], 0.12, [0.5, 1]), M.accent, PA), 0, 0.03, -0.36);
   }
 
   buildLeg(s) {
@@ -57,19 +64,18 @@ export class Locust extends Mech {
     hip.position.set(s * 0.72, -this.rig.leg.hipDrop, 0);
     this.pelvis.add(hip);
     place(hip, P(cylX(0.34, 0.4, 16), M.joint));
-    place(hip, P(cylX(0.24, 0.06, 14), M.trim), s * 0.22, 0, 0);
-    // Thigh: a big muscular block, thick at the hip, tapering down to the reverse knee
+    place(hip, P(cylX(0.24, 0.06, 14), M.accent, PA), s * 0.22, 0, 0);
+    // Thigh: a big orange haunch tapering to the reverse knee, plated on the outside
     place(hip, P(loft([
       { y: 0.1, w: 0.62, d: 0.9, c: 0.18, z: 0.02 },
       { y: -0.6, w: 0.72, d: 1.04, c: 0.22, z: -0.02 },
       { y: -1.4, w: 0.5, d: 0.7, c: 0.15, z: -0.04 },
       { y: -TH + 0.2, w: 0.36, d: 0.46, c: 0.1, z: 0 },
     ]), M.armor, { all: B.plainA, x: B.plainA }), s * 0.06, 0, 0);
-    // Outer plate with the red stripe panel, and a front plate
-    place(hip, P(blade([[0.52, 0.06], [0.48, -0.7], [0.1, -1.36], [-0.42, -1.2], [-0.56, -0.3], [-0.24, 0.1]], 0.1, [0.6, 1], [0.6, 1]), M.second, { all: B.plainA }), s * 0.42, 0, 0);
-    this.plate(hip, 'redPlate', 0.18, s * 0.48, -0.5, 0.02, 0, s * Math.PI / 2);
-    place(hip, P(frontPrism([[-0.26, 0.0], [0.26, 0.0], [0.24, -0.9], [0.0, -1.1], [-0.24, -0.9]], 0.1, 0.03), M.white, { all: B.plainA }), s * 0.06, -0.1, 0.52);
-    // Leg hardpoint on the thigh's outer plate
+    place(hip, P(blade([[0.52, 0.06], [0.48, -0.7], [0.1, -1.36], [-0.42, -1.2], [-0.56, -0.3], [-0.24, 0.1]], 0.1, [0.6, 1], [0.6, 1]), M.second, PB), s * 0.42, 0, 0);
+    place(hip, P(blade([[0.42, -0.1], [0.38, -0.66], [0.06, -1.14], [-0.12, -1.06], [0.2, -0.6], [0.24, -0.1]], 0.06, [0.6, 1]), M.accent, PA), s * 0.48, 0, 0);
+    place(hip, P(frontPrism([[-0.26, 0.0], [0.26, 0.0], [0.24, -0.9], [0.0, -1.1], [-0.24, -0.9]], 0.1, 0.03), M.armor, PA), s * 0.06, -0.1, 0.52);
+    for (let k = 0; k < 3; k++) place(hip, P(chamferBox(0.36, 0.04, 0.04, 0.01), M.trim), s * 0.06, -0.3 - k * 0.12, 0.58);
     this.mount(s > 0 ? 'legL' : 'legR', hip, s * 0.5, -0.72, -0.02, 0, 0, -s * Math.PI / 2);
 
     const knee = new THREE.Group();
@@ -77,34 +83,31 @@ export class Locust extends Mech {
     hip.add(knee);
     // The knee points backward: a drum joint with a spur raking back
     place(knee, P(cylX(0.24, 0.5), M.joint));
-    for (const x of [-0.27, 0.27]) place(knee, P(cylX(0.15, 0.05, 12), M.trim), x, 0, 0);
-    place(knee, P(blade([[-0.1, 0.2], [-0.62, 0.34], [-0.7, 0.1], [-0.22, -0.2]], 0.3, [0.4, 1]), M.armor, { all: B.plainA }));
-    // Shock ram from the back of the thigh down to the shin
+    for (const x of [-0.27, 0.27]) place(knee, P(cylX(0.15, 0.05, 12), M.accent, PA), x, 0, 0);
+    place(knee, P(blade([[-0.1, 0.2], [-0.7, 0.36], [-0.8, 0.1], [-0.22, -0.2]], 0.3, [0.4, 1]), M.armor, PA));
     this.pistons.push(new Piston(hip, new V3(0, -0.6, -0.42), knee, new V3(0, -0.9, -0.2), 0.08, M));
-    // Shin: twin struts behind a narrow plate, running down and forward to the ankle
-    for (const x of [-0.12, 0.12]) place(knee, P(new THREE.CylinderGeometry(0.07, 0.06, SH - 0.2, 8), M.joint), x, -SH / 2, -0.04);
+    // Shin: a thin strut under a narrow armor blade, tapering toward the ankle
+    for (const x of [-0.12, 0.12]) place(knee, P(new THREE.CylinderGeometry(0.07, 0.05, SH - 0.2, 8), M.joint), x, -SH / 2, -0.04);
     place(knee, P(loft([
       { y: -0.1, w: 0.36, d: 0.44, c: 0.1, z: 0.02 },
       { y: -1.1, w: 0.3, d: 0.4, c: 0.08, z: 0.04 },
-      { y: -SH + 0.2, w: 0.26, d: 0.34, c: 0.07, z: 0.02 },
-    ]), M.second, { all: B.plainB }));
-    place(knee, P(blade([[0.24, -0.1], [0.32, -0.8], [0.22, -SH + 0.3], [0.1, -SH + 0.4], [0.12, -0.3]], 0.3, [1, 1], [0.5, 1]), M.armor, { all: B.plainA }));
-    // Jump vernier low on the back of the shin
+      { y: -SH + 0.2, w: 0.22, d: 0.3, c: 0.06, z: 0.02 },
+    ]), M.second, PB));
+    place(knee, P(blade([[0.24, -0.06], [0.36, -0.7], [0.26, -SH + 0.36], [0.1, -SH + 0.4], [0.1, -0.3]], 0.34, [1, 1], [0.4, 1]), M.armor, PA));
+    place(knee, P(blade([[0.37, -0.5], [0.32, -1.4], [0.28, -1.4], [0.33, -0.5]], 0.2, [1, 1]), M.accent, PA));
     this.thrusters.calf.push(new Thruster(knee, new V3(0, -SH + 0.55, -0.24), new V3(0, -0.9, -0.45), 0.12, this.glowTex));
 
     const ankle = new THREE.Group();
     ankle.position.y = -SH;
     knee.add(ankle);
-    place(ankle, P(new THREE.SphereGeometry(0.2, 14, 10), M.trim));
-    place(ankle, P(loft([{ y: 0.12, w: 0.36, d: 0.4, c: 0.09 }, { y: -0.2, w: 0.46, d: 0.5, c: 0.11 }]), M.second, { all: B.plainB }));
-    // Talons: a long center toe, two splayed side toes and a dewclaw spur
-    place(ankle, P(blade([[-0.1, -0.14], [0.34, -0.2], [1.16, -0.44], [1.2, -0.5], [-0.16, -0.5]], 0.26, [1, 0.35]), M.armor, { all: B.plainA, y: B.plainB }));
-    for (const sd of [-1, 1]) {
-      const toe = place(ankle, P(blade([[0, -0.2], [0.82, -0.44], [0.86, -0.5], [0, -0.5]], 0.14, [1, 0.3]), M.second, { all: B.plainB }), sd * 0.18, 0, 0.06);
-      toe.rotation.y = sd * 0.5;
-    }
-    place(ankle, P(blade([[0.0, -0.1], [-0.3, 0.0], [-0.8, -0.44], [-0.74, -0.5], [0.0, -0.5]], 0.18, [0.3, 1]), M.armor, { all: B.plainA }));
-    place(ankle, P(chamferBox(0.4, 0.04, 1.2, 0.02), M.joint), 0, -0.485, 0.2);
+    place(ankle, P(new THREE.SphereGeometry(0.18, 14, 10), M.joint));
+    // Tip-toe foot: a pointed hoof under a narrow armored instep, a rear spur
+    place(ankle, P(loft([{ y: 0.14, w: 0.32, d: 0.38, c: 0.08 }, { y: -0.2, w: 0.4, d: 0.5, c: 0.1, z: 0.06 }]), M.armor, PA));
+    place(ankle, P(blade([[-0.1, -0.16], [0.3, -0.18], [0.84, -0.42], [0.88, -0.5], [-0.12, -0.5]], 0.3, [1, 0.25], [0.8, 1]), M.second, { all: B.plainB }));
+    place(ankle, P(blade([[0.1, -0.15], [0.5, -0.24], [0.84, -0.44], [0.4, -0.36]], 0.2, [1, 0.3]), M.accent, PA));
+    for (const sd of [-1, 1]) place(ankle, P(blade([[0, -0.24], [0.46, -0.44], [0.48, -0.5], [0, -0.5]], 0.1, [1, 0.3]), M.second, PB), sd * 0.14, 0, 0.04, 0, sd * 0.35, 0);
+    place(ankle, P(blade([[0.0, -0.1], [-0.3, 0.0], [-0.66, -0.44], [-0.6, -0.5], [0.0, -0.5]], 0.16, [0.3, 1]), M.armor, PA));
+    place(ankle, P(chamferBox(0.36, 0.04, 1.0, 0.02), M.joint), 0, -0.485, 0.14);
     this.thrusters.sole.push(new Thruster(ankle, new V3(0, -0.32, 0.1), new V3(0, -1, -0.1), 0.14, this.glowTex));
 
     return { s, hip, knee, ankle };
@@ -116,92 +119,102 @@ export class Locust extends Mech {
     waist.position.y = 0.26;
     waist.rotation.order = 'YXZ';
     this.body.add(waist);
-    place(waist, P(new THREE.CylinderGeometry(0.26, 0.32, 0.6, 12), M.joint), 0, 0.16, -0.04);
-    for (const sd of [-1, 1]) place(waist, P(new THREE.CylinderGeometry(0.035, 0.035, 0.56, 8), M.trim), sd * 0.22, 0.2, 0.2, 0, 0, sd * 0.12);
+    place(waist, P(new THREE.CylinderGeometry(0.24, 0.3, 0.6, 12), M.joint), 0, 0.16, -0.04);
+    for (let i = 0; i < 2; i++) place(waist, P(chamferBox(0.5 - i * 0.06, 0.14, 0.12, 0.04), M.second, PB), 0, 0.3 - i * 0.16, 0.24 - i * 0.02, -0.1);
+    for (const sd of [-1, 1]) place(waist, P(new THREE.CylinderGeometry(0.035, 0.035, 0.56, 8), M.frame, PB), sd * 0.24, 0.2, 0.16, 0, 0, sd * 0.12);
 
     const chest = (this.chest = new THREE.Group());
     chest.position.y = 0.42;
     waist.add(chest);
-    // Thorax: a long, low wedge with a pointed nose and a raised canopy
-    place(chest, P(loftZ([
-      { z: -0.9, w: 1.3, h: 0.9, y: 0.6, c: 0.24 },
-      { z: -0.2, w: 1.7, h: 1.2, y: 0.62, c: 0.3 },
-      { z: 0.5, w: 1.5, h: 1.0, y: 0.6, c: 0.26 },
-      { z: 1.0, w: 0.7, h: 0.5, y: 0.5, c: 0.14 },
-    ]), M.armor, { all: B.plainA, x: B.plainA }));
-    place(chest, P(loftZ([
-      { z: -0.5, w: 0.9, h: 0.24, y: 1.2, c: 0.08 },
-      { z: 0.4, w: 0.8, h: 0.22, y: 1.12, c: 0.08 },
-    ]), M.joint));
-    place(chest, P(chamferBox(1.0, 0.2, 0.5, 0.06), M.second, { pz: B.ventDark, all: B.mechA }), 0, 0.24, 0.66, 0.3);
-    for (const sd of [-1, 1]) {
-      // Sweeping side plates
-      place(chest, P(blade([[1.0, 0.6], [0.6, 1.0], [-0.6, 1.06], [-1.0, 0.7], [-0.7, 0.2], [0.6, 0.18]], 0.08, [0.6, 1], [1, 0.7]), M.second, { all: B.plainA }), sd * 0.82, 0, 0, 0, 0, -sd * 0.12);
-      place(chest, new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.7), M.eye), sd * 0.87, 0.74, 0.1).userData.noOutline = true;
+    // Hunched chevron torso: a keeled core leaning over the hips
+    place(chest, P(loft([
+      { y: 0.0, w: 0.86, d: 0.8, c: 0.18, z: 0.0 },
+      { y: 0.5, w: 1.56, d: 1.2, c: 0.3, z: 0.06 },
+      { y: 1.0, w: 1.6, d: 1.16, c: 0.3, z: 0.0 },
+      { y: 1.24, w: 1.0, d: 0.86, c: 0.22, z: -0.06 },
+    ]), M.second, { all: B.plainB, x: B.sideVents }));
+    // Chevron breastplates: two layered Vs pointing down the sternum
+    for (const [y, z, w, mat] of [[0.0, 0.62, 1.0, M.armor], [0.36, 0.7, 0.86, M.armor]]) {
+      place(chest, P(frontPrism([[-0.78 * w, 1.26], [0.78 * w, 1.26], [0.8 * w, 0.92], [0, 0.26 + y * 0.6], [-0.8 * w, 0.92]], 0.16, 0.03), mat, PA), 0, y * 0.12, z);
     }
-    this.plate(chest, 'noStep', 0.3, 0, 1.33, -0.2, -Math.PI / 2);
+    place(chest, P(frontPrism([[-0.52, 0.96], [0, 0.5], [0.52, 0.96], [0.52, 0.88], [0, 0.4], [-0.52, 0.88]], 0.05, 0.01), M.accent, PA), 0, 0.05, 0.8);
+    strip(chest, M.eye, 0.18, 0.025, 0.02, 0, 0.98, 0.82);
+    // Flank louvres and the collar behind the head
+    for (const sd of [-1, 1]) slats(chest, M.joint, 3, sd * 0.79, 0.6, 0.2, [0, 0, -0.16], 0.06, 0.4, 0.05);
+    place(chest, P(blade([[0.3, 1.18], [0.1, 1.46], [-0.4, 1.5], [-0.5, 1.2]], 0.9, [0.6, 1], [1, 0.8]), M.armor, PA));
+    this.plate(chest, 'noStep', 0.26, 0, 1.25, -0.42, 0, Math.PI);
   }
 
   buildHead() {
     const M = this.mats;
     const head = (this.head = new THREE.Group());
-    head.position.set(0, 0.62, 1.04);
+    head.position.set(0, 0.96, 0.72);
     head.rotation.order = 'YXZ';
     this.chest.add(head);
-    // Sensor cluster: a rounded block with four eyes, two big and two small
+    place(head, P(new THREE.CylinderGeometry(0.12, 0.16, 0.3, 10), M.joint), 0, -0.04, -0.12);
+    // A small armored skull with a round green eye in a dark socket
     place(head, P(loftZ([
-      { z: -0.24, w: 0.64, h: 0.5, y: 0.04, c: 0.16 },
-      { z: 0.16, w: 0.62, h: 0.46, y: 0.04, c: 0.16 },
-      { z: 0.3, w: 0.46, h: 0.34, y: 0.04, c: 0.1 },
-    ]), M.second, { all: B.mechA }));
-    place(head, P(blade([[0.32, 0.2], [0.1, 0.32], [-0.3, 0.34], [-0.26, 0.2], [0.1, 0.18]], 0.6, [1, 0.6]), M.armor, { all: B.plainA }));
-    const eyes = [[0.13, 0.06, 0.1], [-0.13, 0.06, 0.1], [0.26, 0.16, 0.05], [-0.26, 0.16, 0.05]];
-    for (const [x, y, r] of eyes) {
-      place(head, new THREE.Mesh(cylZ(r, r, 0.05, 14), M.lens), x, y, 0.3 - (r < 0.08 ? 0.06 : 0));
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff3a30, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.75 }));
-      glow.scale.setScalar(r * 4.2);
-      glow.renderOrder = 6;
-      place(head, glow, x, y, 0.35 - (r < 0.08 ? 0.06 : 0));
-      place(head, new THREE.Mesh(new THREE.SphereGeometry(r * 0.35, 8, 6), M.sensor), x, y, 0.33 - (r < 0.08 ? 0.06 : 0)).userData.noOutline = true;
-    }
-    // Mandible plates and swept antennae
-    for (const sd of [-1, 1]) {
-      place(head, P(blade([[0.36, -0.1], [0.1, 0.0], [-0.2, 0.0], [-0.2, -0.2], [0.2, -0.26]], 0.05, [1, 0.5]), M.armor, { all: B.plainA }), sd * 0.2, -0.12, 0.0, 0, -sd * 0.15, 0);
-      place(head, P(new THREE.CylinderGeometry(0.01, 0.025, 1.2, 6), M.trim), sd * 0.2, 0.62, -0.5, -1.0, 0, -sd * 0.2);
-    }
+      { z: -0.26, w: 0.46, h: 0.4, y: 0.12, c: 0.12 },
+      { z: 0.12, w: 0.5, h: 0.42, y: 0.12, c: 0.13 },
+      { z: 0.32, w: 0.34, h: 0.3, y: 0.08, c: 0.09 },
+    ]), M.armor, PA));
+    place(head, P(cylZ(0.13, 0.13, 0.08, 16), M.joint), 0, 0.1, 0.32);
+    place(head, new THREE.Mesh(cylZ(0.085, 0.085, 0.04, 16), M.lens), 0, 0.1, 0.36);
+    place(head, new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), M.eye), 0, 0.1, 0.38).userData.noOutline = true;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x7dff4f, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.8 }));
+    glow.scale.setScalar(0.42);
+    glow.renderOrder = 6;
+    place(head, glow, 0, 0.1, 0.42);
+    // Swept V-fins off the brow, a white chin, and cheek guards
+    vfin(this, head, 0.5, 0, 0.28, 0.26, M.accent, { rise: 0.72, sweep: 0.3, w: 0.04 });
+    place(head, P(frontPrism([[-0.14, 0.0], [0.14, 0.0], [0.08, -0.1], [-0.08, -0.1]], 0.12, 0.02), M.accent, PA), 0, -0.04, 0.26);
+    for (const sd of [-1, 1]) place(head, P(blade([[0.3, -0.02], [0.06, 0.24], [-0.24, 0.26], [-0.22, -0.04]], 0.05, [1, 0.6]), M.second, PB), sd * 0.27, 0, 0, 0, -sd * 0.1, 0);
   }
 
   buildArm(s) {
     const M = this.mats;
     const sh = new THREE.Group();
-    sh.position.set(s * 1.0, 0.62, 0.3);
+    sh.position.set(s * 1.0, 0.86, 0.04);
     sh.rotation.order = 'YXZ';
     this.chest.add(sh);
     place(sh, P(new THREE.SphereGeometry(0.24, 14, 10), M.joint));
+    // Shoulder drum: a great ribbed cylinder on its side, capped with a hub and a vernier
     const pauldron = new THREE.Group();
-    pauldron.position.set(s * 0.16, 0.08, 0);
+    pauldron.position.set(s * 0.32, 0.18, 0);
     sh.add(pauldron);
-    place(pauldron, P(blade([[0.4, 0.14], [0.5, -0.14], [0.1, -0.4], [-0.4, -0.3], [-0.44, 0.1], [0.0, 0.24]], 0.12, [0.6, 1], [0.7, 1]), M.armor, { all: B.plainA }), s * 0.12, 0, 0);
-    place(pauldron, P(chamferBox(0.04, 0.04, 0.7, 0.01), M.trim), s * 0.2, 0.18, 0);
-    place(sh, P(new THREE.CylinderGeometry(0.12, 0.12, 0.84, 10), M.joint), 0, -0.48, 0);
-    place(sh, P(loft([{ y: -0.26, w: 0.32, d: 0.38, c: 0.08 }, { y: -0.8, w: 0.34, d: 0.4, c: 0.09 }]), M.second, { all: B.plainB }), s * 0.02, 0, 0);
+    place(pauldron, P(cylX(0.56, 0.74, 20), M.armor, PA));
+    for (const x of [-0.24, 0.0, 0.24]) place(pauldron, P(cylX(0.585, 0.07, 20), M.second, PB), x, 0, 0);
+    place(pauldron, P(cylX(0.42, 0.1, 18), M.accent, PA), s * 0.39, 0, 0);
+    place(pauldron, P(cylX(0.24, 0.06, 14), M.second, PB), s * 0.45, 0, 0);
+    port(this, pauldron, 0.12, s * 0.48, 0, 0, 0, s * Math.PI / 2, 0);
+    // Hazard bands across the top
+    for (let k = 0; k < 3; k++) place(pauldron, P(chamferBox(0.06, 0.05, 0.4, 0.01), M.trim), s * (0.08 + k * 0.08) - s * 0.08, 0.57, 0.1, 0, 0, 0);
+    for (const sd of [-1, 1]) port(this, pauldron, 0.09, s * 0.1, -0.28, sd * 0.44, sd > 0 ? 0 : Math.PI, 0, 0);
+
+    // Long thin upper arm
+    place(sh, P(new THREE.CylinderGeometry(0.1, 0.1, 0.86, 10), M.joint), 0, -0.48, 0);
+    place(sh, P(loft([{ y: -0.34, w: 0.28, d: 0.34, c: 0.07 }, { y: -0.82, w: 0.3, d: 0.36, c: 0.08 }]), M.second, PB), s * 0.02, 0, 0);
 
     const elbow = new THREE.Group();
     elbow.position.y = -0.94;
     sh.add(elbow);
-    place(elbow, P(cylX(0.16, 0.4), M.joint));
-    // Forearm with a blade fin raking back past the elbow
+    place(elbow, P(cylX(0.15, 0.36), M.joint));
+    // Forearm: an orange gauntlet with a white blade along its outside, raking back past the elbow
     place(elbow, P(loft([
-      { y: -0.04, w: 0.38, d: 0.46, c: 0.1 },
-      { y: -0.5, w: 0.46, d: 0.56, c: 0.12, z: 0.02 },
+      { y: -0.04, w: 0.34, d: 0.42, c: 0.09 },
+      { y: -0.5, w: 0.44, d: 0.54, c: 0.12, z: 0.02 },
       { y: -1.0, w: 0.4, d: 0.5, c: 0.1, z: 0.02 },
       { y: -1.12, w: 0.32, d: 0.4, c: 0.08 },
-    ]), M.armor, { all: B.plainA }));
-    place(elbow, P(blade([[0.3, -0.1], [0.32, -0.8], [0.1, -1.0], [-0.3, -0.84], [-0.62, 0.3], [-0.3, 0.26]], 0.08, [0.5, 1]), M.second, { all: B.plainA }), s * 0.25, 0, 0);
-    this.pistons.push(new Piston(sh, new V3(0, -0.4, 0.2), elbow, new V3(0, -0.26, 0.26), 0.045, M));
+    ]), M.armor, PA));
+    const edge = new THREE.Group();
+    edge.position.set(s * 0.26, 0, 0);
+    elbow.add(edge);
+    place(edge, P(blade([[0.22, -1.0], [0.14, -0.6], [-0.14, 0.1], [-0.52, 0.56], [-0.36, 0.1], [-0.12, -0.6], [-0.02, -1.0]], 0.05, [1, 1], [1, 0.6]), M.accent, PA));
+    place(edge, P(blade([[0.16, -0.92], [-0.08, -0.5], [-0.1, -0.52], [0.12, -0.94]], 0.08, [1, 1]), M.trim));
+    this.pistons.push(new Piston(sh, new V3(0, -0.4, 0.18), elbow, new V3(0, -0.26, 0.24), 0.04, M));
 
     const shieldMount = new THREE.Group();
-    shieldMount.position.set(s * 0.36, -0.5, 0.04);
+    shieldMount.position.set(s * 0.34, -0.5, 0.04);
     {
       const Z = new V3(s, 0, 0), Y = new V3(0, 0, 1), X = new V3().crossVectors(Y, Z);
       shieldMount.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
@@ -213,40 +226,46 @@ export class Locust extends Mech {
     hand.position.set(0, -1.18, 0.02);
     elbow.add(hand);
     place(hand, P(chamferBox(0.3, 0.32, 0.38, 0.06), M.joint), 0, -0.13, 0);
-    place(hand, P(chamferBox(0.3, 0.16, 0.38, 0.04), M.second), 0, -0.32, 0.06, 0.35);
+    place(hand, P(chamferBox(0.3, 0.16, 0.38, 0.04), M.second, PB), 0, -0.32, 0.06, 0.35);
     place(hand, P(chamferBox(0.09, 0.22, 0.11, 0.02), M.joint), -s * 0.15, -0.2, 0.15, 0.3);
     const mount = new THREE.Group();
     mount.position.set(0, -0.22, 0.02);
     mount.rotation.x = Math.PI / 2;
     hand.add(mount);
-    return { s, sh, pauldron, elbow, hand, mount, shieldMount };
+    return { s, sh, pauldron, pauldronLag: 0.65, elbow, hand, mount, shieldMount };
   }
 
   buildBackpack() {
     const M = this.mats;
     const bp = (this.backpack = new THREE.Group());
-    bp.position.set(0, 0.84, -0.9);
+    bp.position.set(0, 0.74, -0.56);
     this.chest.add(bp);
+    // Jump pack: a wedge hull between two raked vanes, with the jets under its belly
     place(bp, P(loft([
-      { y: 0.36, w: 0.9, d: 0.44, c: 0.12, z: -0.1 },
-      { y: -0.3, w: 1.0, d: 0.54, c: 0.14, z: -0.16 },
-    ]), M.second, { all: B.plainA, x: B.vent }));
-    this.plate(bp, 'hotPanel', 0.28, 0, 0.02, -0.44, 0, Math.PI);
+      { y: 0.42, w: 0.9, d: 0.4, c: 0.12, z: -0.12 },
+      { y: -0.2, w: 1.1, d: 0.6, c: 0.16, z: -0.2 },
+      { y: -0.6, w: 0.86, d: 0.5, c: 0.13, z: -0.18 },
+    ]), M.armor, { all: B.plainA, x: B.vent }));
+    place(bp, P(frontPrism([[-0.3, 0.3], [0.3, 0.3], [0.36, -0.36], [0, -0.5], [-0.36, -0.36]], 0.08, 0.02), M.second, { all: B.mechA }), 0, 0.0, -0.5);
+    strip(bp, M.eye, 0.03, 0.4, 0.02, 0, -0.02, -0.55);
     for (const s of [-1, 1]) {
-      // Jump-jet nacelle angled out and back, with its nozzle pointing down
-      const nac = new THREE.Group();
-      nac.position.set(s * 0.68, 0.0, -0.34);
-      nac.rotation.set(-0.2, 0, -s * 0.2);
-      bp.add(nac);
-      place(nac, P(new THREE.CylinderGeometry(0.3, 0.34, 1.3, 14), M.armor, { all: B.plainA }), 0, 0, 0);
-      place(nac, P(new THREE.ConeGeometry(0.3, 0.62, 14), M.armor, { all: B.plainA }), 0, 0.96, 0);
-      place(nac, P(new THREE.CylinderGeometry(0.35, 0.35, 0.1, 14), M.trim), 0, 0.2, 0);
-      place(nac, P(new THREE.CylinderGeometry(0.36, 0.36, 0.12, 14), M.joint), 0, -0.6, 0);
-      place(nac, P(blade([[0.2, 0.3], [-0.4, 0.1], [-0.5, -0.5], [0.2, -0.36]], 0.05, [0.4, 1]), M.second, { all: B.plainA }), s * 0.3, 0, -0.1, 0, 0, -s * 0.3);
-      this.thrusters.main.push(new Thruster(nac, new V3(0, -0.66, 0), new V3(0, -1, 0), 0.38, this.glowTex, {
-        actuators: [new V3(0.24, -0.5, 0.14), new V3(-0.24, -0.5, 0.14), new V3(0, -0.5, -0.28)],
+      const vane = new THREE.Group();
+      vane.position.set(s * 0.5, 0.2, -0.32);
+      vane.rotation.set(-0.55, s * 0.5, -s * 0.5);
+      bp.add(vane);
+      place(vane, P(blade([[0.14, -0.2], [0.04, 0.3], [-0.4, 1.1], [-0.6, 1.14], [-0.6, 0.4], [-0.3, -0.24]], 0.08, [0.5, 1], [0.6, 1]), M.armor, PA));
+      place(vane, P(blade([[0.1, 0.2], [-0.36, 1.02], [-0.42, 1.04], [0.0, 0.2]], 0.1, [0.5, 1]), M.accent, PA));
+      port(this, vane, 0.07, s * 0.045, 0.5, -0.36, 0, s * Math.PI / 2, 0);
+      // Jump jets under the hull
+      const hx = s * 0.3;
+      const dir = new V3(0, -1, -0.3).normalize();
+      const mountPos = new V3(hx, -0.62, -0.32);
+      const ring = place(bp, P(new THREE.CylinderGeometry(0.28, 0.32, 0.1, 16), M.joint), mountPos.x, mountPos.y, mountPos.z);
+      ring.quaternion.setFromUnitVectors(new V3(0, -1, 0), dir);
+      this.thrusters.main.push(new Thruster(bp, mountPos.clone().addScaledVector(dir, 0.02), dir, 0.36, this.glowTex, {
+        actuators: [new V3(hx + 0.24, -0.5, -0.22), new V3(hx - 0.24, -0.5, -0.22), new V3(hx, -0.52, -0.5)],
       }));
-      this.thrusters.vern.push(new Thruster(bp, new V3(s * 0.36, 0.3, -0.42), new V3(s * 0.25, 0.1, -1), 0.12, this.glowTex));
+      this.thrusters.vern.push(new Thruster(bp, new V3(s * 0.52, 0.0, -0.36), new V3(s * 0.25, 0.1, -1), 0.12, this.glowTex));
     }
     this.thrustLight = new THREE.PointLight(0x8fb8ff, 0, 18, 1.8);
     this.thrustLight.position.set(0, -1.4, -0.6);
