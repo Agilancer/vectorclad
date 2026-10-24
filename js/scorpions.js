@@ -32,6 +32,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
 const ease = (t) => t * t * (3 - 2 * t);
+// Which way a foe faces: the mech's body, or an allied tank's or Kestrel's heading (js/allies.js)
+const facing = (P) => (P.bodyYaw !== undefined ? P.bodyYaw : P.yaw || 0);
 
 const SCAP = 24;              // most scorpions alive at once
 const CLIMB_FT = 100;         // how far up a wall they can climb
@@ -646,7 +648,7 @@ export class ScorpionNest {
 
   /** Where a Prowler heads: wide round the mech's flank, then in from behind where its shield can't turn the strike */
   flank(s, P) {
-    const fy = P.bodyYaw;
+    const fy = facing(P);
     _f.set(Math.sin(fy), 0, Math.cos(fy));
     _w.set(Math.cos(fy), 0, -Math.sin(fy));
     _a.subVectors(s.c, P.pos).setY(0);
@@ -658,7 +660,8 @@ export class ScorpionNest {
 
   behind(s, P) {
     _a.subVectors(s.c, P.pos).setY(0).normalize();
-    return _a.x * Math.sin(P.bodyYaw) + _a.z * Math.cos(P.bodyYaw) < -0.35;
+    const fy = facing(P);
+    return _a.x * Math.sin(fy) + _a.z * Math.cos(fy) < -0.35;
   }
 
   /** Ranged openers: venom spit, tail lightning, flame. Returns true if one started. */
