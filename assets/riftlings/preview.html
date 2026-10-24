@@ -1,0 +1,319 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VECTORCLAD Riftling</title><style>:root{color-scheme:dark;--foreground:#e1e6e4}body{background:#151d22;color:var(--foreground);font:15px system-ui;max-width:1200px;margin:24px auto;padding:0 20px}select,button{font:inherit;color:inherit;background:#29383f;padding:9px 12px;border:1px solid #5a6972;border-radius:5px}canvas{height:580px!important}.text-small{color:#bcc9ce}.form-label{flex-wrap:wrap}[hidden]{display:none!important}</style></head><body><h2>VECTORCLAD / Riftling</h2><div id="riftling-preview">
+<style>#riftling-preview canvas{display:block;width:100%;height:500px;touch-action:none}#riftling-preview .rf-controls{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px}#riftling-preview label{display:flex;align-items:center;gap:8px}#riftling-preview .rf-status{margin-top:10px}</style>
+<div class="rf-controls"><label class="form-label">View<select class="form-select" id="rf-view"><option value="specimen">Specimen</option><option value="colors" selected>Four neon colors</option><option value="swarm">Swarm</option><option value="scale">Beside the APC</option></select></label><label class="form-label">Animation<select class="form-select" id="rf-clip"></select></label><label class="form-label">Color<select class="form-select" id="rf-color"><option value="mixed">All four</option><option value="green">Neon green</option><option value="orange">Neon orange</option><option value="purple">Neon purple</option><option value="blue">Neon blue</option></select></label><label class="form-label" id="rf-count-label" hidden>Swarm size<select class="form-select" id="rf-count"><option>128</option><option selected>512</option><option>1024</option></select></label><button type="button" class="btn" id="rf-pause" aria-pressed="false">Pause</button></div>
+<canvas role="img" aria-label="Animated six-limbed neon Riftling swarm creature"></canvas>
+<div class="rf-status text-small" id="rf-status" aria-live="polite">Loading Three.js…</div>
+</div>
+<script>
+(async()=>{const host=document.getElementById('riftling-preview');try{
+const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js');
+// VECTORCLAD Riftling: original procedural swarm creature. Three.js r170.
+// +Y up, -Z forward. All anatomy is authored in meters.
+const RIFTLING_COLORS={green:0x62ff15,orange:0xff6508,purple:0xb429ff,blue:0x149aff};
+const RIFTLING_CLIPS={idle:{duration:2.4,loop:true},walking:{duration:1.1,loop:true},running:{duration:.62,loop:true},attacking:{duration:.85,loop:false},leaping:{duration:1.25,loop:false},climbing:{duration:1.05,loop:true},screaming:{duration:1.65,loop:false},stalking:{duration:1.9,loop:true},crawling:{duration:1.3,loop:true},dodging:{duration:.65,loop:false},hit:{duration:.5,loop:false},death:{duration:1.4,loop:false}};
+// Thirteenth action is a defensive tail lash, independent of the forearm strike.
+RIFTLING_CLIPS.tailwhip={duration:.9,loop:false};
+
+function buildRig(T,low){
+ const root=new T.Group(),bones=[],names={},chunks=[];
+ function bone(name,parent,x,y,z){let b=new T.Object3D();b.name=name;b.position.set(x,y,z);(parent||root).add(b);b.userData.id=bones.length;b.userData.rest=b.position.clone();names[name]=b;bones.push(b);return b;}
+ const body=bone('body',null,0,.76,0),chest=bone('chest',body,0,.17,-.16),head=bone('head',chest,0,.12,-.38),jaw=bone('jaw',head,0,-.12,-.25);
+ function piece(b,geo,scale,pos,tone=1,glow=0,rot=[0,0,0]){geo.scale(...scale);geo.rotateX(rot[0]);geo.rotateY(rot[1]);geo.rotateZ(rot[2]);geo.translate(...pos);if(geo.index){const indexed=geo;geo=geo.toNonIndexed();indexed.dispose()}let n=geo.getAttribute('position').count;geo.setAttribute('boneId',new T.Float32BufferAttribute(new Float32Array(n).fill(b.userData.id),1));geo.setAttribute('glow',new T.Float32BufferAttribute(new Float32Array(n).fill(glow),1));let color=new Float32Array(n*3);for(let i=0;i<n;i++)color.set([tone,tone,tone],i*3);geo.setAttribute('color',new T.Float32BufferAttribute(color,3));chunks.push(geo);}
+ const orb=(b,s,p,t=1,g=0)=>piece(b,new T.SphereGeometry(1,low?6:10,low?4:6),s,p,t,g);
+ function spike(b,a,end,r,t=.8,g=0){let va=new T.Vector3(...a),vb=new T.Vector3(...end),d=vb.clone().sub(va),q=new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),d.clone().normalize());let geo=new T.ConeGeometry(r,d.length(),low?4:6);geo.applyQuaternion(q);piece(b,geo,[1,1,1],va.add(vb).multiplyScalar(.5).toArray(),t,g);}
+ function rod(b,a,end,r,t=.18){let va=new T.Vector3(...a),vb=new T.Vector3(...end),d=vb.clone().sub(va),q=new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),d.clone().normalize());let geo=new T.CylinderGeometry(r*.8,r,d.length(),low?5:7);geo.applyQuaternion(q);piece(b,geo,[1,1,1],va.add(vb).multiplyScalar(.5).toArray(),t);}
+ orb(body,[.21,.22,.38],[0,0,.1],.14);orb(chest,[.27,.24,.37],[0,0,-.02],.17);
+ // Overlapping shell plates with luminous margins, rib cage and split crest.
+ for(let i=0;i<4;i++){orb(body,[.25-i*.025,.1,.17],[0,.18,.02+i*.14],.85,.08);orb(body,[.255-i*.025,.025,.15],[0,.225,.02+i*.14],1,.7);}
+ for(const s of [-1,1]){
+  for(let i=0;i<5;i++)orb(chest,[.025,.12,.035],[s*(.23-i*.012),-.015,-.22+i*.095],.48,.18);
+  orb(chest,[.18,.11,.29],[s*.16,.2,-.05],.9,.12);
+  for(let i=0;i<3;i++)spike(chest,[s*.16,.19,.08+i*.13],[s*(.29+i*.025),.49-i*.025,.24+i*.14],.075,.8);
+ }
+ orb(head,[.18,.17,.37],[0,.015,-.13],.18);
+ orb(head,[.13,.065,.16],[0,-.105,-.35],.015);
+ for(const s of [-1,1]){
+  orb(head,[.12,.15,.36],[s*.095,.09,-.12],.9,.12);
+  spike(head,[s*.09,.15,.1],[s*.14,.25,.42],.105,.85);
+  spike(head,[s*.14,.08,-.29],[s*.23,.14,-.57],.09,.95,.15);
+  for(let i=0;i<3;i++)orb(head,[.028,.022,.035],[s*.17,.015+i*.045,-.36+i*.065],1,2.2);
+  for(let i=0;i<4;i++){spike(head,[s*.105,-.09,-.18-i*.065],[s*.08,-.19,-.2-i*.065],.025,.9);spike(jaw,[s*.09,-.015,.05-i*.07],[s*.075,.065,.02-i*.07],.023,.9);}
+  spike(jaw,[s*.09,-.015,-.12],[s*.2,-.06,-.33],.045,.85);
+ }
+ orb(jaw,[.12,.045,.23],[0,-.04,-.06],.3);orb(jaw,[.06,.02,.13],[0,.005,-.06],1,.8);
+ const limbs=[];
+ for(const s of [-1,1]){
+  const hip=bone('hip'+s,body,s*.19,-.08,.24),knee=bone('knee'+s,hip,s*.13,-.29,-.16),ankle=bone('ankle'+s,knee,-s*.02,-.28,.18);
+  orb(hip,[.12,.17,.15],[s*.04,-.09,-.02],.8);rod(hip,[0,0,0],[s*.13,-.29,-.16],.07);orb(knee,[.07,.08,.09],[0,0,0],1,.1);rod(knee,[0,0,0],[-s*.02,-.28,.18],.045);rod(ankle,[0,0,0],[0,-.11,-.13],.035);
+  for(let k=0;k<3;k++)spike(ankle,[0,-.1,-.08],[(k-1)*.07,-.12,-.31],.026,.8);
+  const arm=bone('arm'+s,chest,s*.24,.03,-.15),elbow=bone('elbow'+s,arm,s*.18,-.13,-.18);
+  orb(arm,[.11,.12,.13],[0,0,0],.8);rod(arm,[0,0,0],[s*.18,-.13,-.18],.055);orb(elbow,[.08,.09,.09],[0,0,0],.3);
+  spike(elbow,[0,0,0],[s*.17,-.23,-.35],.105,.95,.13);spike(elbow,[s*.15,-.2,-.29],[s*.16,-.4,-.49],.065,.8);spike(elbow,[s*.16,-.35,-.44],[s*.02,-.39,-.56],.045,1,.3);
+  const support=bone('support'+s,chest,s*.22,-.1,.13),hand=bone('hand'+s,support,s*.17,-.22,-.14);
+  rod(support,[0,0,0],[s*.17,-.22,-.14],.038);rod(hand,[0,0,0],[s*.03,-.19,-.11],.025);
+  for(let k=0;k<2;k++)spike(hand,[s*.03,-.16,-.09],[s*(.03+k*.06),-.25,-.2],.022,.7);
+  limbs.push({s,hip,knee,ankle,arm,elbow,support,hand});
+ }
+ const tail=[];let parent=body;
+ for(let i=0;i<7;i++){let b=bone('tail'+i,parent,0,i===0?-.02:0,i===0?.38:.19);orb(b,[.1-i*.01,.08-i*.007,.125],[0,0,.07],.5,.06);spike(b,[0,.06,.03],[0,.16,.16],.043,1,.3);tail.push(b);parent=b;}
+ spike(tail.at(-1),[0,0,.08],[0,.12,.4],.065,.85,.15);
+ const geometry=new T.BufferGeometry();for(const key of ['position','normal','uv','color','boneId','glow']){const size=chunks[0].getAttribute(key).itemSize;let a=new Float32Array(chunks.reduce((n,g)=>n+g.getAttribute(key).array.length,0)),off=0;for(const c of chunks){a.set(c.getAttribute(key).array,off);off+=c.getAttribute(key).array.length}geometry.setAttribute(key,new T.BufferAttribute(a,size));}chunks.forEach(g=>g.dispose());
+ function pose(name,u){
+  for(const b of bones){b.position.copy(b.userData.rest);b.rotation.set(0,0,0)}
+  const phase=u*Math.PI*2,pulse=Math.sin(phase),bell=Math.sin(Math.PI*u),strike=Math.sin(Math.PI*Math.min(1,u*1.5));
+  body.position.y+=.016*pulse;chest.rotation.x=.08;head.rotation.y=.08*Math.sin(phase*.5);jaw.rotation.x=-.06;
+  let stride=0,amount=0;
+  if(['walking','running','stalking','crawling','climbing'].includes(name)){stride=phase;amount=name==='running'?1:name==='stalking'?.27:.55;body.position.y+=Math.abs(Math.sin(phase*2))*(name==='running'?.1:.035);chest.rotation.x=name==='running'?.25:.12;}
+  for(const l of limbs){let a=Math.sin(stride+(l.s<0?0:Math.PI))*amount;l.hip.rotation.x=-.2+a;l.hip.rotation.z=l.s*.14;l.knee.rotation.x=.25-Math.max(0,a)*.8;l.ankle.rotation.x=-.05+Math.max(0,-a)*.4;l.arm.rotation.x=-.32-a*.55;l.arm.rotation.z=-l.s*.2;l.elbow.rotation.x=-.22;l.support.rotation.x=-a*.85;l.hand.rotation.x=.25+Math.max(0,a)*.4;}
+  if(name==='idle'){head.rotation.x=.04*pulse;limbs.forEach(l=>l.elbow.rotation.z=l.s*.08*pulse);}
+  if(name==='stalking'||name==='crawling'){body.position.y-=name==='crawling'?.28:.13;chest.rotation.x=.23;head.rotation.x=-.2;limbs.forEach(l=>{l.hip.rotation.z+=l.s*.2;l.support.rotation.z=-l.s*.28;});}
+  if(name==='attacking'){chest.rotation.x=-.3*bell+.65*strike;body.position.z=-.18*strike;head.rotation.x=-.15;limbs.forEach(l=>{l.arm.rotation.x=-1.35*bell+.75*strike;l.arm.rotation.z=l.s*(.65*bell-.75*strike);l.elbow.rotation.x=-.7*bell;});jaw.rotation.x=-.5*bell;}
+  if(name==='leaping'){body.position.y+=1.25*bell-.18*Math.sin(Math.PI*Math.min(1,u*3));body.position.z=-.4*bell;chest.rotation.x=.35*bell;limbs.forEach(l=>{l.hip.rotation.x=-1.1*bell;l.knee.rotation.x=1.25*bell;l.arm.rotation.x=-1.25*bell;l.support.rotation.x=-.8*bell});}
+  if(name==='climbing'){body.rotation.x=-Math.PI/2;body.position.set(0,.7+.08*pulse,-.22);head.rotation.x=-.3;limbs.forEach(l=>{l.arm.rotation.x=-.8+Math.sin(phase+l.s)*.7;l.support.rotation.x=.3-Math.sin(phase+l.s)*.6;});}
+  if(name==='screaming'){chest.rotation.x=.22*bell;head.rotation.x=.65*bell;head.rotation.z=.035*Math.sin(phase*8)*bell;jaw.rotation.x=-1.15*bell;body.position.y+=.1*bell;limbs.forEach(l=>l.arm.rotation.z=l.s*.7*bell);}
+  if(name==='dodging'){body.position.x=.85*bell;body.position.y-=.22*bell;body.rotation.z=-.45*bell;limbs.forEach(l=>l.hip.rotation.z+=l.s*.5*bell);}
+  if(name==='hit'){body.rotation.x=-.35*bell;head.rotation.x=.5*bell;body.position.z=.15*bell;limbs.forEach(l=>l.arm.rotation.z=l.s*.4*bell);}
+  if(name==='death'){let fall=Math.min(1,u*1.7);fall=fall*fall*(3-2*fall);body.position.y-=.58*fall;body.rotation.z=1.35*fall;body.rotation.y=-.3*fall;head.rotation.x=.5*fall;jaw.rotation.x=-.65*fall;limbs.forEach(l=>{l.hip.rotation.x=-.8*fall;l.knee.rotation.x=1.1*fall;l.arm.rotation.x=-.8*fall;l.support.rotation.z=l.s*.5*fall});}
+  if(name==='tailwhip'){body.rotation.y=-.45*bell;chest.rotation.y=.6*bell;limbs.forEach(l=>l.arm.rotation.z=l.s*.5*bell);}
+  tail.forEach((b,i)=>{b.rotation.y=.12*Math.sin(phase-i*.65);b.rotation.x=-.07;if(name==='tailwhip')b.rotation.y+=.65*Math.sin(phase-i*.38)*bell;if(name==='death')b.rotation.y=.25*Math.min(1,u*2);});
+  root.updateMatrixWorld(true);
+ }
+ return {root,bones,geometry,pose};
+}
+
+function createRiftlingSwarm(T,options={}){
+ const capacity=options.capacity??512,meters=options.metersPerUnit??1;
+ if(!Number.isInteger(capacity)||capacity<1||!(meters>0))throw Error('Invalid swarm capacity or metersPerUnit');
+ const rig=buildRig(T,options.lod==='low'),nb=rig.bones.length,fps=24,clips={},frames=[];
+ for(const [name,clip] of Object.entries(RIFTLING_CLIPS)){let count=Math.ceil(clip.duration*fps)+1,start=frames.length;clips[name]={...clip,start,count};for(let i=0;i<count;i++){rig.pose(name,i/(count-1));let row=[];for(const b of rig.bones){let p=new T.Vector3(),q=new T.Quaternion(),s=new T.Vector3();b.matrixWorld.decompose(p,q,s);row.push(...q.toArray(),...p.toArray(),1);}frames.push(row);}}
+ const tex=new T.DataTexture(new Float32Array(frames.flat()),nb*2,frames.length,T.RGBAFormat,T.FloatType);tex.minFilter=tex.magFilter=T.NearestFilter;tex.needsUpdate=true;
+ const geometry=rig.geometry;
+ const states=new Float32Array(capacity*4),clock=new Float32Array(capacity*2);
+ geometry.setAttribute('anim',new T.InstancedBufferAttribute(states,4));geometry.setAttribute('animClock',new T.InstancedBufferAttribute(clock,2));
+ let time=0,shader=null;
+ const material=new T.MeshStandardMaterial({color:0xffffff,vertexColors:true,metalness:.3,roughness:.39});
+ material.onBeforeCompile=s=>{
+  shader=s;s.uniforms.riftTime={value:time};s.uniforms.riftPose={value:tex};
+  s.vertexShader=s.vertexShader.replace('#include <common>',`#include <common>
+attribute float boneId; attribute float glow; attribute vec4 anim; attribute vec2 animClock;
+uniform float riftTime; uniform sampler2D riftPose;
+varying float riftGlow; varying vec3 riftTint;
+vec3 rq(vec4 q,vec3 v){return v+2.0*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
+void rpose(out vec4 q,out vec3 p){
+float elapsed=max(0.0,riftTime-animClock.x)*animClock.y;
+float u=anim.w>0.5?fract(elapsed/anim.z):clamp(elapsed/anim.z,0.0,1.0);
+float frame=u*(anim.y-1.0),f=floor(frame),blend=fract(frame);
+vec2 uv=vec2((boneId*2.0+.5)/${nb*2}.0,(anim.x+f+.5)/${frames.length}.0);
+vec4 a=texture2D(riftPose,uv),b=texture2D(riftPose,uv+vec2(0.,1.0/${frames.length}.0));
+if(dot(a,b)<0.0)b=-b;q=normalize(mix(a,b,blend));
+vec2 du=vec2(1.0/${nb*2}.0,0.);p=mix(texture2D(riftPose,uv+du).xyz,texture2D(riftPose,uv+du+vec2(0.,1.0/${frames.length}.0)).xyz,blend);
+}`);
+  s.vertexShader=s.vertexShader.replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\nvec4 riftQ; vec3 riftP; rpose(riftQ,riftP); objectNormal=rq(riftQ,objectNormal);');
+  s.vertexShader=s.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed=rq(riftQ,transformed)+riftP; riftGlow=glow; riftTint=instanceColor;');
+  s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying float riftGlow; varying vec3 riftTint;');
+  s.fragmentShader=s.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=riftTint*riftGlow*.85;');
+ };
+ material.customProgramCacheKey=()=>`riftling-${nb}-${frames.length}`;
+ const mesh=new T.InstancedMesh(geometry,material,capacity);mesh.name='VECTORCLAD Riftling swarm';mesh.frustumCulled=false;mesh.count=0;
+ // Shadow casting deliberately disabled: an unmodified shadow shader cannot sample these GPU poses.
+ mesh.castShadow=false;mesh.receiveShadow=true;
+ const dummy=new T.Object3D(),color=new T.Color(),actors=new Array(capacity);
+ function check(i){if(!Number.isInteger(i)||i<0||i>=capacity)throw Error('Actor slot out of range');}
+ function setTransform(i,{position=[0,0,0],quaternion=[0,0,0,1],scale=1}={}){check(i);dummy.position.fromArray(position);dummy.quaternion.fromArray(quaternion);dummy.scale.setScalar(scale/meters);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.instanceMatrix.needsUpdate=true;}
+ function setColor(i,value='green'){check(i);color.set(RIFTLING_COLORS[value]??value);mesh.setColorAt(i,color);mesh.instanceColor.needsUpdate=true;}
+ function play(i,name='idle',{speed=1,phase=0}={}){check(i);let c=clips[name];if(!c)throw Error('Unknown animation '+name);if(!(speed>0))throw Error('Animation speed must be positive');states.set([c.start,c.count,c.duration,c.loop?1:0],i*4);clock.set([time-phase*c.duration/speed,speed],i*2);geometry.attributes.anim.needsUpdate=true;geometry.attributes.animClock.needsUpdate=true;actors[i]={name,start:clock[i*2],speed};}
+ for(let i=0;i<capacity;i++){setTransform(i);setColor(i,Object.keys(RIFTLING_COLORS)[i%4]);play(i,'idle',{phase:(i*.618)%1});}
+ function update(seconds){if(!Number.isFinite(seconds))throw Error('Time must be finite');time=seconds;if(shader)shader.uniforms.riftTime.value=time;}
+ function setCount(n){if(!Number.isInteger(n)||n<0||n>capacity)throw Error('Count out of range');mesh.count=n;}
+ function isFinished(i){check(i);let a=actors[i],c=clips[a.name];return !c.loop&&(time-a.start)*a.speed>=c.duration;}
+ function samplePose(name,seconds){const c=clips[name];if(!c)throw Error('Unknown animation');const u=c.loop?((seconds/c.duration)%1+1)%1:Math.max(0,Math.min(1,seconds/c.duration));rig.pose(name,u);return rig.bones.map(b=>({name:b.name,matrix:b.matrixWorld.clone()}));}
+ return {mesh,clips,capacity,boneCount:nb,triangles:geometry.attributes.position.count/3,
+   setTransform,setColor,play,setCount,update,isFinished,samplePose,
+   dispose(){mesh.removeFromParent();geometry.dispose();material.dispose();tex.dispose();},
+   metadata:{name:'Riftling',metersPerUnit:meters,nominalStandingHeightMeters:1.35,forward:'-Z',up:'+Y',animationFPS:fps,animationFrames:frames.length,poseTextureBytes:tex.image.data.byteLength}};
+}
+
+// Original procedural VECTORCLAD vehicle studies. Three.js r170.
+// Pass the game's shared THREE namespace; no STL, model loaders or external textures.
+// Coordinates: +Y up, -Z forward; authored dimensions are meters.
+function workshop(T, options) {
+  const mats = {};
+  const colors = { armor: options.color ?? 0x515b3b, edge: 0x737b54,
+    dark: 0x252c24, metal: 0x535b5c, rubber: 0x161c1e,
+    glass: 0x173b43, brass: 0xb0a06a, white: 0xd6d4b9, red: 0x9e4235 };
+  for (const [k,c] of Object.entries(colors)) mats[k] = new T.MeshStandardMaterial({
+    color:c, roughness:k==='glass'?.22:.78, metalness:k==='rubber'?0:.35 });
+  mats.glass.emissive.setHex(0x12313c); mats.glass.emissiveIntensity=.35;
+  mats.light = new T.MeshStandardMaterial({color:0xffeac2,emissive:0xffcc83,emissiveIntensity:2});
+  mats.engine = new T.MeshStandardMaterial({color:0x89daf5,emissive:0x279ccc,emissiveIntensity:2});
+  const mesh=(parent,geo,mat,x=0,y=0,z=0)=>{const m=new T.Mesh(geo,mats[mat]||mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;};
+  const box=(p,w,h,d,x,y,z,m='armor')=>mesh(p,new T.BoxGeometry(w,h,d),m,x,y,z);
+  const cyl=(p,r1,r2,h,x,y,z,m='metal',axis='y',segments=16)=>{const q=mesh(p,new T.CylinderGeometry(r1,r2,h,segments),m,x,y,z);if(axis==='x')q.rotation.z=Math.PI/2;if(axis==='z')q.rotation.x=Math.PI/2;return q;};
+  // Octagonal loft: z, half-width, bottom, top. Explicit hard-edge faces.
+  function hull(p, sections, mat='armor') {
+    const rings=sections.map(([z,w,b,t])=>[[-w*.7,b,z],[w*.7,b,z],[w,b+(t-b)*.22,z],[w,t-(t-b)*.22,z],[w*.7,t,z],[-w*.7,t,z],[-w,t-(t-b)*.22,z],[-w,b+(t-b)*.22,z]]);
+    let v=[];const tri=(a,b,c)=>v.push(...a,...b,...c);
+    for(let k=0;k<rings.length-1;k++)for(let j=0;j<8;j++){let a=rings[k][j],b=rings[k][(j+1)%8],c=rings[k+1][j],d=rings[k+1][(j+1)%8];tri(a,b,c);tri(b,d,c);}
+    for(let j=1;j<7;j++){tri(rings[0][0],rings[0][j+1],rings[0][j]);let r=rings.at(-1);tri(r[0],r[j],r[j+1]);}
+    const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(v,3));g.computeVertexNormals();return mesh(p,g,mat);
+  }
+  function plate(p,points,thickness,y,mat='armor') {
+    const shape=new T.Shape();points.forEach(([x,z],i)=>i?shape.lineTo(x,-z):shape.moveTo(x,-z));shape.closePath();
+    const g=new T.ExtrudeGeometry(shape,{depth:thickness,bevelEnabled:false,steps:1});g.rotateX(-Math.PI/2);return mesh(p,g,mat,0,y,0);
+  }
+  function label(p,text,w,h,x,y,z,ry=0){
+    const c=document.createElement('canvas');c.width=512;c.height=128;const ctx=c.getContext('2d');
+    ctx.fillStyle='#d9d8bd';ctx.font='bold 82px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,256,68);
+    const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;
+    const mat=new T.MeshStandardMaterial({map:tex,transparent:true,roughness:.9,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,side:T.DoubleSide});
+    const m=mesh(p,new T.PlaneGeometry(w,h),mat,x,y,z);m.rotation.y=ry;m.castShadow=false;return m;
+  }
+  function group(p,name,x=0,y=0,z=0){let g=new T.Group();g.name=name;g.position.set(x,y,z);p.add(g);return g;}
+  // Merge static siblings by material, keeping movable groups intact.
+  function batch(g){
+    g.updateMatrixWorld(true);let buckets=new Map();
+    for(const m of [...g.children]){if(!m.isMesh)continue;m.updateMatrix();let geo=m.geometry.index?m.geometry.toNonIndexed():m.geometry.clone();geo.applyMatrix4(m.matrix);let b=buckets.get(m.material)||[];b.push(geo);buckets.set(m.material,b);g.remove(m);m.geometry.dispose();}
+    for(const [mat,list] of buckets){const geo=new T.BufferGeometry();for(const key of ['position','normal','uv']){if(!list.every(g=>g.getAttribute(key)))continue;let size=list[0].getAttribute(key).itemSize;let arr=new Float32Array(list.reduce((s,g)=>s+g.getAttribute(key).array.length,0)),offset=0;for(const g of list){arr.set(g.getAttribute(key).array,offset);offset+=g.getAttribute(key).array.length;}geo.setAttribute(key,new T.BufferAttribute(arr,size));}for(const g of list)g.dispose();mesh(g,geo,mat);}
+  }
+  function finish(root,parts){
+    for(const g of parts)batch(g);
+    const metersPerUnit=options.metersPerUnit??1;if(!(metersPerUnit>0))throw Error('metersPerUnit must be positive');root.scale.setScalar(1/metersPerUnit);
+    root.userData={...root.userData,metersPerUnit,forward:'-Z',up:'+Y',originalProceduralGeometry:true};
+    root.userData.dispose=()=>{const gs=new Set(),ms=new Set(),ts=new Set();root.traverse(o=>{if(o.geometry)gs.add(o.geometry);if(o.material)for(const m of (Array.isArray(o.material)?o.material:[o.material])){ms.add(m);if(m.map)ts.add(m.map);}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());ts.forEach(t=>t.dispose());};return root;
+  }
+  return {mats,mesh,box,cyl,hull,plate,label,group,finish};
+}
+
+function createDropship(THREE, options={}) {
+  const T=THREE, {box,cyl,hull,plate,label,group,finish}=workshop(T,options);
+  const root=new T.Group();root.name='VECTORCLAD / Kestrel assault lifter';
+  const body=group(root,'fuselage');
+  hull(body,[[-12,.8,1.8,2.8],[-9,1.55,1.25,4.0],[-5,2.5,.7,4.6],[3.8,2.5,.7,4.4],[7.5,1.45,1.4,3.4],[12,.7,2.05,2.8]]);
+  hull(body,[[-11.2,.85,2.6,3.3],[-8.2,1.25,3.6,4.8],[-5.6,1.35,3.8,4.7]],'dark');
+  // Faceted tinted cockpit with a central armored spine.
+  hull(body,[[-10.65,.68,2.98,3.35],[-8.2,.98,3.95,4.63],[-6.2,1.02,4.0,4.55]],'glass');
+  box(body,.15,.16,4.6,0,4.12,-8.2,'edge').rotation.x=-.26;
+  for(const z of [-9,-7.3])box(body,2.1,.1,.12,0,4.25+(z+8)*.22,z,'edge').rotation.x=-.26;
+  box(body,3.7,.28,7.4,0,.65,-.4,'dark');
+  // Cargo lift underside and its structural rails.
+  box(body,3.35,.17,6.6,0,.43,-.4,'metal');
+  for(const s of [-1,1]){box(body,.16,.25,7.4,s*1.65,.5,-.4,'brass');for(let z=-3;z<=2;z+=1)box(body,2.9,.05,.08,0,.33,z,'dark');}
+  for(const s of [-1,1]){
+    // Shoulder-mounted turbine housings, exposed intakes, rear exhausts.
+    hull(body,[[-5.0,.55,3.4,4.6],[-3.7,.85,3.1,5.1],[3.8,.8,3.0,4.9],[5.2,.52,3.4,4.5]],'edge').position.x=s*2.55;
+    cyl(body,.57,.57,.12,s*2.55,4.05,-5.04,'dark','z');
+    for(let k=0;k<8;k++){const a=k*Math.PI/4;box(body,.08,.85,.06,s*2.55,4.05,-5.13,'metal').rotation.z=a;}
+    cyl(body,.49,.63,.9,s*2.55,3.95,5.05,'metal','z');cyl(body,.38,.38,.06,s*2.55,3.95,5.53,'engine','z');
+    for(const z of [-2,1.1]){cyl(body,.44,.56,.38,s*2.5,1.6,z,'metal','x');cyl(body,.3,.3,.04,s*2.72,1.6,z,'dark','x');}
+    box(body,.09,1.75,5.8,s*2.505,2.45,-.25,'edge');
+    label(body,'VC / 07',2.6,.5,s*2.57,2.7,.5,s*Math.PI/2);
+    for(let k=0;k<9;k++)box(body,.1,.06,.42,s*1.7,4.48,-1.7+k*.52,'dark');
+    // Swept aft wings and outward-canted twin vertical stabilizers.
+    plate(body,[[s*.6,6],[s*3.1,5.4],[s*7.2,10.6],[s*7.0,12],[s*2.1,9.5]],.2,2.65);
+    plate(body,[[s*1.4,7],[s*3,6.8],[s*6.8,10.7],[s*6.6,11]],.05,2.86,'edge');
+    let tail=group(root,'tail fin '+s,s*.9,2.7,8.2);
+    const fin=plate(tail,[[0,-1],[0,3.5],[2.7,3.9],[1.9,1.1]],.16,0);fin.rotation.z=Math.PI/2;tail.rotation.z=-s*.18;
+    label(body,'07',1,.65,s*2.3,3.3,6.2,s*Math.PI/2);
+  }
+  // Folding forward weapon outriggers, each on a real pivot.
+  const wings=[];
+  for(const s of [-1,1]){
+    const wing=group(root,'weapon outrigger '+s,s*2.2,3.05,-4.2);wings.push(wing);
+    plate(wing,[[0,-1.3],[s*3.5,-1.9],[s*4.9,.1],[s*4.5,2.6],[0,1.7]],.3,0);
+    const pod=group(wing,'rocket pod',s*4.05,-.15,.1);
+    hull(pod,[[-2.05,.62,-.7,.7],[-1.7,.9,-.85,.85],[1.35,.9,-.85,.85],[1.8,.55,-.55,.55]],'armor');
+    box(pod,1.5,1.45,.08,0,0,-2.09,'dark');
+    for(let row=0;row<3;row++)for(let col=0;col<3;col++){
+      cyl(pod,.16,.16,.09,(col-1)*.43,(row-1)*.43,-2.16,'metal','z',10);
+      cyl(pod,.11,.11,.02,(col-1)*.43,(row-1)*.43,-2.215,'rubber','z',10);
+    }
+    for(let k=0;k<5;k++)box(pod,1.4,.055,.1,0,.87,-1.1+k*.45,'dark');
+    label(pod,'CAUTION',1.1,.2,0,.4,1.73);
+  }
+  const gun=group(root,'chin turret',0,1.7,-10.7);cyl(gun,.46,.54,.45,0,0,0,'dark');
+  for(const x of [-.22,.22]){cyl(gun,.11,.14,1.75,x,-.15,-.9,'metal','z');cyl(gun,.08,.08,.1,x,-.15,-1.82,'rubber','z');}
+  for(const s of [-1,1])box(body,.24,.15,.09,s*.85,2,-11.2,'light');
+  const gear=[];
+  for(const [x,z] of [[-2,3.6],[2,3.6],[0,-8]]){const g=group(root,'landing strut',x,1.25,z);cyl(g,.09,.13,1.7,0,-.85,0,'metal');box(g,.9,.22,1.5,0,-1.7,0,'dark');box(g,.8,.06,1.3,0,-1.84,0,'edge');gear.push(g);}
+  const all=[];root.traverse(o=>{if(o.isGroup)all.push(o)});
+  root.userData.setFlightMode=(flight)=>{wings.forEach((w,i)=>w.rotation.z=(i===0?-1:1)*(flight?.08:.78));gear.forEach(g=>g.visible=!flight);};
+  root.userData.setFlightMode(true);
+  return finish(root,all);
+}
+
+function createAPC(THREE,options={}) {
+  const T=THREE,{box,cyl,hull,plate,label,group,finish}=workshop(T,options);
+  const root=new T.Group();root.name='VECTORCLAD / Bastion armored carrier';
+  const body=group(root,'armored hull');
+  hull(body,[[-4.65,1.45,.95,1.65],[-3.4,1.83,.65,2.5],[2.9,1.83,.65,2.55],[4.45,1.55,.95,2.25]]);
+  box(body,2.7,.45,7.4,0,.75,0,'dark');
+  // Heavy central nose rib, divided windscreen and forward bumper.
+  box(body,.44,.3,1.9,0,2.12,-3.75,'edge').rotation.x=-.38;
+  for(const s of [-1,1]){
+    box(body,1.15,.22,.12,s*.82,2.32,-3.55,'dark').rotation.x=-.5;
+    box(body,1,.12,.14,s*.82,2.33,-3.61,'glass').rotation.x=-.5;
+    box(body,.43,.16,.1,s*1.14,1.39,-4.75,'light');
+    box(body,.48,.28,.15,s*1.12,1.37,-4.67,'dark');
+    box(body,.09,1.2,2.2,s*1.84,1.7,.25,'edge');
+    box(body,.12,1.06,1.8,s*1.9,1.67,.25,'armor');
+    box(body,.06,.12,.42,s*1.98,1.96,-.22,'brass');
+    box(body,.08,.14,6.1,s*1.94,.62,.25,'metal');
+    label(body,'VC-12',1.15,.28,s*1.91,2.18,1.8,s*Math.PI/2);
+    // Wheel armor brows leave the tires exposed below.
+    for(const z of [-2.95,2.8]){
+      plate(body,[[s*1.1,z-1.42],[s*2.08,z-1.1],[s*2.15,z+.95],[s*1.1,z+1.35]],.16,2.07,'edge');
+      box(body,.18,.42,.25,s*1.93,1.8,z-1.25,'armor');box(body,.18,.42,.25,s*1.93,1.8,z+1.25,'armor');
+    }
+  }
+  box(body,3.3,.3,.3,0,.98,-4.65,'metal');box(body,3.35,.26,.35,0,.92,4.35,'dark');
+  for(const x of [-1.3,1.3])box(body,.26,.18,.08,x,1.3,4.48,'red');
+  // Separate wheels with broad block treads and recessed concentric hubs.
+  const wheels=[];
+  for(const s of [-1,1])for(const z of [-2.95,2.8]){
+    const wheel=group(root,'wheel '+s+' '+z,s*1.7,1.04,z);wheels.push(wheel);
+    cyl(wheel,1.04,1.04,.7,0,0,0,'rubber','x',24);
+    for(let k=0;k<24;k++){const a=k*Math.PI/12;const t=box(wheel,.77,.15,.25,0,Math.cos(a)*1.02,Math.sin(a)*1.02,'rubber');t.rotation.x=a;}
+    cyl(wheel,.79,.79,.04,s*.37,0,0,'metal','x',24);cyl(wheel,.64,.64,.07,s*.4,0,0,'armor','x',20);cyl(wheel,.3,.3,.09,s*.45,0,0,'edge','x');
+    for(let k=0;k<8;k++){const a=k*Math.PI/4;cyl(wheel,.055,.055,.035,s*.46,Math.cos(a)*.49,Math.sin(a)*.49,'metal','x',6);}
+  }
+  for(const s of [-1,1]){box(body,.15,.08,5.1,s*.9,2.59,.7,'metal');for(let k=0;k<9;k++)box(body,.065,.06,1.2,s*.9,2.65,1.6+k*.16,'dark');}
+  cyl(body,.64,.64,.12,0,2.62,2.5,'edge');box(body,.5,.09,.12,0,2.73,2.5,'metal');
+  const turret=group(root,'sliding roof turret',0,2.67,-1.6);
+  cyl(turret,.66,.75,.22,0,0,0,'metal');
+  hull(turret,[[-1.05,.6,.05,.4],[-.65,1,.02,.72],[.72,.86,.06,.62],[1.05,.5,.12,.4]]);
+  for(const x of [-.3,.3]){cyl(turret,.09,.13,1.7,x,.36,-1.5,'metal','z');box(turret,.22,.2,.35,x,.36,-2.25,'dark');}
+  box(turret,.42,.2,.28,.5,.8,.1,'glass');
+  cyl(body,.025,.04,1.4,-1.1,3.2,3.1,'metal', 'y',6);
+  label(body,'VECTORCLAD',2.2,.22,0,1.76,4.47);
+  const all=[];root.traverse(o=>{if(o.isGroup)all.push(o)});
+  root.userData.setTurretAngle=r=>turret.rotation.y=r;
+  root.userData.setTurretStowed=stowed=>turret.position.z=stowed?2.05:-1.6;
+  root.userData.roll=distance=>wheels.forEach(w=>w.rotation.x-=distance*(options.metersPerUnit??1)/1.04);
+  return finish(root,all);
+}
+
+const canvas=host.querySelector('canvas'),renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(40,1,.03,250);scene.add(new THREE.HemisphereLight(0xc9e4ff,0x45414e,2.4));let key=new THREE.DirectionalLight(0xe5efff,3);key.position.set(-4,7,-5);scene.add(key);let rim=new THREE.DirectionalLight(0x8aa4ff,3);rim.position.set(4,4,6);scene.add(rim);
+const swarm=createRiftlingSwarm(THREE,{capacity:1024,lod:'low'});scene.add(swarm.mesh);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(130,130),new THREE.MeshStandardMaterial({color:0x273138,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.position.y=-.055;scene.add(floor);
+const grid=new THREE.GridHelper(120,120,0x566570,0x35424b);grid.position.y=-.045;scene.add(grid);
+const apc=createAPC(THREE);apc.position.set(0,0,0);scene.add(apc);
+const wall=new THREE.Mesh(new THREE.BoxGeometry(7,5,.12),new THREE.MeshStandardMaterial({color:0x3b454a,roughness:.9}));wall.position.set(0,1.9,.65);wall.visible=false;scene.add(wall);
+const colors=Object.keys(RIFTLING_COLORS),clipSelect=host.querySelector('#rf-clip');for(const name of Object.keys(RIFTLING_CLIPS)){const o=document.createElement('option');o.value=name;o.textContent=name[0].toUpperCase()+name.slice(1);clipSelect.append(o)}
+let mode='colors',clip='idle',colorMode='mixed',count=4,time=0,paused=false,distance=8,yaw=-.45,pitch=.25,target=new THREE.Vector3(0,.65,0),drag=null;
+const quaternion=new THREE.Quaternion(),up=new THREE.Vector3(0,1,0),states=[];
+function layout(){mode=host.querySelector('#rf-view').value;clip=clipSelect.value;colorMode=host.querySelector('#rf-color').value;count=mode==='swarm'?Number(host.querySelector('#rf-count').value):mode==='colors'?4:1;host.querySelector('#rf-count-label').hidden=mode!=='swarm';swarm.setCount(count);apc.visible=mode==='scale';wall.visible=clip==='climbing'&&mode!=='swarm'&&mode!=='scale';wall.scale.x=mode==='colors'?2:1;
+for(let i=0;i<count;i++){let x=0,z=0,angle=0;if(mode==='colors')x=(i-1.5)*1.7;if(mode==='swarm'){let side=Math.ceil(Math.sqrt(count));x=(i%side-side/2)*1.5;z=(Math.floor(i/side)-side/2)*1.9;angle=Math.sin(i*2.4)*.25;}if(mode==='scale'){x=-3;z=-2;}states[i]={x,z,angle};quaternion.setFromAxisAngle(up,angle);swarm.setTransform(i,{position:[x,0,z],quaternion:quaternion.toArray()});swarm.setColor(i,colorMode==='mixed'?colors[i%4]:colorMode);swarm.play(i,clip,{phase:mode==='swarm'?(i*.618)%1:0});}
+distance=mode==='swarm'?Math.sqrt(count)*2.8:mode==='scale'?17:mode==='colors'?10:4.5;target.set(0,mode==='scale'?1.2:.75,0);pitch=mode==='swarm'?.75:.25;updateStatus();draw();}
+function updateStatus(){host.querySelector('#rf-status').textContent=`${count.toLocaleString()} creature${count>1?'s':''} · ${swarm.triangles.toLocaleString()} triangles each · ${clip} · drag to orbit, scroll to zoom`;}
+function draw(){camera.position.set(target.x+Math.sin(yaw)*Math.cos(pitch)*distance,target.y+Math.sin(pitch)*distance,target.z-Math.cos(yaw)*Math.cos(pitch)*distance);camera.lookAt(target);renderer.render(scene,camera)}
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();draw()}
+for(const id of ['rf-view','rf-clip','rf-color','rf-count'])host.querySelector('#'+id).onchange=layout;
+host.querySelector('#rf-pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'Play':'Pause';e.target.setAttribute('aria-pressed',String(paused))};
+canvas.onpointerdown=e=>{drag=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId)};canvas.onpointermove=e=>{if(!drag)return;yaw-=(e.clientX-drag[0])*.008;pitch=Math.max(-.12,Math.min(1.4,pitch+(e.clientY-drag[1])*.008));drag=[e.clientX,e.clientY];draw()};canvas.onpointerup=canvas.onpointercancel=()=>drag=null;canvas.onwheel=e=>{e.preventDefault();distance=Math.min(130,Math.max(2,distance*Math.exp(e.deltaY*.001)));draw()};
+new ResizeObserver(resize).observe(canvas);layout();resize();let last=performance.now();
+function tick(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(!paused){time+=dt;swarm.update(time);for(let i=0;i<count;i++)if(swarm.isFinished(i))swarm.play(i,clip,{phase:0});if(mode==='swarm'&&['running','walking','stalking','crawling'].includes(clip)){let side=Math.ceil(Math.sqrt(count)),range=side*1.9;for(let i=0;i<count;i++){let a=states[i],speed=clip==='running'?3.5:clip==='walking'?1.2:.45;let z=((a.z-time*speed+range/2)%range+range)%range-range/2;quaternion.setFromAxisAngle(up,a.angle);swarm.setTransform(i,{position:[a.x,0,z],quaternion:quaternion.toArray()});}}draw()}requestAnimationFrame(tick)}requestAnimationFrame(tick);
+host.viewer={swarm,scene,renderer,camera,layout,draw,get time(){return time},set paused(v){paused=v},get paused(){return paused}};
+}catch(e){host.querySelector('#rf-status').textContent='3D preview unavailable: '+e.message;console.error(e)}})();
+</script>
+</body></html>
