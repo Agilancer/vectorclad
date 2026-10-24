@@ -23,7 +23,8 @@ import {
 // The weakness: a scorpion can only climb about 100 ft up a wall. Past that its
 // grip gives out and it slips back down, so a mech on a high roof (or high in
 // the air) is out of reach of everything but a few ranged kinds. Scorpions
-// never leap; they dig out of the street instead of dropping in from the roofs.
+// never leap; they drop in through summoning portals (js/summons.js), and
+// Burrowers dig under the street from there.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -35,7 +36,7 @@ const ease = (t) => t * t * (3 - 2 * t);
 // Which way a foe faces: the mech's body, or an allied tank's or Kestrel's heading (js/allies.js)
 const facing = (P) => (P.bodyYaw !== undefined ? P.bodyYaw : P.yaw || 0);
 
-const SCAP = 24;              // most scorpions alive at once
+const SCAP = 128;             // most scorpions alive at once (room for every kind the summon menu can call at full count)
 const CLIMB_FT = 100;         // how far up a wall they can climb
 const FT = 0.3048;
 
@@ -44,7 +45,7 @@ const FT = 0.3048;
 //   burrow: tunnels under the street (and buildings) and bursts up under the mech
 //   stealth: runs dark, can't be locked on, circles round to strike from behind
 //   rage: below this share of its armor it goes berserk
-//   grab: seconds a pincer hit pins the mech; dmg scales all its hits; escort: kin it arrives with
+//   grab: seconds a pincer hit pins the mech; dmg scales all its hits
 //   shock: boost a sting drains; zap: arcs lightning from its tail at range
 //   flame: sprays fire from its tail and leaves the street burning
 //   venom: seconds of armor corrosion a sting injects; spit: lobs venom globs at range
@@ -64,7 +65,7 @@ export const SCORPIONS = {
     palette: { tint: [1.0, 0.42, 0.4], lift: 0.04, accent: [0.5, 0.02, 0.03], glow: [1, 0.12, 0.05] },
   },
   emperor: {
-    name: 'EMPEROR', size: [2.0, 2.25], hp: 160, speed: 0.72, legs: 1, elite: true, grab: 1.8, dmg: 1.5, escort: 2,
+    name: 'EMPEROR', size: [2.0, 2.25], hp: 160, speed: 0.72, legs: 1, elite: true, grab: 1.8, dmg: 1.5,
     palette: { tint: [0.82, 0.55, 1.4], lift: 0.06, accent: [1, 0.72, 0.18], glow: [0.85, 0.3, 1] },
   },
   shocktail: {
@@ -81,12 +82,6 @@ export const SCORPIONS = {
   },
 };
 for (const id in SCORPIONS) Object.assign(SCORPIONS[id], { id, scorpion: true });
-
-// Wave mix entries, as for spiders: [variant, weight, first wave, pack size]. Every kind is in by wave 6.
-export const SCORPION_MIX = [
-  ['burrower', 3.4, 1, [1, 3]], ['prowler', 1.8, 2, [1, 2]], ['berserker', 1.8, 2, [1, 2]], ['venomtail', 1.6, 3, [1, 2]],
-  ['shocktail', 1.5, 3, [1, 2]], ['scorcher', 1.5, 4, [1, 2]], ['emperor', 0.8, 6, [1, 1]],
-];
 
 // Attacks: wind-up (the telegraph), strike, recover, in seconds; claw and sting damage before the mech's hit scale
 const ACTS = {
@@ -306,39 +301,6 @@ export class ScorpionNest {
 
   // ---- spawning ------------------------------------------------------------------------
 
-  /** A pack digs out of the street out of the mech's sight. Returns how many came up. */
-  spawnPack(n, ctx, id) {
-    const sw = this.sw, P = ctx.player.pos, cam = ctx.camera, v = SCORPIONS[id];
-    const inView = (p) => {
-      _e.copy(p).project(cam);
-      return _e.z < 1 && Math.abs(_e.x) < 1.1 && Math.abs(_e.y) < 1.1 && p.distanceTo(P) < 150;
-    };
-    // Bigger kinds need more open street to come up in, and come up further apart
-    const big = v.size[1] * SCORPION_RIG.scale, room = clamp(1 + 1.2 * big, 3.5, 7);
-    const at = this.findGround(P, 60, 200, inView, 30, room);
-    if (!at) return 0;
-    let made = 0;
-    for (let i = 0; i < n; i++) {
-      const spot = i === 0 ? at : this.findGround(at.point, 1.8 * big, 7 * big, null, 8, room) || at;
-      if (this.spawn(spot, id)) made++;
-    }
-    // The Emperor arrives with an escort of the kinds already in the fight
-    if (made && v.escort) {
-      const room = sw.phase === 'active' ? sw.toSpawn - made : v.escort;
-      const kin = SCORPION_MIX.filter((m) => m[2] <= Math.max(1, sw.wave) && m[0] !== id);
-      for (let i = 0; i < Math.min(v.escort, room) && kin.length; i++) {
-        const spot = this.findGround(at.point, 1.5 * big, 4 * big, null, 8);
-        if (spot && this.spawn(spot, kin[Math.floor(Math.random() * kin.length)][0])) made++;
-      }
-    }
-    if (made) {
-      if (v.elite) sw.sound.broodRoar(at.point, 0.8);
-      else sw.sound.scorpionHiss(at.point);
-      sw.cb.onSpawn && sw.cb.onSpawn(made, v);
-    }
-    return made;
-  }
-
   /** Open street near center, between rMin and rMax away, with `room` clear around it for the body */
   findGround(center, rMin, rMax, avoidView, tries = 20, room = 3.5) {
     const B = this.sw.world.bounds;
@@ -365,7 +327,8 @@ export class ScorpionNest {
     return { point: hit.point.clone(), normal: new V3(0, 1, 0), collider: hit.collider };
   }
 
-  spawn(spot, id) {
+  /** A scorpion of kind id digging out of the street at spot, or with drop, falling from it (out of a summoning portal) */
+  spawn(spot, id, drop = null) {
     if (!this.free.length) return null;
     const sw = this.sw, v = SCORPIONS[id];
     const s = sw.makeFrame(spot, v, this.free.pop(), SCORPION_RIG);
@@ -388,8 +351,17 @@ export class ScorpionNest {
     sw.list.push(s);
     sw.world.targets.push(s);
     this.paint(s);
-    sw.fx.scorch(spot.point.x, spot.point.z, 3.2 * s.scale, spot.point.y + 0.03);
+    if (drop) {
+      sw.drop(s, drop);
+      s.dig = 0;
+      s.timer = 0;
+    } else sw.fx.scorch(spot.point.x, spot.point.z, 3.2 * s.scale, spot.point.y + 0.03);
     return s;
+  }
+
+  /** How far a scorpion of kind id reaches from its middle, claws to tail, in world units */
+  reach(id) {
+    return SCORPIONS[id].size[1] * SCORPION_RIG.scale * 4.2;
   }
 
   /** Called by the swarm when a scorpion leaves for good */
@@ -1095,9 +1067,14 @@ export class ScorpionNest {
     if (this.zapMesh.instanceColor) this.zapMesh.instanceColor.needsUpdate = true;
     this.zaps = 0;
 
+    // Upload only the slots in use
     for (const key in this.parts) {
-      this.parts[key].instanceMatrix.needsUpdate = true;
-      this.parts[key].instanceColor.needsUpdate = true;
+      const m = this.parts[key], n = this.top * m.per;
+      for (const [a, k] of [[m.instanceMatrix, 16], [m.instanceColor, 3]]) {
+        a.clearUpdateRanges();
+        a.addUpdateRange(0, n * k);
+        a.needsUpdate = true;
+      }
     }
     for (const pts of [this.eyesBig, this.eyesSmall]) {
       pts.geometry.attributes.position.needsUpdate = true;

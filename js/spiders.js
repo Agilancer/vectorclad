@@ -3,9 +3,10 @@ import {
   plateGeo, hullGeo, jointGeo, plateMatrix, paletteMaterial, paletteMesh, paintInstances,
   mirrorLegs, solveLeg, capsuleDist, segCapsuleHit, markerTexture, beamMesh, drawBeam,
 } from './frameParts.js';
-import { ScorpionNest, SCORPIONS, SCORPION_MIX } from './scorpions.js';
-import { MediumKin, MEDIUMS, MEDIUM_MIX } from './mediums.js';
+import { ScorpionNest, SCORPIONS } from './scorpions.js';
+import { MediumKin, MEDIUMS } from './mediums.js';
 import { Millipede } from './millipede.js';
+import { RiftlingBrood } from './riftlings.js';
 
 // ---------------------------------------------------------------------------
 // Spider-frames: six-legged climbing machines that swarm the city.
@@ -33,7 +34,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (t) => t * t * (3 - 2 * t);
 
-const CAP = 64;               // most spiders alive at once
+const CAP = 136;              // most spiders alive at once (room for every kind the summon menu can call at full count)
 const FEMUR = 2.3;            // leg segment lengths, in body units
 const TIBIA = 3.0;
 const GRAVITY = 30;
@@ -87,12 +88,6 @@ export const VARIANTS = {
 Object.assign(VARIANTS, MEDIUMS);
 for (const id in VARIANTS) VARIANTS[id].id = id;
 
-// Wave mix: [variant, weight, first wave, pack size]. A Broodmother leads every fifth wave.
-// Medium spiders and scorpion-frames (js/scorpions.js) join the same waves.
-const MIX = [['stalker', 4, 1, [1, 3]], ['skitter', 3, 1, [2, 4]], ['weaver', 2, 2, [1, 2]], ['lancer', 1.4, 3, [1, 1]], ['bombard', 1.4, 4, [1, 2]], ...MEDIUM_MIX, ...SCORPION_MIX];
-const BOSS_EVERY = 5;
-const MILLIPEDE_EVERY = 10;   // and the millipede every tenth, in the Broodmother's place
-const KINDS = { ...VARIANTS, ...SCORPIONS };
 
 // Projectiles. color is HDR (it glows past white); trail is the particle color.
 const BOLTS = {
@@ -165,7 +160,8 @@ const SPIDER_RIG = {
 
 export class SpiderSwarm {
   /**
-   * cb: { onWave(n), onWaveClear(n), onKill(spider), onPlayerHit(amount, fromPos, kind), onSpawn() }
+   * cb: { onKill(spider), onPlayerHit(amount, fromPos, kind), ... }. Nothing comes in waves: every
+   * frame is summoned (js/summons.js) and drops in through a portal.
    */
   constructor({ scene, world, fx, sound, tex, glowTex, cb }) {
     this.scene = scene;
@@ -181,8 +177,6 @@ export class SpiderSwarm {
     for (let i = CAP - 1; i >= 0; i--) this.free.push(i);
     this.time = 0;
     this.kills = 0;
-    this.wave = 0;
-    this.phase = 'off';
     this.bolts = [];
     this.lasers = [];
     this.stepSounds = 0;
@@ -190,12 +184,15 @@ export class SpiderSwarm {
     this.locals = {};
     for (const id in VARIANTS) this.locals[id] = bodyLocals(VARIANTS[id]);
     this.shells = 0;
-    // Scorpions: their own models and AI, sharing the waves, targets, projectiles and locomotion
+    // Scorpions: their own models and AI, sharing the targets, projectiles and locomotion
     this.nest = new ScorpionNest(this, { scene, tex, glowTex });
     // Medium spiders' gear, beams, domes and boulders
     this.med = new MediumKin(this, { scene, tex, cap: CAP });
     // The millipede boss (js/millipede.js)
     this.mill = new Millipede(this, { scene, tex, glowTex });
+    // Riftlings, summoned by the hundred (js/riftlings.js)
+    this.rift = new RiftlingBrood(this, { scene });
+    this.top = 0;
 
     // Materials and instanced parts, palette-swapped per spider
     const mat = (this.mat = paletteMaterial(tex.spider, tex.spiderGlow));
@@ -290,19 +287,17 @@ export class SpiderSwarm {
     }
   }
 
-  get alive() { return this.list.reduce((n, s) => n + (s.alive ? 1 : 0), 0) + (this.mill.active ? 1 : 0); }
-  get hostiles() { return this.alive + Math.max(0, this.toSpawn || 0); }
+  get alive() { return this.list.reduce((n, s) => n + (s.alive ? 1 : 0), 0) + (this.mill.active ? 1 : 0) + this.rift.alive; }
+  /** Alive, or on the way through a summoning portal (js/summons.js) */
+  get hostiles() { return this.alive + (this.incoming || 0); }
   get boss() { return this.mill.bar || this.list.find((s) => s.boss && s.alive) || null; }
 
   // ---- game flow -------------------------------------------------------------------
 
-  /** Begin the waves; the first one is wave `first` */
-  start(first = 1) {
+  /** A fresh fight: nothing out there until the summon menu calls it in (js/summons.js) */
+  start() {
     this.clear();
-    this.wave = first - 1;
     this.kills = 0;
-    this.phase = 'lull';
-    this.phaseT = 3.5;
   }
 
   clear() {
@@ -314,59 +309,7 @@ export class SpiderSwarm {
     this.nest.clear();
     this.med.clear();
     this.mill.clear();
-    this.toSpawn = 0;
-    this.millDue = false;
-  }
-
-  updateWaves(dt, ctx) {
-    if (this.phase === 'lull') {
-      this.phaseT -= dt;
-      if (this.phaseT <= 0) {
-        this.wave++;
-        this.toSpawn = 6 + this.wave * 6;
-        this.maxAlive = Math.min(CAP, 6 + this.wave * 5);
-        this.spawnEvery = Math.max(0.22, 1.5 - this.wave * 0.16);
-        this.spawnT = 0.5;
-        this.phase = 'active';
-        // The millipede comes with half a wave's spiders; a Broodmother leads the other boss waves
-        this.millDue = this.wave % MILLIPEDE_EVERY === 0;
-        this.bossDue = !this.millDue && this.wave % BOSS_EVERY === 0;
-        if (this.bossDue) this.toSpawn++;
-        if (this.millDue) this.toSpawn = Math.round(this.toSpawn * 0.5);
-        // Variants joining the fight this wave, for the wave banner
-        const fresh = MIX.filter((m) => m[2] === this.wave).map((m) => KINDS[m[0]].name);
-        const boss = this.millDue ? 'MILLIPEDE' : this.bossDue ? KINDS.brood.name : null;
-        this.cb.onWave && this.cb.onWave(this.wave, fresh, boss);
-      }
-    } else if (this.phase === 'active') {
-      this.spawnT -= dt;
-      if (this.millDue) {
-        // No room for it anywhere: a Broodmother comes instead
-        this.millDue = false;
-        if (!this.mill.spawn(ctx)) { this.bossDue = true; this.toSpawn++; }
-      }
-      const alive = this.alive;
-      if (this.bossDue && alive < CAP - 4) {
-        if (this.spawnPack(1, ctx, 'brood')) { this.bossDue = false; this.toSpawn--; }
-      } else if (this.spawnT <= 0 && this.toSpawn > 0 && alive < this.maxAlive) {
-        const [id, , , pack] = this.pickVariant();
-        const n = Math.min(this.toSpawn, this.maxAlive - alive, pack[0] + Math.floor(Math.random() * (pack[1] - pack[0] + 1)));
-        this.toSpawn -= this.spawnPack(n, ctx, id);
-        this.spawnT = this.spawnEvery * rand(0.6, 1.4);
-      }
-      if (this.toSpawn <= 0 && alive === 0) {
-        this.phase = 'lull';
-        this.phaseT = 7;
-        this.cb.onWaveClear && this.cb.onWaveClear(this.wave);
-      }
-    }
-  }
-
-  pickVariant() {
-    const open = MIX.filter((m) => m[2] <= Math.max(1, this.wave));
-    let r = Math.random() * open.reduce((t, m) => t + m[1], 0);
-    for (const m of open) if ((r -= m[1]) <= 0) return m;
-    return open[0];
+    this.rift.clear();
   }
 
   // ---- surface queries ---------------------------------------------------------------
@@ -433,36 +376,16 @@ export class SpiderSwarm {
 
   // ---- spawning ------------------------------------------------------------------------
 
-  spawnPack(n, ctx, id = 'stalker') {
-    if (SCORPIONS[id]) return this.nest.spawnPack(n, ctx, id);
-    const P = ctx.player.pos, cam = ctx.camera, v = VARIANTS[id];
-    // Spawn out of sight: behind the camera, or far off
-    const inView = (p) => {
-      _e.copy(p).project(cam);
-      return _e.z < 1 && Math.abs(_e.x) < 1.1 && Math.abs(_e.y) < 1.1 && p.distanceTo(P) < 150;
-    };
-    const perch = this.findPerch(P, 75, 230, { roof: v.boss ? 0.7 : v.medium ? 0.85 : 0.45, avoidView: inView, tries: 24 });
-    if (!perch) return 0;
-    let made = 0;
-    for (let i = 0; i < n; i++) {
-      const p = i === 0 ? perch : this.findPerch(perch.point, 0, 30, { roof: 0.5, tries: 6 }) || perch;
-      if (this.spawn(p, id)) made++;
-    }
-    if (made) {
-      if (v.boss) this.sound.broodRoar(perch.point);
-      else if (v.medium) this.sound.mediumGrowl(perch.point);
-      else if (id === 'skitter') this.sound.skitterChirp(perch.point);
-      else this.sound.spiderScreech(perch.point);
-      this.cb.onSpawn && this.cb.onSpawn(made, v);
-    }
-    return made;
-  }
-
-  spawn(perch, id = 'stalker') {
+  /**
+   * A spider of kind id on a perch. drop: a velocity to start it falling with instead (perch.point is
+   * then where its body hangs in the air, as when it comes through a summoning portal).
+   */
+  spawn(perch, id = 'stalker', drop = null) {
     if (!this.free.length) return null;
     // The lowest free slot, so the instances drawn (resize()) stay few
     this.free.sort((a, b) => b - a);
     const s = this.makeFrame(perch, VARIANTS[id], this.free.pop(), SPIDER_RIG);
+    if (drop) this.drop(s, drop);
     s.kind = 'spider';
     s.radius = 2.2 * s.scale;
     s.cool = { plasma: rand(1.5, 3), laser: rand(4, 8), web: rand(1.5, 3), mortar: rand(2, 4), pounce: rand(0.5, 1.5), brood: rand(3, 5) };
@@ -473,6 +396,28 @@ export class SpiderSwarm {
     this.resize();
     return s;
   }
+
+  /** Start a fresh frame falling from where it hangs, at velocity vel, legs reaching for a landing */
+  drop(s, vel) {
+    s.state = 'fall';
+    s.flight = { target: null };
+    s.c.copy(s.p);
+    s.pos.copy(s.c);
+    s.vel.copy(vel);
+    s.moveVel.copy(vel);
+    s.support = null;
+    s.n.set(0, 1, 0);
+    s.ns.copy(s.n);
+    for (const f of s.feet) { f.from.copy(f.pos); f.to.copy(f.pos); f.t = 1; }
+  }
+
+  /** How big a frame of kind id is drawn, at most: its leg span or tail, in world units, for sizing its portal */
+  reach(id) {
+    if (SCORPIONS[id]) return this.nest.reach(id);
+    const v = VARIANTS[id];
+    return v.size[1] * SPIDER_RIG.scale * v.legs * 3.7;
+  }
+
 
   /**
    * A new frame of variant v on a perch, in instance slot `slot`, walking on `rig`:
@@ -566,7 +511,7 @@ export class SpiderSwarm {
   resize() {
     const used = new Uint8Array(CAP).fill(1);
     for (const i of this.free) used[i] = 0;
-    const top = used.lastIndexOf(1) + 1;
+    const top = (this.top = used.lastIndexOf(1) + 1);
     for (const key in this.parts) this.parts[key].count = top * this.parts[key].per;
     for (const key in this.med.parts) this.med.parts[key].count = top * this.med.parts[key].per;
     for (const pts of [this.eyesBig, this.eyesSmall]) pts.geometry.setDrawRange(0, top * pts.per);
@@ -629,7 +574,6 @@ export class SpiderSwarm {
     this.time += dt;
     this.stepSounds = 0;
     this.P = ctx.player;
-    this.updateWaves(dt, ctx);
     // Iterate a copy: spiders can be removed mid-frame (detonations, chain explosions)
     for (const s of [...this.list]) {
       if (s.removed) continue;
@@ -647,9 +591,18 @@ export class SpiderSwarm {
     this.nest.update(dt, ctx);
     this.med.update(dt, ctx);
     this.mill.update(dt, ctx);
+    this.rift.update(dt, ctx);
+    // Upload only the slots in use
     for (const key in this.parts) {
-      this.parts[key].instanceMatrix.needsUpdate = true;
-      if (this.parts[key].instanceColor) this.parts[key].instanceColor.needsUpdate = true;
+      const m = this.parts[key], n = this.top * m.per;
+      m.instanceMatrix.clearUpdateRanges();
+      m.instanceMatrix.addUpdateRange(0, n * 16);
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) {
+        m.instanceColor.clearUpdateRanges();
+        m.instanceColor.addUpdateRange(0, n * 3);
+        m.instanceColor.needsUpdate = true;
+      }
     }
     for (const pts of [this.eyesBig, this.eyesSmall]) {
       pts.geometry.attributes.position.needsUpdate = true;
@@ -732,13 +685,6 @@ export class SpiderSwarm {
       s.see = P.alive && eye.distanceTo(P.chest) < 240 && this.clearLine(eye, P.chest);
     }
     s.seeT = s.see ? s.seeT + dt : 0;
-    // A spider lost somewhere far off for a long time goes back into the wave's pool
-    s.lostT = s.see ? 0 : (s.lostT || 0) + dt;
-    if (s.lostT > 40 && s.state === 'crawl' && s.c.distanceTo(this.P.pos) > 120) {
-      this.remove(s);
-      this.toSpawn++;
-      return;
-    }
     s.moveVel.set(0, 0, 0);
 
     // Scorpions hunt and strike on their own; the swarm still walks their legs
@@ -1067,7 +1013,13 @@ export class SpiderSwarm {
     const dir = _a.copy(s.vel).divideScalar(sp || 1);
     const F = fl.foe || this.P;
     if (fl.pounce && F && F.alive && this.foeDist(F, s.c) < 1.8 + s.scale) { this.detonate(s); return; }
-    const hit = fl.t > 0.06 ? this.ray(s.c, dir, sp * dt + 0.9 * s.scale) : null;
+    let hit = fl.t > 0.06 ? this.ray(s.c, dir, sp * dt + 0.9 * s.scale) : null;
+    // A fall that starts at street level (off the foot of a wall, or from under a curb) can begin
+    // below the street, where no ray finds it: inside the city the street catches it anyway
+    if (!hit && s.c.y + s.vel.y * dt < 0.2) {
+      const B = this.world.bounds;
+      if (s.c.x > B.minX - 30 && s.c.x < B.maxX + 30 && s.c.z < B.maxZ + 30) hit = { point: _c.set(s.c.x, 0, s.c.z), normal: UP, collider: null };
+    }
     if (hit) { this.land(s, hit); return; }
     s.c.addScaledVector(s.vel, dt);
     s.moveVel.copy(s.vel);
@@ -1230,7 +1182,7 @@ export class SpiderSwarm {
   // ---- weapons ----------------------------------------------------------------------------------
 
   weapons(s, dt, P) {
-    const v = s.v, aggr = 1 + this.wave * 0.07;
+    const v = s.v;
     if (v.medium) { this.med.weapons(s, dt, P); return; }
     if (s.burst > 0) {
       s.burstT -= dt;
@@ -1248,30 +1200,30 @@ export class SpiderSwarm {
         if (s.cool.plasma <= 0 && d < 175 && room) {
           s.burst = 1 + Math.floor(Math.random() * 3);
           s.burstT = 0.1;
-          s.cool.plasma = rand(2.4, 4.4) / aggr;
+          s.cool.plasma = rand(2.4, 4.4) 
         }
         if (s.state === 'perch' && !s.laser && s.cool.laser <= 0 && d < 230 && this.lasers.length < 6) {
           this.startLaser(s, P, LASERS.red);
-          s.cool.laser = rand(6, 10.5) / aggr;
+          s.cool.laser = rand(6, 10.5) 
         }
         break;
       case 'web': // two sticky globs that slow the mech
         if (s.cool.web <= 0 && d < 110 && room) {
           s.burst = 2;
           s.burstT = 0.1;
-          s.cool.web = rand(3.5, 5.5) / aggr;
+          s.cool.web = rand(3.5, 5.5) 
         }
         break;
       case 'lance': // long charge, heavy beam, from a high perch
         if (s.state === 'perch' && !s.laser && s.cool.laser <= 0 && d < 280 && this.lasers.length < 8) {
           this.startLaser(s, P, LASERS.lance);
-          s.cool.laser = rand(4.5, 7) / aggr;
+          s.cool.laser = rand(4.5, 7) 
         }
         break;
       case 'mortar': // lobbed shells, with a warning ring where they will land
         if (s.cool.mortar <= 0 && d > 20 && d < 200 && room) {
           this.lobShell(s, P);
-          s.cool.mortar = rand(3, 4.8) / aggr;
+          s.cool.mortar = rand(3, 4.8) 
         }
         break;
       case 'fan': // volleys of five bolts in a fan

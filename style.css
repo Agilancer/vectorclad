@@ -112,8 +112,8 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .score b { font-size: 20px; color: var(--fg); }
 .tally { display: flex; gap: 6px; }
 .score.wave { border-left-color: var(--alert); }
-.score small { font-size: 12px; color: var(--alert); letter-spacing: 0.06em; }
-#btn-hangar { pointer-events: auto; }
+.hud-btns { display: flex; gap: 6px; }
+#btn-hangar, #btn-summon { pointer-events: auto; }
 
 #boss-bar {
   position: absolute; left: 50%; top: max(60px, calc(env(safe-area-inset-top, 0px) + 52px)); transform: translateX(-50%);
@@ -405,6 +405,59 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .toggle { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--fg); padding: 5px 12px; font-size: 12px; min-width: 62px; }
 .toggle[aria-pressed="true"] { background: var(--hud); color: #0c1a12; border-color: var(--hud); }
 
+/* ---------- summon menu (the ` key) and the tech-demo notice ---------- */
+#summon {
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 42;
+  width: min(430px, 100%);
+  background: rgba(21, 24, 29, 0.95);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.summon-head { flex: none; }
+.summon-note { margin: 0; padding: 10px 16px; font-size: 12px; line-height: 1.45; color: var(--dim); border-bottom: 1px solid var(--line); }
+.summon-body {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: grid; gap: 16px; align-content: start;
+  touch-action: pan-y;
+}
+.sgroup { display: grid; gap: 6px; }
+.sgroup h3 { margin: 0 0 2px; font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--hud); }
+.srow {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr) 32px 84px; align-items: center; gap: 10px;
+  background: rgba(255, 255, 255, 0.03); border-left: 3px solid var(--hud-dim); padding: 6px 8px 6px 10px;
+}
+.srow.cooling { border-left-color: var(--alert); }
+.srow-name { font-size: 14px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow input[type="range"] { width: 100%; min-width: 0; margin: 0; accent-color: var(--signal); }
+.srow output { font-size: 16px; text-align: right; }
+.srow-fixed { font-size: 11px; letter-spacing: 0.08em; color: var(--dim); text-transform: uppercase; }
+.btn-summon {
+  border: 1px solid var(--signal); background: rgba(242, 182, 50, 0.14); color: var(--signal);
+  padding: 7px 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.btn-summon:hover:not(:disabled), .btn-summon.queued { background: var(--signal); color: #16130b; }
+#summon:not(.queueing) .queue-note { display: none; }
+#summon.queueing .queue-note { display: block; color: var(--signal); }
+/* The loadout's Debug button opens the summon menu on touchscreens, which have no ` key */
+body:not(.touch) .debug-btn { display: none; }
+body.touch #btn-summon-close kbd { display: none; }
+.debug-btn { border-color: rgba(242, 182, 50, 0.6); color: var(--signal); }
+.btn-summon:disabled { border-color: var(--line); background: transparent; color: var(--dim); cursor: not-allowed; font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.06em; }
+
+#brief {
+  position: fixed; inset: 0; z-index: 45;
+  display: grid; place-items: center;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  background: radial-gradient(ellipse at center, rgba(180, 77, 255, 0.16), rgba(13, 15, 18, 0.72));
+}
+.brief-card { width: min(520px, 100%); display: grid; gap: 14px; background: var(--panel); padding: 20px 22px 22px; border-top: 2px solid var(--signal); }
+.brief-card .stripe { width: 120px; }
+.brief-card h2 { margin: 0; font-size: clamp(26px, 5vw, 38px); letter-spacing: 0.03em; }
+.brief-text { margin: 0; font-size: 15px; line-height: 1.55; color: #d6d2c8; }
+
 /* ---------- touch ---------- */
 #touch { position: fixed; inset: 0; z-index: 20; }
 #move-zone { position: absolute; left: 0; top: 0; bottom: 0; width: 42%; }
@@ -452,11 +505,12 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 #t-fireL { grid-area: fl; }
 #t-jump { grid-area: jump; }
 #t-dash { grid-area: dash; }
+.t-summon { position: absolute; top: max(132px, calc(env(safe-area-inset-top, 0px) + 124px)); right: max(16px, env(safe-area-inset-right, 0px)); border-color: rgba(242, 182, 50, 0.6); color: var(--signal); }
 .t-menu { position: absolute; top: max(52px, calc(env(safe-area-inset-top, 0px) + 44px)); right: max(16px, env(safe-area-inset-right, 0px)); }
 
 /* --hud-side: how far the weapon list reaches in from the left edge. Centered HUD text stays inside it. */
 body.touch { --hud-side: calc(max(16px, env(safe-area-inset-left, 0px)) + 176px + 12px); }
-body.touch #help-hint, body.touch #btn-hangar, body.touch .controls { display: none; }
+body.touch #help-hint, body.touch #btn-hangar, body.touch #btn-summon, body.touch .controls { display: none; }
 body.touch #toast { max-width: calc(100vw - 2 * var(--hud-side)); font-size: 16px; letter-spacing: 0.2em; padding-left: 0.2em; }
 body.touch #boss-bar { width: min(420px, calc(100vw - 2 * var(--hud-side))); }
 body:not(.touch) .touch-note { display: none; }
@@ -485,11 +539,11 @@ body.touch .score { padding: 3px 10px; }
   .readouts b { font-size: 15px; }
   .unit-name { display: none; }
   .score b { font-size: 16px; }
-  .score small { display: none; }
 }
 /* Bottom-sheet hangar on narrow upright screens; landscape phones keep the side panel. Matches hangarSheet in js/main.js. */
 @media (max-width: 720px) and (orientation: portrait) {
   #hangar { top: auto; height: 62%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }
+  #summon { top: auto; height: 62%; width: 100%; border-right: 0; border-top: 1px solid var(--line); }
 }
 @media (max-height: 500px) {
   .tbtns { grid-template-columns: repeat(3, 54px); gap: 6px; }
@@ -510,6 +564,11 @@ body.touch .score { padding: 3px 10px; }
   .fc-stats { grid-template-columns: 1fr; gap: 3px; }
   .fc-blurb { display: none; }
   .drop-cap { bottom: calc(9vh + 8px); }
+  .summon-note { display: none; }
+  .summon-body { gap: 10px; padding-top: 8px; }
+  .srow { padding-block: 3px; }
+  .brief-card { gap: 10px; padding: 14px 18px 16px; }
+  .brief-text { font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   #overheat, .lock.new, .gauge.armor.low #ap-txt { animation: none; }

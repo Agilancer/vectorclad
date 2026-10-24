@@ -7,8 +7,10 @@ import { World, SUN_DIR, STEP } from './world.js';
 import { FRAMES } from './frames.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
-import { HUD, Hangar, FrameSelect } from './ui.js';
+import { HUD, Hangar, FrameSelect, SummonMenu } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
+import { Portals } from './portals.js';
+import { Summoner, SUMMON_GROUPS } from './summons.js';
 import { Allies } from './allies.js';
 import { Destruction } from './destruct/destruct.js';
 import { People } from './people.js';
@@ -67,8 +69,7 @@ const store = {
 let spec = FRAMES[store.get('vectorclad.frame', 'vanguard')] || FRAMES.vanguard;
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
-// ?wave=N starts the fight at wave N, with every kind that has joined by then
-const START_WAVE = Math.max(1, parseInt(new URLSearchParams(location.search).get('wave'), 10) || 1);
+// A sandbox: there are no waves. Nothing comes until the summon menu (the ` key, js/summons.js) calls it in.
 // The hangar is a bottom sheet rather than a side panel (same query as #hangar in style.css)
 const hangarSheet = matchMedia('(max-width: 720px) and (orientation: portrait)');
 
@@ -83,6 +84,8 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// The millipede is clipped where it hasn't yet crawled out of its portal (js/millipede.js)
+renderer.localClippingEnabled = true;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.6, 9000);
@@ -161,7 +164,7 @@ const sound = new Sound();
 window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
-let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel;
+let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel, portals, summoner, summonMenu;
 const frameMechs = {}; // each frame's model, built the first time it is picked
 
 const DEFAULT = PRESETS[0];
@@ -188,7 +191,8 @@ const P = {
   chest: new V3(),
 };
 const cam = { dist: CAM_DIST_MIN, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
-// loading | intro | frames (frame select) | loadout (before a drop) | drop (flown in) | play | hangar (paused) | over
+// loading | intro | frames (frame select) | loadout (before a drop) | drop (flown in) |
+// brief (held at the release for the tech-demo notice) | play | hangar (paused) | over
 let mode = 'loading';
 let time = 0;
 let deployed = false;
@@ -240,16 +244,6 @@ async function init() {
   spiders = new SpiderSwarm({
     scene, world, fx, sound, tex, glowTex: fx.glowTex,
     cb: {
-      onWave: (n, fresh, boss) => {
-        // Name what is new this wave: a boss, or the variants joining the fight
-        const extra = boss ? ` · ${boss} INBOUND` : fresh.length ? ` · ${fresh.join(', ')} SIGHTED` : '';
-        hud.toast(`WAVE ${n}${extra}`, boss || fresh.length ? 3.4 : 2.4);
-        sound.warning();
-      },
-      onWaveClear: (n) => {
-        P.ap = Math.min(spec.ap, P.ap + spec.ap * 0.3);
-        hud.toast(`WAVE ${n} CLEARED · ARMOR PATCHED`, 2.8);
-      },
       onKill: (s) => {
         // The tanks' kills are theirs, not the mech's
         if (world.allyFire) allies.kills++;
@@ -311,6 +305,26 @@ async function init() {
   // The Kestrel H that flies the mech in, and the Kestrels and Bastion tanks that join the fight
   allies = new Allies({ scene, world, fx, sound, meters: METERS, mobile: isTouch });
   allies.setSwarm(spiders);
+  // Summoning: the ` menu, and the portals monsters drop out of
+  portals = new Portals({ scene, fx, sound });
+  summoner = new Summoner({ swarm: spiders, portals, world });
+  summonMenu = new SummonMenu({
+    groups: SUMMON_GROUPS, sound,
+    cooldown: (id) => summoner.cooldown(id),
+    queued: (id) => orders.has(id),
+    onSummon: (id, n) => {
+      // From the loadout (before a drop), summons wait for the fight to start; a second press takes one back
+      if (mode === 'loadout') {
+        if (orders.has(id)) { orders.delete(id); return { ok: false }; }
+        orders.set(id, n);
+        return { ok: true };
+      }
+      const r = mode === 'play' ? summoner.summon(id, n, P) : { ok: false, msg: '' };
+      if (r.msg) hud.toast(r.msg, 2.6);
+      if (r.ok) sound.warning();
+      return r;
+    },
+  });
   P.pos.copy(world.spawn);
   mech.root.position.copy(P.pos);
   mech.resetFeet();
@@ -350,7 +364,7 @@ async function init() {
     $('#touch').addEventListener('pointerdown', () => sound.unlock());
   }
   input.onLockChange = (locked) => {
-    if (!locked && mode === 'play' && !input.lockFailed) openHangar();
+    if (!locked && mode === 'play' && !input.lockFailed && !summonMenu.open) openHangar();
   };
   // Pause in the hangar when the game can't be seen: the page goes to the background,
   // or a phone turns upright and the rotate overlay covers it.
@@ -371,12 +385,27 @@ async function init() {
   // A tap with a second finger (thumb still on the stick) never becomes a click, so open on touchend.
   // Cancelling it also keeps the click from landing on the hangar that just opened under the finger.
   $('#t-menu').addEventListener('touchend', (e) => { e.preventDefault(); openHangar(); });
+  $('#btn-summon').addEventListener('click', () => toggleSummon());
+  $('#btn-summon-close').addEventListener('click', () => closeSummon(true));
+  $('#t-summon').addEventListener('touchend', (e) => { e.preventDefault(); toggleSummon(); });
+  $('#t-summon').addEventListener('click', () => toggleSummon());
+  $('#btn-brief-ok').addEventListener('click', () => { sound.unlock(); dismissBrief(); });
+  // The loadout's Debug button (touchscreens, which have no ` key)
+  $('#btn-hangar-debug').addEventListener('click', () => {
+    sound.unlock();
+    if (mode === 'hangar') { startPlay(); openSummon(); } else if (mode === 'loadout') openSummon();
+  });
   canvas.addEventListener('click', () => {
     sound.unlock();
+    if (summonMenu.open) closeSummon(false);
     if (mode === 'play' && !input.locked) input.requestLock();
   });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape' && mode === 'hangar') startPlay();
+    // ` (or ~): the summon menu
+    if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); toggleSummon(); }
+    if (e.code === 'Escape' && summonMenu.open) closeSummon(false);
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && mode === 'brief') { e.preventDefault(); dismissBrief(); }
   });
 
   // Warm up shaders so the first shots don't hitch
@@ -403,7 +432,7 @@ function startPlay() {
   input.requestLock();
 }
 
-/** Fresh frame on the starting plaza, fresh waves */
+/** Fresh frame on the starting plaza, an empty city */
 function redeploy() {
   deployed = true;
   allies.clear();
@@ -416,7 +445,8 @@ function redeploy() {
   mech.resetFeet();
   weapons.equip(loadout);
   setHardLock(null);
-  spiders.start(START_WAVE);
+  summoner.clear();
+  spiders.start();
   hud.resetKills();
   $('#gameover').hidden = true;
 }
@@ -456,6 +486,7 @@ function die() {
   P.ap = 0;
   P.deadT = 0;
   mode = 'over';
+  summonMenu.hide();
   setHardLock(null);
   input.exitLock();
   $('#touch').hidden = true;
@@ -465,7 +496,7 @@ function die() {
   shake(null, 1.2);
   cam.orbit = P.yaw + Math.PI;
   const t = Math.floor(P.runT);
-  $('#over-wave').textContent = String(Math.max(1, spiders.wave));
+  $('#over-summoned').textContent = String(summoner.total);
   $('#over-kills').textContent = String(hud.score);
   $('#over-time').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
@@ -473,6 +504,7 @@ function die() {
 /** The pause hangar: loadout and settings, then back into the fight */
 function openHangar() {
   if (mode === 'hangar') return;
+  summonMenu.hide();
   mode = 'hangar';
   $('#hangar-eyebrow').textContent = 'HANGAR 2 · BAY 07';
   $('#btn-close-hangar').textContent = 'Launch';
@@ -487,7 +519,8 @@ function openHangar() {
 
 /** Only one of the full-screen panels at a time */
 function showPanel(id) {
-  for (const p of ['#intro', '#frames', '#hangar', '#gameover', '#drop']) $(p).hidden = p !== id;
+  for (const p of ['#intro', '#frames', '#hangar', '#gameover', '#drop', '#brief']) $(p).hidden = p !== id;
+  summonMenu.hide();
   $('#hud').hidden = true;
   $('#touch').hidden = true;
   input.releaseTouch();
@@ -551,9 +584,59 @@ function setFrame(id) {
   $('#unit-name').textContent = f.name.toUpperCase();
 }
 
+/**
+ * The summon menu (the ` key): in the fight, where the game runs on behind it, or over the loadout
+ * before a drop, where what's summoned waits for the fight to start (orders)
+ */
+const orders = new Map();
+function openSummon() {
+  if ((mode !== 'play' && mode !== 'loadout') || summonMenu.open) return;
+  summonMenu.show(mode === 'loadout');
+  input.releaseTouch();
+  input.exitLock();
+}
+
+/** relock: take the pointer back for aiming (only works inside a click or key press) */
+function closeSummon(relock) {
+  if (!summonMenu.open) return;
+  summonMenu.hide();
+  if (relock && mode === 'play') input.requestLock();
+}
+
+function toggleSummon() {
+  sound.unlock();
+  if (summonMenu.open) closeSummon(true);
+  else openSummon();
+}
+
+/**
+ * Right before the fight starts (the clamps are about to open): the drop holds while a notice says
+ * this is a tech demo and monsters come from the summon menu. OKAY lets go of the frame.
+ */
+let briefed = false;
+function showBrief() {
+  mode = 'brief';
+  $('#drop').hidden = true;
+  $('#brief').hidden = false;
+  input.exitLock();
+  input.releaseTouch();
+  $('#btn-brief-ok').focus({ preventScroll: true });
+}
+
+function dismissBrief() {
+  if (mode !== 'brief') return;
+  briefed = true;
+  $('#brief').hidden = true;
+  if (allies.drop) releaseFrame(allies.drop);
+  else { mode = 'play'; $('#hud').hidden = false; if (isTouch) $('#touch').hidden = false; }
+  // Inside the click (or key press): the pointer can be locked again for aiming
+  input.requestLock();
+}
+
 /** Deploy: the Kestrel H flies the frame in from the harbor and lets go over the plaza */
 function startDrop() {
   redeploy();
+  briefed = false;
   mode = 'drop';
   showPanel('#drop');
   const D = allies.startDrop(world.spawn);
@@ -581,7 +664,7 @@ function holdInCradle(dt, D) {
   sound.setThrust(0.85, dt);
   const eta = Math.max(0, D.releaseT - D.t).toFixed(1);
   if (eta !== etaShown) $('#drop-eta').textContent = etaShown = eta;
-  if (D.released) releaseFrame(D);
+  if (D.released) { if (briefed) releaseFrame(D); else showBrief(); }
   return { speed: 0, gait: 0, ground: 0 };
 }
 
@@ -597,7 +680,14 @@ function releaseFrame(D) {
   P.airT = 0;
   mech.resetFeet();
   hud.toast('FRAME RELEASED · WEAPONS FREE', 2.4);
-  // The first Kestrels with tanks come in a little after the first wave
+  // What was summoned from the loadout comes through now
+  if (orders.size) {
+    let n = 0;
+    for (const [id, count] of orders) if (summoner.summon(id, count, P).ok) n++;
+    orders.clear();
+    if (n) { hud.toast(n === 1 ? 'SUMMONED FROM THE LOADOUT · INBOUND' : `${n} SUMMONS FROM THE LOADOUT · INBOUND`, 3); sound.warning(); }
+  }
+  // The first Kestrels with tanks come in a little after the release
   allies.schedule(14);
 }
 
@@ -754,6 +844,8 @@ function updatePlayer(dt, c) {
       if (!P.grounded) {
         const impact = -P.vel.y;
         if (impact > 5) {
+          // A hard landing squashes the riftlings under it
+          spiders.rift.stomp(P.pos, clamp(impact / 8, 1.8, 4));
           P.landT = clamp(impact / 45, 0.12, 0.45);
           shake(null, clamp(impact / 40, 0.15, 0.7));
           fx.dust(P.pos, clamp(impact / 15, 0.8, 2), 16);
@@ -921,7 +1013,7 @@ function leadPoint(out) {
 const camDir = new V3(), camRight = new V3(), camFwd = new V3(), pivot = new V3(), camPos = new V3(), dropQ = new THREE.Quaternion();
 
 function updateCamera(dt, speed) {
-  const dropping = mode === 'drop' && allies.drop;
+  const dropping = (mode === 'drop' || mode === 'brief') && allies.drop;
   cam.pivotY = dropping ? P.pos.y + 7.4 : damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
   if ((mode === 'play' || dropping) && !cam.debugOrbit) {
@@ -1026,6 +1118,7 @@ const feetA = new V3(), feetB = new V3();
 const UPV = new V3(0, 1, 0);
 const spiderCtx = { player: P, camera };
 const shoulder = new V3();
+const HELD = { speed: 0, gait: 0, ground: 0 };
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -1042,7 +1135,9 @@ function frame(now) {
   // The Kestrel H: carrying the frame in, then climbing away after the release
   const running = mode === 'drop' || mode === 'play' || mode === 'over';
   const D = running && allies.drop ? allies.updateDrop(dt) : null;
-  const { speed, gait } = mode === 'drop' && D ? holdInCradle(dt, D) : updatePlayer(dt, c);
+  // Held at the release while the tech-demo notice is up: nothing moves
+  const { speed, gait } = mode === 'brief' ? HELD : mode === 'drop' && D ? holdInCradle(dt, D) : updatePlayer(dt, c);
+  if (mode === 'play' && P.dashing) spiders.rift.ram(P.pos, P.vel);
   updateCamera(dt, speed);
   P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
 
@@ -1063,7 +1158,12 @@ function frame(now) {
     }
     if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(spec.ap, P.ap + REGEN_RATE * dt);
   }
-  if (mode === 'play' || mode === 'over') spiders.update(dt, spiderCtx);
+  if (mode === 'play' || mode === 'over') {
+    summoner.update(dt);
+    spiders.update(dt, spiderCtx);
+    portals.update(dt);
+  }
+  summonMenu.update();
   // Tanks and their Kestrels fight on over the wreck; new packs only come while the mech fights
   if (running) {
     allies.update(dt, {
@@ -1117,6 +1217,7 @@ function frame(now) {
     _t.y = P.pos.y;
     const k = res.soft ? 0.45 : 1;
     fx.dust(_t, (0.6 + gait * 0.4) * k, res.soft ? 4 : 8);
+    spiders.rift.stomp(_t, 1.7);
     sound.footstep(_t, (0.75 + gait * 0.4) * k);
     shake(null, (0.16 + gait * 0.12) * k);
   }
@@ -1126,7 +1227,7 @@ function frame(now) {
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {
     hud.update(dt, {
-      ap: P.ap, apMax: spec.ap, wave: spiders.wave, hostiles: spiders.hostiles, boss: spiders.boss,
+      ap: P.ap, apMax: spec.ap, hostiles: spiders.hostiles, boss: spiders.boss,
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
@@ -1187,7 +1288,8 @@ init().catch((err) => {
 // Debug/test hook
 window.__mech = {
   P, cam, input, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
-  openFrames, openLoadout, startDrop, setFrame, get frame() { return spec; }, get allies() { return allies; },
+  openFrames, openLoadout, startDrop, setFrame, openSummon, closeSummon, dismissBrief,
+  get summoner() { return summoner; }, get portals() { return portals; }, get summonMenu() { return summonMenu; }, get frame() { return spec; }, get allies() { return allies; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
   renderer, post, settings, applySettings, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
 };
