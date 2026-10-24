@@ -1,5 +1,5 @@
 import * as THREE from './three.js';
-import { W, WEAPON_SHEET, SKINS, chamferBox, frontPrism, cylZ, cylX, mesh, place, canvasTexture, addOutline } from './atlas.js';
+import { W, WEAPON_SHEET, SKINS, chamferBox, frontPrism, cylZ, cylX, mesh, place, canvasTexture, addOutline, batchRigid } from './atlas.js';
 
 const V3 = THREE.Vector3;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -367,6 +367,7 @@ export class WeaponSystem {
       if (slot.type === 'leg') model.group.scale.setScalar(0.66);
       if (slot.type === 'shoulder' && def.kind === 'missile') model.group.scale.setScalar(0.76);
       for (const o of addOutline(model.group, 0.022)) o.visible = this.outlines !== false;
+      batchRigid(model.group, model);
       this.mech.attach(mount, model.group);
       this.slots[slot.id] = {
         slot, def, id: wid, model, mount,

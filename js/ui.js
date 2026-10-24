@@ -467,6 +467,7 @@ export class Hangar {
     const S = this.settings;
     set.appendChild(toggleRow('Sound', S.sound, (v) => { S.sound = v; this.onSettings(); }));
     set.appendChild(toggleRow('Music', S.music, (v) => { S.music = v; this.onSettings(); }));
+    set.appendChild(choiceRow('Graphics', GRAPHICS, S.graphics, (v) => { S.graphics = v; this.onSettings(); }));
     set.appendChild(toggleRow('Shadows', S.shadows, (v) => { S.shadows = v; this.onSettings(); }));
     set.appendChild(toggleRow('Ink outlines', S.outlines, (v) => { S.outlines = v; this.onSettings(); }));
     set.appendChild(toggleRow('Invert look', S.invert, (v) => { S.invert = v; this.onSettings(); }));
@@ -519,6 +520,24 @@ function swatch(name, color, accent, on, fn) {
   s.innerHTML = `<i style="background:${accent}"></i>`;
   s.addEventListener('click', fn);
   return s;
+}
+// Low draws straight to the screen; High adds bloom, glare and the grade; Ultra adds ambient
+// occlusion, god rays and sharper shadows; Auto starts on Ultra and steps down while frames are slow
+const GRAPHICS = [['auto', 'Auto'], ['low', 'Low'], ['high', 'High'], ['ultra', 'Ultra']];
+function choiceRow(label, options, value, fn) {
+  const row = div('settings-row');
+  row.innerHTML = `<span>${label}</span>`;
+  const chips = div('chips');
+  const btns = options.map(([id, text]) => {
+    const c = chip(text, id === value, () => {
+      for (const b of btns) b.setAttribute('aria-pressed', b === c ? 'true' : 'false');
+      fn(id);
+    });
+    chips.appendChild(c);
+    return c;
+  });
+  row.appendChild(chips);
+  return row;
 }
 function toggleRow(label, value, fn) {
   const row = div('settings-row');

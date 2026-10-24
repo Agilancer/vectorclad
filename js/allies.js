@@ -12,6 +12,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const smoother = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * t * (t * (6 * t - 15) + 10); };
 const UP = new V3(0, 1, 0);
 const ONE = new V3(1, 1, 1);
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -20,9 +21,16 @@ const WHITE = new THREE.Color(1, 1, 1), CHAR = new THREE.Color(0.2, 0.19, 0.18);
 // The Kestrel H is this much bigger than the Kestrels that carry the tanks
 const LIFTER_SCALE = 1.45;
 const LIFTER_PAINT = { armor: 0x4b555d, edge: 0x69737a, dark: 0x22272b, brass: 0xc29a3e };
-// The insertion: seconds from over the harbor to a hover over the drop zone, then to release;
-// how far out over the water it starts (units past the seawall)
-const DROP_FLY = 5.6, DROP_SETTLE = 0.55, DROP_OFFSHORE = 170;
+// The insertion: seconds from high over the harbor to a hover over the drop zone, then to release
+const DROP_FLY = 22.4, DROP_SETTLE = 1.1;
+// Its line (units): how high it starts, how far out past the seawall and how far east of the
+// avenue it comes in up; how high the mech's feet ride over the streets, how high they are let
+// go, and the radius of the turns at street corners (the wings just clear the towers')
+const FLIGHT = { high: 150, offshore: 260, swing: 55, feet: 11, release: 5, corner: 10 };
+// Its pace (units, seconds) before it is fitted to DROP_FLY: cruise over the water and in the
+// streets, the most it pulls in a turn, how hard it speeds up and brakes, and the seconds over
+// which every change of pace is eased
+const PACE = { sea: 60, street: 60, lat: 12, acc: 14, brake: 16, ease: 0.5 };
 // Kestrels: armor, cruise speed, braking, sink and climb rates, speed on the way out (units, seconds)
 const SHIP = { hp: 300, cruise: 82, brake: 30, sink: 20, climb: 18, out: 95 };
 // Bastions: armor, top speed, turn rate, gun range, seconds between shots, shell damage and splash
@@ -40,6 +48,59 @@ const FLIP = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
 function pose(out, pos, yaw, pitch = 0, roll = 0) {
   _q.setFromEuler(_e.set(pitch, yaw + Math.PI, roll, 'YXZ'));
   return out.compose(pos, _q, ONE);
+}
+
+/**
+ * A line through `route` ([x, z, radius] corners, the first and last radius unused): straight
+ * legs joined by arcs of each corner's radius, smoothed so the turns come on gradually, and
+ * sampled evenly about every unit. Returns { X, Z, ds }.
+ */
+function streetLine(route) {
+  const px = [], pz = [];
+  const line = (x0, z0, x1, z1) => {
+    const m = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.5));
+    for (let q = px.length ? 1 : 0; q <= m; q++) { px.push(x0 + ((x1 - x0) * q) / m); pz.push(z0 + ((z1 - z0) * q) / m); }
+  };
+  let cx = route[0][0], cz = route[0][1];
+  for (let i = 1; i < route.length - 1; i++) {
+    const [x, z, r] = route[i], [x0, z0] = route[i - 1], [x1, z1] = route[i + 1];
+    let ax = x - x0, az = z - z0, bx = x1 - x, bz = z1 - z;
+    const la = Math.hypot(ax, az), lb = Math.hypot(bx, bz);
+    ax /= la; az /= la; bx /= lb; bz /= lb;
+    const turn = Math.acos(clamp(ax * bx + az * bz, -1, 1)), tl = r * Math.tan(turn / 2);
+    line(cx, cz, x - ax * tl, z - az * tl);
+    if (turn > 1e-4) {
+      // Around the center of the arc, from where it meets the leg in to where it meets the leg out
+      const side = Math.sign(ax * bz - az * bx), ox = x - ax * tl - side * az * r, oz = z - az * tl + side * ax * r;
+      const a0 = Math.atan2(pz[pz.length - 1] - oz, px[px.length - 1] - ox), m = Math.ceil((r * turn) / 0.5);
+      for (let q = 1; q <= m; q++) { const a = a0 + (side * turn * q) / m; px.push(ox + Math.cos(a) * r); pz.push(oz + Math.sin(a) * r); }
+    }
+    cx = x + bx * tl; cz = z + bz * tl;
+  }
+  const last = route[route.length - 1];
+  line(cx, cz, last[0], last[1]);
+  // Ease the turns in and out (a few passes of a moving average, narrowing to hold the ends)
+  for (let pass = 0; pass < 3; pass++) {
+    const sx = px.slice(), sz = pz.slice(), n = px.length;
+    for (let i = 1; i < n - 1; i++) {
+      const w = Math.min(8, i, n - 1 - i);
+      let x = 0, z = 0;
+      for (let q = -w; q <= w; q++) { x += sx[i + q]; z += sz[i + q]; }
+      px[i] = x / (2 * w + 1); pz[i] = z / (2 * w + 1);
+    }
+  }
+  // Even samples
+  const len = [0];
+  for (let i = 1; i < px.length; i++) len.push(len[i - 1] + Math.hypot(px[i] - px[i - 1], pz[i] - pz[i - 1]));
+  const total = len[len.length - 1], n = Math.ceil(total) + 1, ds = total / (n - 1);
+  const X = new Float32Array(n), Z = new Float32Array(n);
+  for (let i = 0, p = 1; i < n; i++) {
+    const s = i * ds;
+    while (p < len.length - 1 && len[p] < s) p++;
+    const f = clamp((s - len[p - 1]) / Math.max(1e-6, len[p] - len[p - 1]), 0, 1);
+    X[i] = px[p - 1] + (px[p] - px[p - 1]) * f; Z[i] = pz[p - 1] + (pz[p] - pz[p - 1]) * f;
+  }
+  return { X, Z, ds };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,9 +283,11 @@ export class Allies {
   // ---- the insertion: the Kestrel H flies the mech in ----------------------------------
 
   /**
-   * Fly the mech in from over the harbor, south of the city, and hold it over `feet` until release.
-   * The path runs straight north at the lowest height that clears every roof under the wings:
-   * low over the water, climbing toward the towers ahead and diving past them into the plaza.
+   * Fly the mech in from high over the harbor, south of the city, and hold it over `feet` until
+   * release. It swoops down to the mouth of an avenue and threads the streets just over the
+   * traffic, between the towers: up the avenue, a left onto a cross street, a right, a left, and
+   * a wide right over the plaza that brings it to a hover over `feet`, nose north. The line is
+   * worked out from the city under it each time, and its pace from the turns along it.
    */
   startDrop(feet) {
     if (!this.lifter) {
@@ -232,60 +295,166 @@ export class Allies {
       this.lifter = createDropship(THREE, { metersPerUnit: this.M / LIFTER_SCALE, lifter: true, palette: LIFTER_PAINT });
       this.scene.add(this.lifter);
     }
-    const Lf = this.lifter, W = this.world, B = W.bounds, L = W.city.L;
+    const Lf = this.lifter, W = this.world, L = W.city.L, F = FLIGHT;
     Lf.visible = true;
     Lf.userData.setClamp(0);
     const u = LIFTER_SCALE / this.M;
     const hang = Lf.userData.hang.clone().multiplyScalar(u);
     const depth = -hang.y;
-    // Heights under the flight line, sampled every `step` back from the drop zone to the water
-    const x = feet.x, step = 5, start = B.maxZ + DROP_OFFSHORE;
-    const n = Math.ceil((start - feet.z) / step), shore = L.z1 + L.prom - feet.z;
-    const req = new Float32Array(n + 1), alt = new Float32Array(n + 1);
-    for (let j = 0; j <= n; j++) {
-      const d = j * step;
-      let h = feet.y;
-      for (let w = -10; w <= 10; w += 2.5) h = Math.max(h, W.groundHeight(x + w, feet.z + d, 1e5, 1.25));
-      req[j] = h + depth + 5;
-      // A low run in over the water
-      if (d > shore) req[j] = Math.max(req[j], 20);
-    }
-    // Climb toward what is ahead at 0.6, dive past what is behind at 1.6
-    for (let j = 0; j <= n; j++) {
-      let a = req[j];
-      for (let q = 0; q <= n; q++) {
-        const dd = (j - q) * step;
-        a = Math.max(a, req[q] - (dd > 0 ? 0.6 * dd : -1.6 * dd));
+
+    // The route, counted from the plaza block (j, k): up the avenue four east of it to the second
+    // street south, west two blocks, north one, west along the plaza's own street, then a turn
+    // over the plaza that ends on the spawn. Each corner is [x, z, radius of the turn there].
+    const { j, k } = W.city.spawnBlock;
+    const ave = (i) => (L.aves[i].x0 + L.aves[i].x1) / 2, st = (i) => (L.st(i).z0 + L.st(i).z1) / 2;
+    // Each leg runs down the middle of the gap the buildings leave, which isn't always the middle
+    // of the street: some stand out into it
+    const mid = (alongX, c, a, b) => {
+      let lo = -9, hi = 9;
+      for (let t = Math.min(a, b) + 14; t <= Math.max(a, b) - 14; t += 2) {
+        for (let o = 0.5; o <= 9; o += 0.5) {
+          const at = (d) => (alongX ? W.groundHeight(t, c + d, 1e5, 0.25) : W.groundHeight(c + d, t, 1e5, 0.25)) > F.feet;
+          if (o < hi && at(o)) hi = o;
+          if (-o > lo && at(-o)) lo = -o;
+        }
       }
-      alt[j] = a;
+      return c + clamp((lo + hi) / 2, -3, 3);
+    };
+    const shore = L.z1 + L.prom;
+    let a1 = ave(j + 4), a2 = ave(j + 2), s1 = st(k + 2), s2 = st(k + 1);
+    a1 = mid(false, a1, shore, s1); a2 = mid(false, a2, s1, s2);
+    s1 = mid(true, s1, a1, a2); s2 = mid(true, s2, a2, feet.x + (s2 - feet.z));
+    const route = [
+      [a1 + F.swing, shore + F.offshore, 0],
+      [a1, shore + F.offshore * 0.3, 400],
+      [a1, s1, F.corner], [a2, s1, F.corner], [a2, s2, F.corner],
+      [feet.x, s2, s2 - feet.z],
+      [feet.x, feet.z, 0],
+    ];
+    const { X, Z, ds } = streetLine(route);
+    const n = X.length, S = (n - 1) * ds;
+
+    // Heading (0 = +z) and how fast it turns per unit flown (> 0: to the left)
+    const H = new Float32Array(n), K = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+      H[i] = Math.atan2(X[b] - X[a], Z[b] - Z[a]);
+    }
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+      K[i] = b > a ? wrap(H[b] - H[a]) / ((b - a) * ds) : 0;
+    }
+    // Finish exactly on the heading of the last leg (smoothing the line bends its last few units)
+    const [ex, ez] = route[route.length - 1], [fx, fz] = route[route.length - 2], hEnd = Math.atan2(ex - fx, ez - fz);
+    for (let i = 0; i < n; i++) H[i] += wrap(hEnd - H[i]) * smooth(S - 12, S, i * ds);
+
+    // Height: high over the water, diving to just over the traffic by the seawall, bobbing gently
+    // through the streets and easing down onto the release height over the plaza. Never lower
+    // than what clears every roof under the wings, climbing toward what is ahead at 0.6 and
+    // diving past what it has cleared at 1.6.
+    let entry = n - 1;
+    for (let i = 0; i < n; i++) if (Z[i] <= shore) { entry = i; break; }
+    const sEntry = entry * ds, low = depth + F.feet, end = feet.y + depth + F.release;
+    const req = new Float32Array(n), Y = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const px = Math.cos(H[i]), pz = -Math.sin(H[i]);
+      let h = feet.y;
+      for (let w = -5; w <= 5; w += 2.5) h = Math.max(h, W.groundHeight(X[i] + px * w, Z[i] + pz * w, 1e5, 0.75));
+      req[i] = h + depth + F.release;
+    }
+    const env = req.slice();
+    for (let i = 1; i < n; i++) env[i] = Math.max(env[i], env[i - 1] - 1.6 * ds);
+    for (let i = n - 2; i >= 0; i--) env[i] = Math.max(env[i], env[i + 1] - 0.6 * ds);
+    for (let i = 0; i < n; i++) {
+      const s = i * ds;
+      const bob = (1.6 * Math.sin(s * 0.045) + 0.7 * Math.sin(s * 0.11 + 1.3)) * smooth(sEntry - 40, sEntry + 40, s) * (1 - smooth(S - 160, S - 60, s));
+      let y = F.high + (low - F.high) * smoother(0, sEntry - 30, s) + bob;
+      y += (end - y) * smoother(S - 75, S, s);
+      Y[i] = Math.max(y, env[i]);
     }
     for (let pass = 0; pass < 3; pass++) {
-      const s = alt.slice();
-      for (let j = 2; j < n - 1; j++) alt[j] = Math.max(req[j], (s[j - 2] + 2 * s[j - 1] + 3 * s[j] + 2 * s[j + 1] + s[j + 2]) / 9);
+      const s = Y.slice();
+      for (let i = 2; i < n - 2; i++) Y[i] = Math.max(req[i], (s[i - 2] + 2 * s[i - 1] + 3 * s[i] + 2 * s[i + 1] + s[i + 2]) / 9);
     }
-    const pts = [], len = [0];
-    for (let j = n; j >= 0; j--) pts.push(new V3(x, alt[j], feet.z + j * step));
-    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + pts[i].distanceTo(pts[i - 1]));
+
+    // Pace: fast over the water, slower in the streets and slower again through the corners,
+    // speeding up and braking at set rates, eased so no change of pace is sudden, then fitted to
+    // DROP_FLY
+    const P = PACE, v = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const cruise = P.sea + (P.street - P.sea) * smooth(sEntry - 140, sEntry, i * ds);
+      v[i] = Math.min(cruise, Math.sqrt(P.lat / Math.max(1e-4, Math.abs(K[i]))));
+    }
+    v[n - 1] = 0;
+    for (let i = n - 2; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[i + 1] * v[i + 1] + 2 * P.brake * ds));
+    for (let i = 1; i < n; i++) v[i] = Math.min(v[i], Math.sqrt(v[i - 1] * v[i - 1] + 2 * P.acc * ds));
+    const T = new Float32Array(n);
+    for (let i = 1; i < n; i++) T[i] = T[i - 1] + (2 * ds) / Math.max(1e-3, v[i - 1] + v[i]);
+    const sAt = (t) => {
+      if (t <= 0) return v[0] * t;
+      if (t >= T[n - 1]) return S;
+      let lo = 0, hi = n - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
+      return (lo + (t - T[lo]) / (T[hi] - T[lo])) * ds;
+    };
+    const h = 1 / 60, sig = P.ease, R = Math.ceil((3 * sig) / h), wts = [];
+    let wsum = 0;
+    for (let q = -R; q <= R; q++) { const w = Math.exp(-0.5 * ((q * h) / sig) ** 2); wts.push(w); wsum += w; }
+    const nT = Math.ceil((T[n - 1] + 3 * sig) / h) + 1, raw = new Float32Array(nT + 2 * R), sT = new Float32Array(nT);
+    for (let q = 0; q < raw.length; q++) raw[q] = sAt((q - R) * h);
+    for (let q = 0; q < nT; q++) {
+      let acc = 0;
+      for (let w = 0; w < wts.length; w++) acc += wts[w] * raw[q + w];
+      sT[q] = clamp(acc / wsum, 0, S);
+    }
+    sT[nT - 1] = S;
+
     const D = (this.drop = {
-      t: 0, pts, len, hang, depth, heading: Math.PI, phase: 'fly', released: false,
-      pos: pts[0].clone(), prev: pts[0].clone(), vel: new V3(), speed: 0, pitch: 0, roll: 0, clamp: 0,
+      t: 0, X, Y, Z, H, K, ds, S, sT, sDt: DROP_FLY / (nT - 1), paced: (nT - 1) * h, s: 0,
+      hang, depth, heading: H[0], phase: 'fly', released: false,
+      pos: new V3(X[0], Y[0], Z[0]), prev: new V3(X[0], Y[0], Z[0]), vel: new V3(), speed: 0, pitch: 0, roll: 0, clamp: 0,
       feet: new V3(), mechQ: new THREE.Quaternion(), cam: { pos: new V3(), look: new V3() },
-      flyT: DROP_FLY, releaseT: DROP_FLY + DROP_SETTLE,
+      flyT: DROP_FLY, releaseT: DROP_FLY + DROP_SETTLE, whoosh: false,
     });
+    D.tEntry = this.dropTime(sEntry);
     this.sound.thrusters(D.pos);
     this.updateDrop(0);
     return D;
   }
 
-  /** Position along the insertion path at time t: a cruise, then braking to a hover */
-  dropPoint(t, out) {
-    const D = this.drop, u = clamp(t / DROP_FLY, 0, 1), u1 = 0.55, a = 2 / (1 + u1);
-    const f = u <= u1 ? a * u : 1 - (a / (2 * (1 - u1))) * (1 - u) * (1 - u);
-    const s = f * D.len[D.len.length - 1];
-    let i = 1;
-    while (i < D.len.length - 1 && D.len[i] < s) i++;
-    const k = (s - D.len[i - 1]) / Math.max(1e-6, D.len[i] - D.len[i - 1]);
-    return out.lerpVectors(D.pts[i - 1], D.pts[i], clamp(k, 0, 1));
+  /** How far along the insertion line the lifter is at time t */
+  dropS(t) {
+    const D = this.drop, q = clamp(t / D.sDt, 0, D.sT.length - 1), i = Math.min(D.sT.length - 2, Math.floor(q));
+    return D.sT[i] + (D.sT[i + 1] - D.sT[i]) * (q - i);
+  }
+
+  /** When the lifter is s along the line */
+  dropTime(s) {
+    const D = this.drop;
+    let i = 0;
+    while (i < D.sT.length - 1 && D.sT[i] < s) i++;
+    return i * D.sDt;
+  }
+
+  /** The point s along the insertion line, carried straight back before its start */
+  dropPoint(s, out) {
+    const D = this.drop, n = D.X.length;
+    if (s < 0) {
+      const g = (D.Y[1] - D.Y[0]) / D.ds;
+      return out.set(D.X[0] + Math.sin(D.H[0]) * s, D.Y[0] + g * s, D.Z[0] + Math.cos(D.H[0]) * s);
+    }
+    const q = Math.min(s / D.ds, n - 1), i = Math.min(n - 2, Math.floor(q)), f = q - i;
+    return out.set(D.X[i] + (D.X[i + 1] - D.X[i]) * f, D.Y[i] + (D.Y[i + 1] - D.Y[i]) * f, D.Z[i] + (D.Z[i + 1] - D.Z[i]) * f);
+  }
+
+  /** Heading, turn and climb of the line at s */
+  dropLine(s) {
+    const D = this.drop, n = D.X.length, q = clamp(s / D.ds, 0, n - 1), i = Math.min(n - 2, Math.floor(q)), f = q - i;
+    return {
+      heading: D.H[i] + wrap(D.H[i + 1] - D.H[i]) * f,
+      turn: D.K[i] + (D.K[i + 1] - D.K[i]) * f,
+      climb: (D.Y[i + 1] - D.Y[i]) / D.ds,
+    };
   }
 
   updateDrop(dt) {
@@ -294,12 +463,11 @@ export class Allies {
     D.t += dt;
     D.prev.copy(D.pos);
     if (D.phase === 'fly') {
-      if (D.t < DROP_FLY) this.dropPoint(D.t, D.pos);
-      else {
-        // Hover over the drop zone, settling a little, then let go
-        const end = D.pts[D.pts.length - 1];
-        D.pos.set(end.x, end.y - 0.6 * smooth(0, DROP_SETTLE, D.t - DROP_FLY), end.z);
-      }
+      D.s = this.dropS(D.t);
+      this.dropPoint(D.s, D.pos);
+      // Hover over the drop zone, settling a little, then let go
+      if (D.t > DROP_FLY) D.pos.y -= 0.6 * smooth(0, DROP_SETTLE, D.t - DROP_FLY);
+      if (!D.whoosh && D.t >= D.tEntry - 0.6) { D.whoosh = true; this.sound.thrusters(D.pos); }
       if (D.t >= D.releaseT) { D.phase = 'leave'; D.released = true; D.leaveT = 0; this.sound.hatch(D.pos); this.sound.servo(D.pos); }
     } else {
       // Climb straight out of the towers, then fly off north and out of sight
@@ -311,13 +479,23 @@ export class Allies {
     }
     if (dt > 0) {
       D.vel.subVectors(D.pos, D.prev).divideScalar(dt);
-      const speed = Math.hypot(D.vel.x, D.vel.z), acc = (speed - D.speed) / dt;
-      D.speed = speed;
-      const slope = speed > 1 ? Math.atan2(D.vel.y, speed) : 0;
-      // Nose follows the climb and dive, and comes up as it brakes
-      const pitchT = D.phase === 'leave' ? 0.06 : clamp(slope * 0.55 + clamp(-acc * 0.004, -0.12, 0.38), -0.45, 0.45);
-      D.pitch += (pitchT - D.pitch) * damp(4, dt);
-      D.roll = 0.03 * Math.sin(D.t * 1.3);
+      if (D.phase === 'fly') {
+        // Speed along the line and its change, from the eased pace rather than frame to frame
+        const e = 0.1, ve = (t) => (this.dropS(t + e) - this.dropS(t - e)) / (2 * e);
+        const speed = ve(D.t), acc = (ve(D.t + e) - ve(D.t - e)) / (2 * e), line = this.dropLine(D.s);
+        D.speed = speed;
+        D.heading = line.heading;
+        // Nose follows the climb and dive, dips as it speeds up and comes up as it brakes; it banks
+        // into the turns
+        const pitchT = clamp(Math.atan(line.climb) * 0.55 + clamp(-acc * 0.015, -0.15, 0.3), -0.45, 0.45);
+        const rollT = clamp(Math.atan2(speed * speed * line.turn, this.m(9.81)) * 0.85, -0.6, 0.6);
+        D.pitch += (pitchT - D.pitch) * damp(3, dt);
+        D.roll += (rollT + 0.03 * Math.sin(D.t * 1.3) - D.roll) * damp(3.5, dt);
+      } else {
+        D.speed = Math.hypot(D.vel.x, D.vel.z);
+        D.pitch += (0.06 - D.pitch) * damp(4, dt);
+        D.roll += (0.03 * Math.sin(D.t * 1.3) - D.roll) * damp(4, dt);
+      }
     }
     D.clamp += ((D.released ? 1 : 0) - D.clamp) * damp(8, dt);
     Lf.userData.setClamp(D.clamp);
@@ -330,11 +508,16 @@ export class Allies {
       D.mechQ.copy(Lf.quaternion).multiply(FLIP);
     }
     this.lifterFx(D, dt);
-    // Cinematic chase: low off the right flank over the water, the city ahead, then up behind
-    // the lifter as it climbs over the towers
-    const k = smooth(1.2, 3.6, D.t), f = _a.set(0, 0, -1), r = _b.set(1, 0, 0);
-    D.cam.pos.copy(D.pos).addScaledVector(f, -22 - 14 * k).addScaledVector(r, 16 - 7 * k).addScaledVector(UP, -4 + 13 * k);
-    D.cam.look.copy(D.pos).addScaledVector(UP, -D.depth * 0.45).addScaledVector(f, 16 - 8 * k);
+    // Cinematic chase: off the right flank over the water, the city ahead, then swinging in behind
+    // and riding the line itself through the streets, so the camera is never in a wall, hanging
+    // back further the faster the lifter goes
+    if (D.phase === 'fly') {
+      const k = smooth(1.5, Math.max(2, D.tEntry - 1), D.t), f = _a.set(Math.sin(D.heading), 0, Math.cos(D.heading)), r = _b.set(-f.z, 0, f.x);
+      _c.copy(D.pos).addScaledVector(f, -10).addScaledVector(r, 22).addScaledVector(UP, -3);
+      this.dropPoint(D.s - 20 - 0.15 * D.speed, _d).addScaledVector(UP, 5);
+      D.cam.pos.lerpVectors(_c, _d, k);
+      D.cam.look.copy(D.pos).addScaledVector(UP, -D.depth * 0.45).addScaledVector(f, 14 - 6 * k);
+    }
     return D;
   }
 

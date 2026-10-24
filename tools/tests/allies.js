@@ -92,7 +92,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `allies-${na
     await page.evaluate(() => { window.__mech.fixedDt = 1 / 60; window.__mech.openFrames(); window.__mech.openLoadout(); });
     await page.click('#btn-close-hangar');
     await page.waitForFunction(() => window.__mech.mode === 'drop');
-    for (const m of [0.5, 1.5, 2.5, 3.5, 4.5, 5.3, 5.9]) {
+    for (const m of [1, 4, 6.5, 8.5, 10.5, 12.5, 14.5, 16.5, 18.5, 20.2]) {
       // Hold the flight at each mark for the shot
       await page.waitForFunction((mm) => window.__mech.allies.drop.t >= mm, m, { timeout: 120000, polling: 'raf' });
       await page.evaluate(() => { window.__mech.fixedDt = 1e-6; });

@@ -33,6 +33,12 @@ float dSolid(vec3 c) {
   ivec3 i = ivec3(floor(c));
   return texelFetch(uMask, ivec3(i.x, i.z, i.y), 0).r;
 }
+// Solid and still standing: not empty space next to it, nor outside the grid
+bool dStands(vec3 c) {
+  if (any(lessThan(c, vec3(0.0))) || any(greaterThanEqual(c, uDim))) return false;
+  ivec3 i = ivec3(floor(c));
+  return texelFetch(uMask, ivec3(i.x, i.z, i.y), 0).r > 0.9;
+}
 float dHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 `;
 const MASK_GLSL = /* glsl */`
@@ -45,11 +51,12 @@ const MASK_MAIN = /* glsl */`
   float dTorn = 0.0;
   if (dSolid(dvb) < 0.5) {
     // Torn edge: a jittered look-up still finds the neighbor standing, so cladding hangs into the hole
+    // (from solid only: the empty space round a structure that is gone holds nothing up)
     vec3 dn = normalize(vObjN);
     vec3 dq = floor(dvb * 3.0);
     vec3 dj = vec3(dHash(dq), dHash(dq + 7.13), dHash(dq + 3.71)) - 0.5;
     dj -= dot(dj, dn) * dn;
-    if (dSolid(dvb + dj * 1.15) < 0.5) discard;
+    if (!dStands(dvb + dj * 1.15)) discard;
     dTorn = 1.0;
   }
   float dScorch = texture(uMask, vec3(dvb.x, dvb.z, dvb.y) / vec3(uDim.x, uDim.z, uDim.y)).g;
@@ -124,15 +131,20 @@ export function makeLut(g) {
 }
 function minGap(l) { let m = Infinity; for (let i = 1; i < l.length; i++) m = Math.min(m, l[i] - l[i - 1]); return m; }
 
+// Mask R of an empty cell that still counts as there (in the shader: over 0.5, under 0.9)
+const AIR_R = 160;
+
 /**
- * A 2-channel cell texture: R 255 where the cell has not been destroyed, G scorch. cut: for a
+ * A 2-channel cell texture: R 255 where the cell is solid, AIR_R where it is empty (the room or
+ * the outside a slanted face or a thin rail may be backed by), 0 where it was destroyed or
+ * stopped backing anything; G scorch. Torn edges hang only from solid cells. cut: for a
  * piece broken off a structure, the cells that stayed behind (GONE in its grid): it carries a
  * clip of the parent's skin, and what of that was backed by empty cells beside them, with
  * nothing solid of the piece's own next to them, must not show.
  */
 export function makeMask(g, cut = null) {
   const data = new Uint8Array(g.N * 2);
-  for (let i = 0; i < g.N; i++) data[i * 2] = g.mat[i] === GONE ? 0 : 255;
+  for (let i = 0; i < g.N; i++) { const m = g.mat[i]; data[i * 2] = m >= SOLID ? 255 : m === GONE ? 0 : AIR_R; }
   if (cut) {
     const { nx, ny, nz, nxz, mat } = g;
     const solid = (j, x, y, z) => (x > 0 && mat[j - 1] >= SOLID) || (x < nx - 1 && mat[j + 1] >= SOLID) || (z > 0 && mat[j - nx] >= SOLID) || (z < nz - 1 && mat[j + nx] >= SOLID) || (y > 0 && mat[j - nxz] >= SOLID) || (y < ny - 1 && mat[j + nxz] >= SOLID);

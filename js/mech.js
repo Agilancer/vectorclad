@@ -1,5 +1,5 @@
 import * as THREE from './three.js';
-import { B, BODY_SHEET, frontPrism, sidePrism, chamferBox, cylZ, cylX, loft, mesh, place, canvasTexture, pieceGeo, addOutline } from './atlas.js';
+import { B, BODY_SHEET, frontPrism, sidePrism, chamferBox, cylZ, cylX, loft, mesh, place, canvasTexture, pieceGeo, addOutline, batchRigid } from './atlas.js';
 
 const V3 = THREE.Vector3;
 const P = (geo, mat, faces, opts) => mesh(geo, mat, BODY_SHEET, faces, opts);
@@ -447,6 +447,12 @@ export class Mech {
     this.mounts.legR = this.legs[0].mount;
     this.mounts.legL = this.legs[1].mount;
     this.outlines = addOutline(this.root, 0.016);
+  }
+
+  /** Fewer draw calls (batchRigid in atlas.js), once the frame and any subclass's skin are built */
+  batch() {
+    this.outlines = batchRigid(this.root, this);
+    return this;
   }
 
   // ---- construction --------------------------------------------------------

@@ -250,6 +250,7 @@ export class SpiderSwarm {
     this.silk = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.silk.frustumCulled = false;
     scene.add(this.silk);
+    this.resize();
 
     // Bolts, web globs and mortar shells, colored per instance
     this.boltMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.34, 1),
@@ -381,6 +382,8 @@ export class SpiderSwarm {
    */
   spawn(perch, id = 'stalker', drop = null) {
     if (!this.free.length) return null;
+    // The lowest free slot, so the instances drawn (resize()) stay few
+    this.free.sort((a, b) => b - a);
     const s = this.makeFrame(perch, VARIANTS[id], this.free.pop(), SPIDER_RIG);
     if (drop) this.drop(s, drop);
     s.kind = 'spider';
@@ -390,7 +393,7 @@ export class SpiderSwarm {
     this.world.targets.push(s);
     this.paint(s);
     if (s.v.medium) this.med.spawned(s);
-    this.resizeDraw();
+    this.resize();
     return s;
   }
 
@@ -415,16 +418,6 @@ export class SpiderSwarm {
     return v.size[1] * SPIDER_RIG.scale * v.legs * 3.7;
   }
 
-  /** Draw the spiders' instances only up to the highest slot in use */
-  resizeDraw() {
-    let top = 0;
-    for (const s of this.list) if (!s.nest && !s.removed) top = Math.max(top, s.slot + 1);
-    this.top = top;
-    for (const key in this.parts) this.parts[key].count = top * this.parts[key].per;
-    for (const key in this.med.parts) this.med.parts[key].count = top * this.med.parts[key].per;
-    for (const pts of [this.eyesBig, this.eyesSmall]) pts.geometry.setDrawRange(0, top * pts.per);
-    this.silk.geometry.setDrawRange(0, top * 2);
-  }
 
   /**
    * A new frame of variant v on a perch, in instance slot `slot`, walking on `rig`:
@@ -508,7 +501,21 @@ export class SpiderSwarm {
     sc.setXYZ(s.slot * 2, 0, 0, 0); sc.setXYZ(s.slot * 2 + 1, 0, 0, 0);
     sc.needsUpdate = true;
     this.free.push(s.slot);
-    this.resizeDraw();
+    this.resize();
+  }
+
+  /**
+   * Only draw instances up to the highest slot in use: the parts, the medium spiders' gear, eyes
+   * and silk are sized for CAP spiders, and every hidden instance still costs its vertices.
+   */
+  resize() {
+    const used = new Uint8Array(CAP).fill(1);
+    for (const i of this.free) used[i] = 0;
+    const top = (this.top = used.lastIndexOf(1) + 1);
+    for (const key in this.parts) this.parts[key].count = top * this.parts[key].per;
+    for (const key in this.med.parts) this.med.parts[key].count = top * this.med.parts[key].per;
+    for (const pts of [this.eyesBig, this.eyesSmall]) pts.geometry.setDrawRange(0, top * pts.per);
+    this.silk.geometry.setDrawRange(0, top * 2);
   }
 
   // ---- damage --------------------------------------------------------------------------
