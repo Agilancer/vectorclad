@@ -2,32 +2,60 @@ import * as THREE from './three.js';
 import { B, BODY_SHEET, frontPrism, sidePrism, chamferBox, cylZ, cylX, loft, mesh, place, canvasTexture, pieceGeo, addOutline } from './atlas.js';
 
 const V3 = THREE.Vector3;
-const P = (geo, mat, faces, opts) => mesh(geo, mat, BODY_SHEET, faces, opts);
-const mirror = (pts, s) => pts.map(([x, y]) => [x * s, y]);
+export const P = (geo, mat, faces, opts) => mesh(geo, mat, BODY_SHEET, faces, opts);
+export const mirror = (pts, s) => pts.map(([x, y]) => [x * s, y]);
 const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-// Leg segment lengths (pelvis → hip joint, thigh, shin, ankle → sole).
-// Long legs with a short thigh and a long shin, for a tall, hunched stance.
-export const LEG = { hipDrop: 0.22, thigh: 1.8, shin: 2.6, foot: 0.55 };
-// Leg splay (roll outward) and yaw (knees out) for the airborne and dash poses
-const STANCE = { splay: 0.16, splayIdle: 0.14, yaw: 0.14, yawIdle: 0.14 };
-const _leg = new THREE.Vector3();
-
-// Walking gait. Planted feet lock to the ground in world space; a swinging foot
-// lifts, travels to a landing spot predicted from the velocity and comes down
-// heel first. Two-bone IK puts the legs wherever the feet are.
-const GAIT = {
-  swing: 0.4,       // fraction of the cycle a foot spends in the air (duty factor 0.6)
-  bodyH: 4.3,       // pelvis height over the feet when standing, knees bent
-  dip: 0.2,         // how far the body sinks after each footfall
-  homeX: 1.08,      // lateral foot spacing while walking
-  settle: 0.42,     // standing still: re-step a foot that strays this far from its spot
-  settleTime: 0.42, // duration of a settling step
+// Rig: how a frame's legs, gait and posture are laid out. Every frame shares the walking
+// system below and sets its own numbers; these are the Vanguard's. Lengths are in the
+// frame's own units; `scale` sizes the whole frame in the world.
+export const RIG = {
+  scale: 1,
+  // Leg segment lengths (pelvis → hip joint, thigh, shin, ankle → sole).
+  // Long legs with a short thigh and a long shin, for a tall, hunched stance.
+  leg: { hipDrop: 0.22, thigh: 1.8, shin: 2.6, foot: 0.55 },
+  // Walking gait. Planted feet lock to the ground in world space; a swinging foot
+  // lifts, travels to a landing spot predicted from the velocity and comes down
+  // heel first. Two-bone IK puts the legs wherever the feet are.
+  gait: {
+    swing: 0.4,       // fraction of the cycle a foot spends in the air (duty factor 0.6)
+    bodyH: 4.3,       // pelvis height over the feet when standing, knees bent
+    dip: 0.2,         // how far the body sinks after each footfall
+    homeX: 1.08,      // lateral foot spacing while walking
+    settle: 0.42,     // standing still: re-step a foot that strays this far from its spot
+    settleTime: 0.42, // duration of a settling step
+    lift: 0.36,       // swing height of a walking foot
+    cadence: 1,       // stride period, relative to the Vanguard's
+    sway: 0.14,       // weight shift over the planted foot
+    twist: 0.1,       // hip twist with the stride
+  },
+  // Standing foot spots relative to the hips, [right, left]: staggered, left foot forward
+  idleFeet: [[-1.1, -0.7], [1.16, 0.92]],
+  // Leg splay (roll outward) and yaw (knees out) for the airborne and dash poses
+  stance: { splay: 0.16, yaw: 0.14 },
+  // Knees: 1 bends them forward, -1 backward (reverse joint). The pole steers them, [out, up, fwd].
+  bend: 1,
+  pole: [0.55, 0.05, 1],
+  // Canned [hip, knee] leg poses for the air and the dash, [right, left], and how a crouch bends them
+  fk: { air: [[-0.05, 0.65], [-0.8, 1.3]], dash: [[0.2, 1.0], [-0.05, 0.9]], crouch: [-0.6, 1.15] },
+  crouchDrop: 0.95,   // how far the body drops in a full crouch
+  hunch: 0.26,        // forward lean of the torso over the hips, plus hunchIdle when standing
+  hunchIdle: 0.14,
+  armOut: 0.2,        // how far the arms hang out from the body
+  heelLift: 0.85,     // how far the heel rises at toe-off
 };
+
+/** Rig numbers for a frame: its overrides on top of the Vanguard's. */
+export function makeRig(o = {}) {
+  const r = { ...RIG, ...o };
+  for (const k of ['leg', 'gait', 'stance', 'fk']) r[k] = { ...RIG[k], ...(o[k] || {}) };
+  r.idleFeetV = r.idleFeet.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  return r;
+}
+
+const _leg = new THREE.Vector3();
 const LEG_SIDE = [-1, 1];
-// Standing foot spots relative to the hips, [right, left]: staggered, left foot forward
-const IDLE_FEET = [new THREE.Vector3(-1.1, 0, -0.7), new THREE.Vector3(1.16, 0, 0.92)];
 const _q1 = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _q3 = new THREE.Quaternion();
@@ -338,7 +366,7 @@ export class Thruster {
  * Move every vertex through fn(v, n), where n is the vertex position normalized
  * to 0..1 inside the bounding box, then give the result flat, faceted normals.
  */
-function warp(geo, fn) {
+export function warp(geo, fn) {
   if (geo.index) geo = geo.toNonIndexed();
   geo.computeBoundingBox();
   const bb = geo.boundingBox, size = bb.getSize(new V3());
@@ -359,14 +387,14 @@ function warp(geo, fn) {
  * from zs[0] at the back to zs[1] at the front, and ys[0] at the bottom to
  * ys[1] at the top, so edges taper to a point.
  */
-function blade(pts, width, zs = [1, 1], ys = [1, 1], bevel = 0.02) {
+export function blade(pts, width, zs = [1, 1], ys = [1, 1], bevel = 0.02) {
   return warp(sidePrism(pts, width, bevel), (v, n) => {
     v.x *= (zs[0] + (zs[1] - zs[0]) * n.z) * (ys[0] + (ys[1] - ys[0]) * n.y);
   });
 }
 
 /** loft() run along Z: sections { z, w, h, c?, x?, y? }, w wide and h tall, centered on x/y. */
-function loftZ(secs) {
+export function loftZ(secs) {
   return loft(secs.map((s) => ({ y: s.z, w: s.w, d: s.h, c: s.c, x: s.x, z: -(s.y || 0) }))).rotateX(Math.PI / 2);
 }
 
@@ -375,7 +403,7 @@ function loftZ(secs) {
 // ---------------------------------------------------------------------------
 
 let pistonGeo, pistonMats;
-class Piston {
+export class Piston {
   constructor(parentA, posA, parentB, posB, r, mats, barrel) {
     if (!pistonGeo) {
       pistonGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
@@ -413,20 +441,28 @@ class Piston {
 }
 
 // ---------------------------------------------------------------------------
-// Mech model, after Armored Core: a tall, hunched frame under sharp, swept
-// plate armor. A beast head thrust forward between raised collar plates, long
-// arms with heavy forearms, blade knees, thin shins and talon feet, and a
-// booster pack with swept stabilizer fins.
+// Mech: the rig every frame shares. A subclass builds the model in build(),
+// hanging its parts off the standard joints (pelvis, legs, waist, chest, head,
+// arms, backpack) and filling in mounts and thrusters; this class walks, jumps,
+// dashes and aims it.
+//
+// After build():
+//   legs[i] = { s, hip, knee, ankle, mount? }  [right, left]
+//   arms[i] = { s, sh, pauldron, elbow, hand, mount, shieldMount? }
+//   waist, chest, head, backpack, thrustLight; hipPads[i] (optional)
+//   mounts: weapon hardpoints by slot id
 // ---------------------------------------------------------------------------
 
 export class Mech {
-  constructor(mats, glowTex) {
+  constructor(mats, glowTex, rig) {
     this.mats = mats;
     this.glowTex = glowTex;
+    this.rig = makeRig(rig);
     this.thrusters = { main: [], vern: [], calf: [], sole: [] };
     this.pistons = [];
     this.mounts = {};
-    this.w = { gait: 0, air: 0, dash: 0, crouch: 0, aim: [0, 0], shield: 0, reload: [0, 0], recoil: [0, 0], legYaw: 0, twist: 0 };
+    this.hipPads = [];
+    this.w = { gait: 0, air: 0, dash: 0, crouch: 0, aim: [0, 0], shield: 0, reload: [0, 0], recoil: [0, 0], slash: [0, 0], legYaw: 0, twist: 0 };
     this.prevCos = 1;
 
     const root = (this.root = new THREE.Group());
@@ -434,22 +470,19 @@ export class Mech {
     root.add(body);
     this.pelvis = new THREE.Group();
     body.add(this.pelvis);
-    this.buildPelvis();
-    this.legs = [-1, 1].map((s) => this.buildLeg(s));
-    this.buildTorso();
-    this.buildHead();
-    this.arms = [-1, 1].map((s) => this.buildArm(s)); // [right, left]
-    this.buildBackpack();
+    this.build();
 
-    this.mounts.rightHand = this.arms[0].mount;
-    this.mounts.leftHand = this.arms[1].mount;
-    this.mounts.leftShield = this.arms[1].shieldMount;
-    this.mounts.legR = this.legs[0].mount;
-    this.mounts.legL = this.legs[1].mount;
+    const m = this.mounts;
+    m.rightHand = m.rightHand || this.arms[0].mount;
+    m.leftHand = m.leftHand || this.arms[1].mount;
+    if (this.arms[1].shieldMount) m.leftShield = this.arms[1].shieldMount;
+    if (this.legs[0].mount) m.legR = this.legs[0].mount;
+    if (this.legs[1].mount) m.legL = this.legs[1].mount;
     this.outlines = addOutline(this.root, 0.016);
+    this.root.scale.setScalar(this.rig.scale);
   }
 
-  // ---- construction --------------------------------------------------------
+  build() { throw new Error('a frame builds its own model'); }
 
   /** Bolt a cut-out armor piece from the sheet onto a part. */
   plate(parent, name, width, x, y, z, rx = 0, ry = 0, rz = 0, mat = this.mats.armor) {
@@ -459,6 +492,399 @@ export class Mech {
     m.rotation.set(rx, ry, rz);
     parent.add(m);
     return m;
+  }
+
+  /** A weapon hardpoint: an empty group the weapon model is hung from. */
+  mount(key, parent, x, y, z, rx = 0, ry = 0, rz = 0) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.rotation.set(rx, ry, rz);
+    parent.add(g);
+    this.mounts[key] = g;
+    return g;
+  }
+
+  allThrusters() {
+    const t = this.thrusters;
+    return [...t.main, ...t.vern, ...t.calf, ...t.sole];
+  }
+
+  // ---- weapons -------------------------------------------------------------
+
+  attach(slot, obj) {
+    const m = this.mounts[slot];
+    if (!m) return;
+    for (const c of [...m.children]) m.remove(c);
+    if (obj) m.add(obj);
+  }
+
+  // ---- animation -----------------------------------------------------------
+
+  legPose(L, hip, knee, splay, yaw) {
+    L.hip.rotation.set(hip, L.s * yaw, L.s * splay);
+    L.knee.rotation.set(knee, 0, 0);
+  }
+
+  /** How far below the body origin a leg's ankle sits, through the real joint transforms. */
+  drop(L) {
+    L.knee.updateMatrix(); L.hip.updateMatrix(); this.pelvis.updateMatrix();
+    _leg.copy(L.ankle.position).applyMatrix4(L.knee.matrix).applyMatrix4(L.hip.matrix).applyMatrix4(this.pelvis.matrix);
+    return -_leg.y;
+  }
+
+  /** Two-bone IK: aim the hip and bend the knee so the ankle reaches `target` (pelvis space). */
+  solveLegIK(L, target, pole) {
+    const T = this.rig.leg.thigh, S = this.rig.leg.shin, bend = this.rig.bend;
+    const V = _ga.subVectors(target, L.hip.position);
+    const D = clamp(V.length(), Math.abs(T - S) + 0.05, T + S - 0.03);
+    const k = Math.acos(clamp((D * D - T * T - S * S) / (2 * T * S), -1, 1));
+    L.knee.rotation.set(k * bend, 0, 0);
+    // Hip-to-ankle line and knee direction in the leg's own frame...
+    const al = _gb.set(0, -T - S * Math.cos(k), -bend * S * Math.sin(k)).normalize();
+    const pl = _gc.set(0, -T, 0);
+    pl.addScaledVector(al, -pl.dot(al)).normalize();
+    // ...and where they need to point
+    const A = V.normalize();
+    const Pp = _gd.copy(pole).addScaledVector(A, -pole.dot(A)).normalize();
+    _m1.makeBasis(A, Pp, _ge.crossVectors(A, Pp));
+    _m2.makeBasis(al, pl, _gf.crossVectors(al, pl)).transpose();
+    L.hip.quaternion.setFromRotationMatrix(_m1.multiply(_m2));
+  }
+
+  /** Turn the ankle so the foot faces world `yaw`, pitched toe-down by `pitch`. Returns the local quaternion in `out`. */
+  footQuat(L, yaw, pitch, out) {
+    L.knee.updateWorldMatrix(true, false);
+    L.knee.getWorldQuaternion(_q1).invert();
+    _q2.setFromEuler(_eu.set(pitch, yaw, 0, 'YXZ'));
+    return out.multiplyQuaternions(_q1, _q2);
+  }
+
+  /**
+   * Advance the gait: choose footholds, run swings and touchdowns. Updates
+   * this.feet[i].cur (current ground point), .lift and .pitch, and the body's
+   * walk motion. Returns the index of a foot that just landed, or -1.
+   * Footholds are in the world; the rig's lengths are scaled into it by rig.scale.
+   */
+  stepFeet(dt, st, plant) {
+    if (!this.feet) {
+      this.gaitPhase = 0;
+      this.walking = false;
+      this.feet = [0, 1].map(() => ({ pos: new V3(), from: new V3(), to: new V3(), cur: new V3(), swing: false, t: 0, late: 0, lift: 0, pitch: 0, init: false }));
+    }
+    const F = this.feet, R = this.rig, G = R.gait, K = R.scale;
+    const vel = st.vel || _ga.set(0, 0, 0);
+    const vx = vel.x, vz = vel.z;
+    const speed = Math.hypot(vx, vz), spd = speed / K;
+    const heading = (st.bodyYaw || 0) + this.w.legYaw;
+    const ch = Math.cos(heading), sh = Math.sin(heading);
+    const rp = this.root.position, ground = st.ground ?? rp.y;
+    const home = (i, idle, out) => {
+      const ox = (idle ? R.idleFeetV[i].x : LEG_SIDE[i] * G.homeX) * K, oz = (idle ? R.idleFeetV[i].z : 0) * K;
+      return out.set(rp.x + ox * ch + oz * sh, ground, rp.z - ox * sh + oz * ch);
+    };
+    for (let i = 0; i < 2; i++) if (!F[i].init) { home(i, true, F[i].pos); F[i].init = true; }
+
+    // Walk or stand, with hysteresis
+    if (!this.walking && spd > 0.9 && plant > 0.5) {
+      this.walking = true;
+      // Lead with a foot already in the air, else the one furthest from where it needs to be
+      let lead = 0, best = -1;
+      for (let i = 0; i < 2; i++) {
+        if (F[i].swing) { lead = i; best = Infinity; break; }
+        const e = home(i, false, _gb).set(_gb.x + vx * 0.4, ground, _gb.z + vz * 0.4).distanceTo(F[i].pos);
+        if (e > best) { best = e; lead = i; }
+      }
+      const s0 = F[lead].swing ? F[lead].t : 0;
+      this.gaitPhase = ((s0 * G.swing - lead * 0.5) % 1 + 1) % 1;
+    } else if (this.walking && (spd < 0.45 || plant < 0.5)) this.walking = false;
+
+    let step = -1;
+    const cycle = G.cadence / (0.5 + 0.11 * spd); // seconds per full cycle (two steps)
+    if (plant < 0.5) {
+      // Airborne or dashing: the legs follow the canned pose; keep footholds under the hips for landing
+      for (let i = 0; i < 2; i++) { F[i].swing = false; F[i].late = 0; home(i, true, F[i].pos); }
+    } else if (this.walking) {
+      this.gaitPhase = (this.gaitPhase + dt / cycle) % 1;
+      for (let i = 0; i < 2; i++) {
+        const f = F[i];
+        const phi = (this.gaitPhase + i * 0.5) % 1;
+        const inSwing = phi < G.swing;
+        if (inSwing && !f.swing) { f.swing = true; f.from.copy(f.pos); }
+        if (f.swing && inSwing) {
+          f.t = phi / G.swing;
+          // Land ahead of the hip by half a stance's travel, so the foot passes under it mid-stance
+          const lead = cycle * G.swing * (1 - f.t) + cycle * (1 - G.swing) * 0.5;
+          home(i, false, f.to);
+          f.to.x += vx * lead; f.to.z += vz * lead;
+        } else if (f.swing) {
+          // Touchdown on the spot the swing was already heading for
+          f.t = 1; f.swing = false; f.pos.copy(f.to); step = i;
+        }
+        f.late = inSwing ? 0 : (phi - G.swing) / (1 - G.swing);
+      }
+    } else {
+      // Standing: finish a step in progress, then re-step a foot that strayed from its spot
+      for (let i = 0; i < 2; i++) {
+        const f = F[i];
+        f.late = 0;
+        if (f.swing) {
+          f.t = Math.min(1, f.t + dt / G.settleTime);
+          home(i, true, f.to);
+          if (f.t >= 1) { f.swing = false; f.pos.copy(f.to); step = i; }
+        }
+      }
+      if (!F[0].swing && !F[1].swing) {
+        let worst = -1, err = G.settle * K;
+        for (let i = 0; i < 2; i++) {
+          const e = home(i, true, _gb).distanceTo(F[i].pos);
+          if (e > err) { err = e; worst = i; }
+        }
+        if (worst >= 0) { const f = F[worst]; f.swing = true; f.t = 0; f.from.copy(f.pos); }
+      }
+    }
+
+    // Foot paths: an arcing swing with toe-off and heel strike; planted feet peel the heel before lifting
+    for (let i = 0; i < 2; i++) {
+      const f = F[i];
+      let pitch, lift = 0;
+      if (f.swing) {
+        const s = f.t, e = s * s * (3 - 2 * s);
+        f.cur.lerpVectors(f.from, f.to, e);
+        const h = this.walking ? G.lift + 0.04 * spd : G.lift * 0.83;
+        lift = h * Math.pow(Math.sin(Math.PI * s), 0.8);
+        pitch = 0.5 * Math.pow(1 - s, 3) - 0.32 * Math.sin(Math.PI * clamp((s - 0.4) / 0.62, 0, 1));
+      } else {
+        f.cur.copy(f.pos);
+        pitch = 0.45 * smoothstep(0.72, 1, f.late);
+      }
+      f.pitch += (pitch - f.pitch) * (1 - Math.exp(-dt * 30));
+      f.lift = lift;
+    }
+    this.walkSpeed = spd;
+    return step;
+  }
+
+  /**
+   * st: {
+   *   phase, gait (0..1), air (0/1), dash (0/1), crouch (0..1), legYaw,
+   *   aimYaw (torso twist relative to root), aimPitch,
+   *   aim: [right, left] 0..1, recoil: [r, l], reload: [r, l], slash: [r, l] (0..1 through a blade swing), shield (0/1),
+   *   thrust: { main, vern, calf, sole }, time
+   * }
+   * Returns body height above feet so the caller can place the mech.
+   */
+  animate(dt, st) {
+    const w = this.w, R = this.rig, K = R.scale, bend = R.bend;
+    w.gait = damp(w.gait, st.gait, 8, dt);
+    w.air = damp(w.air, st.air, 7, dt);
+    w.dash = damp(w.dash, st.dash, 6, dt);
+    w.crouch = damp(w.crouch, st.crouch, 16, dt);
+    w.legYaw = damp(w.legYaw, st.legYaw, 7, dt);
+    w.twist = damp(w.twist, st.aimYaw, 14, dt);
+    w.shield = damp(w.shield, st.shield ? 1 : 0, 9, dt);
+    for (let i = 0; i < 2; i++) {
+      w.aim[i] = damp(w.aim[i], st.aim[i], st.aim[i] > w.aim[i] ? 11 : 4, dt);
+      w.reload[i] = damp(w.reload[i], st.reload[i] ? 1 : 0, 8, dt);
+      w.recoil[i] = st.recoil[i];
+      w.slash[i] = st.slash ? st.slash[i] : 0;
+    }
+    const g = w.gait, t = st.time;
+    // How much of the standing idle stance shows through
+    const idle = (1 - g) * (1 - w.air) * (1 - w.dash) * (1 - w.crouch);
+
+    // --- legs ---
+    const plant = (1 - w.air) * (1 - w.dash); // 1 when the feet belong to the ground
+    const blendFK = 1 - plant;
+    const step = this.stepFeet(dt, st, plant);
+    w.walk = damp(w.walk || 0, this.walking ? clamp(this.walkSpeed / 7.5, 0.35, 1) : 0, 6, dt);
+    const W = w.walk, gp = this.gaitPhase, G = R.gait, LG = R.leg;
+    // Body motion over the gait: sink after each footfall and rise at the passing pose,
+    // shift weight over the planted foot, twist the hips with the stride
+    const u = ((((gp - G.swing) % 0.5) + 0.5) % 0.5) / 0.5; // 0 at each footfall
+    const bob = -G.dip * W * (0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.15)));
+    const jolt = Math.exp(-u * 9) * W;
+    const sway = -G.sway * W * Math.cos(2 * Math.PI * (gp - 0.7));
+    const roll = 0.05 * W * Math.cos(2 * Math.PI * (gp - 0.7));
+    const hipTwist = -G.twist * W * Math.cos(2 * Math.PI * (gp - 0.9));
+    this.armPhase = 2 * Math.PI * (gp - 0.9) + Math.PI / 2;
+    const breath = Math.sin(t * 1.5);
+
+    // Canned leg pose for jumps and dashes
+    const splay = R.stance.splay + 0.04 * w.air;
+    const yaw = R.stance.yaw;
+    const fk = [];
+    let heightFK = 0;
+    if (blendFK > 0.001) {
+      const [ch, ck] = R.fk.crouch;
+      for (let i = 0; i < 2; i++) {
+        const L = this.legs[i];
+        const [airHip, airKnee] = R.fk.air[i], [dHip, dKnee] = R.fk.dash[i];
+        const a = w.air / Math.max(1e-3, w.air + w.dash);
+        const hip = airHip * a + dHip * (1 - a) + ch * bend * w.crouch;
+        const knee = airKnee * a + dKnee * (1 - a) + ck * bend * w.crouch;
+        this.legPose(L, hip, knee, splay, yaw);
+        heightFK = Math.max(heightFK, this.drop(L) + LG.foot);
+        fk.push({ hip, knee, q: L.hip.quaternion.clone() });
+      }
+    }
+
+    const heightIK = G.bodyH - R.crouchDrop * w.crouch + bob + breath * 0.015 * idle;
+    const height = blendFK > 0.001 ? heightIK + (heightFK - heightIK) * blendFK : heightIK;
+    this.body.position.set(sway * plant, height, 0);
+    this.body.rotation.z = 0.03 * idle - roll * 0.3;
+    this.pelvis.rotation.set(0, w.legYaw - 0.22 * idle + hipTwist, roll);
+    this.root.updateMatrixWorld(true);
+
+    const footYaw = (st.bodyYaw || 0) + w.legYaw;
+    for (let i = 0; i < 2; i++) {
+      const L = this.legs[i], s = L.s, f = this.feet[i];
+      let kIK = 0;
+      if (plant > 0.001) {
+        // Ankle target: the foothold, raised by the swing arc and by the heel peeling up at toe-off
+        _gf.set(f.cur.x, f.cur.y + (LG.foot + f.lift + Math.max(0, Math.sin(f.pitch)) * R.heelLift) * K, f.cur.z);
+        this.pelvis.worldToLocal(_gf);
+        _pole.set(s * R.pole[0], R.pole[1], R.pole[2]).normalize();
+        this.solveLegIK(L, _gf, _pole);
+        kIK = L.knee.rotation.x;
+      }
+      if (blendFK > 0.001) {
+        const F = fk[i];
+        if (plant > 0.001) {
+          _q3.copy(L.hip.quaternion);
+          L.hip.quaternion.slerpQuaternions(_q3, F.q, blendFK);
+          L.knee.rotation.x = kIK + (F.knee - kIK) * blendFK;
+        } else {
+          L.hip.quaternion.copy(F.q);
+          L.knee.rotation.x = F.knee;
+        }
+      }
+      // Foot: flat and pointed slightly outward when planted, pitched through toe-off and heel strike
+      if (plant > 0.001) this.footQuat(L, footYaw + s * 0.12, f.pitch, _q3);
+      if (blendFK > 0.001) {
+        const F = fk[i];
+        _q2.setFromEuler(_eu.set(-(F.hip + F.knee) + (0.4 + (F.hip + F.knee)) * w.air * 0.6 + w.dash * 0.25, -s * yaw * 0.6, -s * splay, 'XYZ'));
+        if (plant > 0.001) L.ankle.quaternion.slerpQuaternions(_q3, _q2, blendFK);
+        else L.ankle.quaternion.copy(_q2);
+      } else L.ankle.quaternion.copy(_q3);
+      // Front skirt plate follows the thigh
+      if (this.hipPads[i]) {
+        _gb.set(0, -1, 0).applyQuaternion(L.hip.quaternion);
+        this.hipPads[i].rotation.x = Math.min(0, -Math.atan2(_gb.z, -_gb.y)) * 0.45;
+      }
+    }
+
+    // --- torso ---
+    // Hunched forward over the hips, more so when idle
+    // The torso counter-twists against the hips and jolts forward on each footfall
+    let slashTwist = 0;
+    for (let i = 0; i < 2; i++) {
+      const p = w.slash[i];
+      if (p > 0) slashTwist += this.arms[i].s * (0.5 - 1.1 * smoothstep(0.3, 0.55, p)) * slashWeight(p);
+    }
+    this.waist.rotation.y = clamp(w.twist + slashTwist, -1.3, 1.3) - hipTwist * 0.7 + 0.16 * idle;
+    this.waist.rotation.x = R.hunch + w.dash * 0.3 + w.crouch * 0.25 - st.aimPitch * 0.12 + breath * 0.012 + W * 0.08 + jolt * 0.06 + R.hunchIdle * idle;
+    this.waist.rotation.z = -0.03 * idle;
+    const sweep = Math.pow(Math.sin(t * 0.42), 5) * 0.5 * idle * (1 - w.aim[0]);
+    this.head.rotation.y = clamp((st.aimYaw - w.twist) * 0.8, -0.6, 0.6) - 0.12 * idle + sweep;
+    this.head.rotation.x = clamp(-st.aimPitch * 0.65, -0.5, 0.45) - (w.dash * 0.25) - this.waist.rotation.x * 0.7 + 0.08 * idle;
+    this.head.rotation.z = 0.04 * idle;
+
+    // --- arms ---
+    for (let i = 0; i < 2; i++) {
+      const A = this.arms[i], s = A.s;
+      const swing = -Math.sin(this.armPhase + (i === 0 ? 0 : Math.PI)) * 0.28 * W * (1 - w.dash);
+      const isShield = i === 1 && st.hasShield;
+      let shx = 0.05 + swing, shy = 0, shz = s * (R.armOut + 0.16 * idle), elx = isShield ? -1.2 : -0.75;
+      // Idle: rifle at low ready across the body; shield arm in a guard
+      if (isShield) {
+        shx += (-0.42 - shx) * idle; shy += (-s * 0.12 - shy) * idle; elx += (-1.15 - elx) * idle;
+      } else {
+        shx += (-0.5 - shx) * idle; shy += (-s * 0.34 - shy) * idle; elx += (-0.9 - elx) * idle;
+      }
+      shx += breath * 0.02 * idle;
+      shx += (0.35 - shx) * w.dash * 0.8;
+      shz += s * 0.25 * w.air;
+      const a = w.aim[i];
+      const aimX = -Math.PI / 2 - st.aimPitch - this.waist.rotation.x + 0.06;
+      shx += (aimX - shx) * a;
+      shy += (-s * 0.14 - shy) * a;
+      shz += (s * 0.05 - shz) * a;
+      elx += (-0.12 - elx) * a;
+      if (isShield) {
+        const b = w.shield;
+        shx += (-1.05 - shx) * b;
+        shy += (-s * 0.75 - shy) * b;
+        elx += (-1.45 - elx) * b;
+      }
+      const r = w.reload[i];
+      shx += (0.15 - shx) * r;
+      elx += (-1.7 - elx) * r;
+      // Blade swing: raise the arm high and out, then sweep it down across the body
+      const p = w.slash[i];
+      if (p > 0) {
+        const k = slashWeight(p), e = smoothstep(0.3, 0.55, p);
+        shx += (-2.3 + 1.2 * e - shx) * k;
+        shy += (s * (0.7 - 1.65 * e) - shy) * k;
+        shz += (s * (0.55 - 0.45 * e) - shz) * k;
+        elx += (-1.25 + 1.1 * e - elx) * k;
+      }
+      shx -= w.recoil[i] * 0.22;
+      elx -= w.recoil[i] * 0.4;
+      A.sh.rotation.set(shx, shy, shz);
+      A.elbow.rotation.x = elx;
+      A.hand.rotation.x = -0.05 + w.recoil[i] * 0.15;
+      if (A.pauldron) A.pauldron.rotation.x = -shx * 0.4;
+    }
+
+    // --- thrusters ---
+    // Main nozzles gimbal to push the way the suit is going: back for a dash, down for a climb.
+    const T = this.thrusters, th = st.thrust;
+    const mainGimbal = 0.5 * w.dash - 0.22 * w.air * (1 - w.dash);
+    for (const x of T.main) { x.gimbalTarget = mainGimbal; x.set(th.main, t, dt); }
+    for (const x of T.vern) x.set(th.vern, t, dt);
+    for (const x of T.calf) x.set(th.calf, t, dt);
+    for (const x of T.sole) x.set(th.sole, t, dt);
+    this.thrustLight.intensity = (th.main + th.sole * 0.4) * 45 * K * K * (0.85 + Math.random() * 0.3);
+
+    // Hydraulics follow the joints
+    this.root.updateMatrixWorld(true);
+    for (const x of T.main) x.updateRams();
+    for (const pst of this.pistons) pst.update();
+    if (this.onAnimate) this.onAnimate(dt, st, idle);
+
+    return { height, step, soft: !this.walking };
+  }
+
+  /** Forget planted footholds, e.g. after the mech is moved */
+  resetFeet() { this.feet = null; }
+
+  footWorld(i, out) {
+    return this.legs[i].ankle.getWorldPosition(out);
+  }
+}
+
+/** How much a blade swing at progress p (0..1) takes over the arm: in fast, held, out slower */
+function slashWeight(p) { return p < 0.12 ? p / 0.12 : p > 0.75 ? Math.max(0, (1 - p) / 0.25) : 1; }
+
+// ---------------------------------------------------------------------------
+// FS-07A Vanguard, after Armored Core: a tall, hunched frame under sharp, swept
+// plate armor. A beast head thrust forward between raised collar plates, long
+// arms with heavy forearms, blade knees, thin shins and talon feet, and a
+// booster pack with swept stabilizer fins.
+// ---------------------------------------------------------------------------
+
+const LEG = RIG.leg;
+
+export class Vanguard extends Mech {
+  constructor(mats, glowTex) { super(mats, glowTex, {}); }
+
+  build() {
+    this.buildPelvis();
+    this.legs = [-1, 1].map((s) => this.buildLeg(s));
+    this.buildTorso();
+    this.buildHead();
+    this.arms = [-1, 1].map((s) => this.buildArm(s)); // [right, left]
+    this.buildBackpack();
   }
 
   buildPelvis() {
@@ -848,345 +1274,5 @@ export class Mech {
     this.thrustLight = new THREE.PointLight(0x8fb8ff, 0, 22, 1.8);
     this.thrustLight.position.set(0, -1.6, -0.9);
     bp.add(this.thrustLight);
-  }
-
-  allThrusters() {
-    const t = this.thrusters;
-    return [...t.main, ...t.vern, ...t.calf, ...t.sole];
-  }
-
-  // ---- weapons -------------------------------------------------------------
-
-  attach(slot, obj) {
-    const m = this.mounts[slot];
-    if (!m) return;
-    for (const c of [...m.children]) m.remove(c);
-    if (obj) m.add(obj);
-  }
-
-  // ---- animation -----------------------------------------------------------
-
-  legPose(L, hip, knee, splay, yaw) {
-    L.hip.rotation.set(hip, L.s * yaw, L.s * splay);
-    L.knee.rotation.set(knee, 0, 0);
-  }
-
-  /** How far below the body origin a leg's ankle sits, through the real joint transforms. */
-  drop(L) {
-    L.knee.updateMatrix(); L.hip.updateMatrix(); this.pelvis.updateMatrix();
-    _leg.copy(L.ankle.position).applyMatrix4(L.knee.matrix).applyMatrix4(L.hip.matrix).applyMatrix4(this.pelvis.matrix);
-    return -_leg.y;
-  }
-
-  /** Two-bone IK: aim the hip and bend the knee so the ankle reaches `target` (pelvis space). */
-  solveLegIK(L, target, pole) {
-    const T = LEG.thigh, S = LEG.shin;
-    const V = _ga.subVectors(target, L.hip.position);
-    const D = clamp(V.length(), Math.abs(T - S) + 0.05, T + S - 0.03);
-    const k = Math.acos(clamp((D * D - T * T - S * S) / (2 * T * S), -1, 1));
-    L.knee.rotation.set(k, 0, 0);
-    // Hip-to-ankle line and knee direction in the leg's own frame...
-    const al = _gb.set(0, -T - S * Math.cos(k), -S * Math.sin(k)).normalize();
-    const pl = _gc.set(0, -T, 0);
-    pl.addScaledVector(al, -pl.dot(al)).normalize();
-    // ...and where they need to point
-    const A = V.normalize();
-    const Pp = _gd.copy(pole).addScaledVector(A, -pole.dot(A)).normalize();
-    _m1.makeBasis(A, Pp, _ge.crossVectors(A, Pp));
-    _m2.makeBasis(al, pl, _gf.crossVectors(al, pl)).transpose();
-    L.hip.quaternion.setFromRotationMatrix(_m1.multiply(_m2));
-  }
-
-  /** Turn the ankle so the foot faces world `yaw`, pitched toe-down by `pitch`. Returns the local quaternion in `out`. */
-  footQuat(L, yaw, pitch, out) {
-    L.knee.updateWorldMatrix(true, false);
-    L.knee.getWorldQuaternion(_q1).invert();
-    _q2.setFromEuler(_eu.set(pitch, yaw, 0, 'YXZ'));
-    return out.multiplyQuaternions(_q1, _q2);
-  }
-
-  /**
-   * Advance the gait: choose footholds, run swings and touchdowns. Updates
-   * this.feet[i].cur (current ground point), .lift and .pitch, and the body's
-   * walk motion. Returns the index of a foot that just landed, or -1.
-   */
-  stepFeet(dt, st, plant) {
-    if (!this.feet) {
-      this.gaitPhase = 0;
-      this.walking = false;
-      this.feet = [0, 1].map(() => ({ pos: new V3(), from: new V3(), to: new V3(), cur: new V3(), swing: false, t: 0, late: 0, lift: 0, pitch: 0, init: false }));
-    }
-    const F = this.feet, w = this.w;
-    const vel = st.vel || _ga.set(0, 0, 0);
-    const vx = vel.x, vz = vel.z;
-    const speed = Math.hypot(vx, vz);
-    const heading = (st.bodyYaw || 0) + w.legYaw;
-    const ch = Math.cos(heading), sh = Math.sin(heading);
-    const rp = this.root.position, ground = st.ground ?? rp.y;
-    const home = (i, idle, out) => {
-      const ox = idle ? IDLE_FEET[i].x : LEG_SIDE[i] * GAIT.homeX, oz = idle ? IDLE_FEET[i].z : 0;
-      return out.set(rp.x + ox * ch + oz * sh, ground, rp.z - ox * sh + oz * ch);
-    };
-    for (let i = 0; i < 2; i++) if (!F[i].init) { home(i, true, F[i].pos); F[i].init = true; }
-
-    // Walk or stand, with hysteresis
-    if (!this.walking && speed > 0.9 && plant > 0.5) {
-      this.walking = true;
-      // Lead with a foot already in the air, else the one furthest from where it needs to be
-      let lead = 0, best = -1;
-      for (let i = 0; i < 2; i++) {
-        if (F[i].swing) { lead = i; best = Infinity; break; }
-        const e = home(i, false, _gb).set(_gb.x + vx * 0.4, ground, _gb.z + vz * 0.4).distanceTo(F[i].pos);
-        if (e > best) { best = e; lead = i; }
-      }
-      const s0 = F[lead].swing ? F[lead].t : 0;
-      this.gaitPhase = ((s0 * GAIT.swing - lead * 0.5) % 1 + 1) % 1;
-    } else if (this.walking && (speed < 0.45 || plant < 0.5)) this.walking = false;
-
-    let step = -1;
-    const cycle = 1 / (0.5 + 0.11 * speed); // seconds per full cycle (two steps)
-    if (plant < 0.5) {
-      // Airborne or dashing: the legs follow the canned pose; keep footholds under the hips for landing
-      for (let i = 0; i < 2; i++) { F[i].swing = false; F[i].late = 0; home(i, true, F[i].pos); }
-    } else if (this.walking) {
-      this.gaitPhase = (this.gaitPhase + dt / cycle) % 1;
-      for (let i = 0; i < 2; i++) {
-        const f = F[i];
-        const phi = (this.gaitPhase + i * 0.5) % 1;
-        const inSwing = phi < GAIT.swing;
-        if (inSwing && !f.swing) { f.swing = true; f.from.copy(f.pos); }
-        if (f.swing && inSwing) {
-          f.t = phi / GAIT.swing;
-          // Land ahead of the hip by half a stance's travel, so the foot passes under it mid-stance
-          const lead = cycle * GAIT.swing * (1 - f.t) + cycle * (1 - GAIT.swing) * 0.5;
-          home(i, false, f.to);
-          f.to.x += vx * lead; f.to.z += vz * lead;
-        } else if (f.swing) {
-          // Touchdown on the spot the swing was already heading for
-          f.t = 1; f.swing = false; f.pos.copy(f.to); step = i;
-        }
-        f.late = inSwing ? 0 : (phi - GAIT.swing) / (1 - GAIT.swing);
-      }
-    } else {
-      // Standing: finish a step in progress, then re-step a foot that strayed from its spot
-      for (let i = 0; i < 2; i++) {
-        const f = F[i];
-        f.late = 0;
-        if (f.swing) {
-          f.t = Math.min(1, f.t + dt / GAIT.settleTime);
-          home(i, true, f.to);
-          if (f.t >= 1) { f.swing = false; f.pos.copy(f.to); step = i; }
-        }
-      }
-      if (!F[0].swing && !F[1].swing) {
-        let worst = -1, err = GAIT.settle;
-        for (let i = 0; i < 2; i++) {
-          const e = home(i, true, _gb).distanceTo(F[i].pos);
-          if (e > err) { err = e; worst = i; }
-        }
-        if (worst >= 0) { const f = F[worst]; f.swing = true; f.t = 0; f.from.copy(f.pos); }
-      }
-    }
-
-    // Foot paths: an arcing swing with toe-off and heel strike; planted feet peel the heel before lifting
-    for (let i = 0; i < 2; i++) {
-      const f = F[i];
-      let pitch, lift = 0;
-      if (f.swing) {
-        const s = f.t, e = s * s * (3 - 2 * s);
-        f.cur.lerpVectors(f.from, f.to, e);
-        const h = this.walking ? 0.36 + 0.04 * speed : 0.3;
-        lift = h * Math.pow(Math.sin(Math.PI * s), 0.8);
-        pitch = 0.5 * Math.pow(1 - s, 3) - 0.32 * Math.sin(Math.PI * clamp((s - 0.4) / 0.62, 0, 1));
-      } else {
-        f.cur.copy(f.pos);
-        pitch = 0.45 * smoothstep(0.72, 1, f.late);
-      }
-      f.pitch += (pitch - f.pitch) * (1 - Math.exp(-dt * 30));
-      f.lift = lift;
-    }
-    this.walkSpeed = speed;
-    return step;
-  }
-
-  /**
-   * st: {
-   *   phase, gait (0..1), air (0/1), dash (0/1), crouch (0..1), legYaw,
-   *   aimYaw (torso twist relative to root), aimPitch,
-   *   aim: [right, left] 0..1, recoil: [r, l], reload: [r, l], shield (0/1),
-   *   thrust: { main, vern, calf, sole }, time
-   * }
-   * Returns body height above feet so the caller can place the mech.
-   */
-  animate(dt, st) {
-    const w = this.w;
-    w.gait = damp(w.gait, st.gait, 8, dt);
-    w.air = damp(w.air, st.air, 7, dt);
-    w.dash = damp(w.dash, st.dash, 6, dt);
-    w.crouch = damp(w.crouch, st.crouch, 16, dt);
-    w.legYaw = damp(w.legYaw, st.legYaw, 7, dt);
-    w.twist = damp(w.twist, st.aimYaw, 14, dt);
-    w.shield = damp(w.shield, st.shield ? 1 : 0, 9, dt);
-    for (let i = 0; i < 2; i++) {
-      w.aim[i] = damp(w.aim[i], st.aim[i], st.aim[i] > w.aim[i] ? 11 : 4, dt);
-      w.reload[i] = damp(w.reload[i], st.reload[i] ? 1 : 0, 8, dt);
-      w.recoil[i] = st.recoil[i];
-    }
-    const g = w.gait, t = st.time;
-    // How much of the standing idle stance shows through
-    const idle = (1 - g) * (1 - w.air) * (1 - w.dash) * (1 - w.crouch);
-
-    // --- legs ---
-    const plant = (1 - w.air) * (1 - w.dash); // 1 when the feet belong to the ground
-    const blendFK = 1 - plant;
-    const step = this.stepFeet(dt, st, plant);
-    w.walk = damp(w.walk || 0, this.walking ? clamp(this.walkSpeed / 7.5, 0.35, 1) : 0, 6, dt);
-    const W = w.walk, gp = this.gaitPhase;
-    // Body motion over the gait: sink after each footfall and rise at the passing pose,
-    // shift weight over the planted foot, twist the hips with the stride
-    const u = ((((gp - GAIT.swing) % 0.5) + 0.5) % 0.5) / 0.5; // 0 at each footfall
-    const bob = -GAIT.dip * W * (0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.15)));
-    const jolt = Math.exp(-u * 9) * W;
-    const sway = -0.14 * W * Math.cos(2 * Math.PI * (gp - 0.7));
-    const roll = 0.05 * W * Math.cos(2 * Math.PI * (gp - 0.7));
-    const hipTwist = -0.1 * W * Math.cos(2 * Math.PI * (gp - 0.9));
-    this.armPhase = 2 * Math.PI * (gp - 0.9) + Math.PI / 2;
-    const breath = Math.sin(t * 1.5);
-
-    // Canned leg pose for jumps and dashes
-    const splay = STANCE.splay + 0.04 * w.air;
-    const yaw = STANCE.yaw;
-    const fk = [];
-    let heightFK = 0;
-    if (blendFK > 0.001) {
-      for (let i = 0; i < 2; i++) {
-        const L = this.legs[i];
-        let hip = -0.3, knee = 0.66;
-        const airHip = i === 1 ? -0.8 : -0.05, airKnee = i === 1 ? 1.3 : 0.65;
-        const dHip = i === 1 ? -0.05 : 0.2, dKnee = i === 1 ? 0.9 : 1.0;
-        const a = w.air / Math.max(1e-3, w.air + w.dash);
-        hip = airHip * a + dHip * (1 - a) - 0.6 * w.crouch;
-        knee = airKnee * a + dKnee * (1 - a) + 1.15 * w.crouch;
-        this.legPose(L, hip, knee, splay, yaw);
-        heightFK = Math.max(heightFK, this.drop(L) + LEG.foot);
-        fk.push({ hip, knee, q: L.hip.quaternion.clone() });
-      }
-    }
-
-    const heightIK = GAIT.bodyH - 0.95 * w.crouch + bob + breath * 0.015 * idle;
-    const height = blendFK > 0.001 ? heightIK + (heightFK - heightIK) * blendFK : heightIK;
-    this.body.position.set(sway * plant, height, 0);
-    this.body.rotation.z = 0.03 * idle - roll * 0.3;
-    this.pelvis.rotation.set(0, w.legYaw - 0.22 * idle + hipTwist, roll);
-    this.root.updateMatrixWorld(true);
-
-    const footYaw = (st.bodyYaw || 0) + w.legYaw;
-    for (let i = 0; i < 2; i++) {
-      const L = this.legs[i], s = L.s, f = this.feet[i];
-      let kIK = 0;
-      if (plant > 0.001) {
-        // Ankle target: the foothold, raised by the swing arc and by the heel peeling up at toe-off
-        _gf.set(f.cur.x, f.cur.y + LEG.foot + f.lift + Math.max(0, Math.sin(f.pitch)) * 0.85, f.cur.z);
-        this.pelvis.worldToLocal(_gf);
-        _pole.set(s * 0.55, 0.05, 1).normalize();
-        this.solveLegIK(L, _gf, _pole);
-        kIK = L.knee.rotation.x;
-      }
-      if (blendFK > 0.001) {
-        const F = fk[i];
-        if (plant > 0.001) {
-          _q3.copy(L.hip.quaternion);
-          L.hip.quaternion.slerpQuaternions(_q3, F.q, blendFK);
-          L.knee.rotation.x = kIK + (F.knee - kIK) * blendFK;
-        } else {
-          L.hip.quaternion.copy(F.q);
-          L.knee.rotation.x = F.knee;
-        }
-      }
-      // Foot: flat and pointed slightly outward when planted, pitched through toe-off and heel strike
-      if (plant > 0.001) this.footQuat(L, footYaw + s * 0.12, f.pitch, _q3);
-      if (blendFK > 0.001) {
-        const F = fk[i];
-        _q2.setFromEuler(_eu.set(-(F.hip + F.knee) + (0.4 + (F.hip + F.knee)) * w.air * 0.6 + w.dash * 0.25, -s * yaw * 0.6, -s * splay, 'XYZ'));
-        if (plant > 0.001) L.ankle.quaternion.slerpQuaternions(_q3, _q2, blendFK);
-        else L.ankle.quaternion.copy(_q2);
-      } else L.ankle.quaternion.copy(_q3);
-      // Front skirt plate follows the thigh
-      _gb.set(0, -1, 0).applyQuaternion(L.hip.quaternion);
-      this.hipPads[i].rotation.x = Math.min(0, -Math.atan2(_gb.z, -_gb.y)) * 0.45;
-    }
-
-    // --- torso ---
-    // Hunched forward over the hips, more so when idle
-    // The torso counter-twists against the hips and jolts forward on each footfall
-    this.waist.rotation.y = clamp(w.twist, -1.1, 1.1) - hipTwist * 0.7 + 0.16 * idle;
-    this.waist.rotation.x = 0.26 + w.dash * 0.3 + w.crouch * 0.25 - st.aimPitch * 0.12 + breath * 0.012 + W * 0.08 + jolt * 0.06 + 0.14 * idle;
-    this.waist.rotation.z = -0.03 * idle;
-    const sweep = Math.pow(Math.sin(t * 0.42), 5) * 0.5 * idle * (1 - w.aim[0]);
-    this.head.rotation.y = clamp((st.aimYaw - w.twist) * 0.8, -0.6, 0.6) - 0.12 * idle + sweep;
-    this.head.rotation.x = clamp(-st.aimPitch * 0.65, -0.5, 0.45) - (w.dash * 0.25) - this.waist.rotation.x * 0.7 + 0.08 * idle;
-    this.head.rotation.z = 0.04 * idle;
-
-    // --- arms ---
-    for (let i = 0; i < 2; i++) {
-      const A = this.arms[i], s = A.s;
-      const swing = -Math.sin(this.armPhase + (i === 0 ? 0 : Math.PI)) * 0.28 * W * (1 - w.dash);
-      const isShield = i === 1 && st.hasShield;
-      let shx = 0.05 + swing, shy = 0, shz = s * (0.2 + 0.16 * idle), elx = isShield ? -1.2 : -0.75;
-      // Idle: rifle at low ready across the body; shield arm in a guard
-      if (isShield) {
-        shx += (-0.42 - shx) * idle; shy += (-s * 0.12 - shy) * idle; elx += (-1.15 - elx) * idle;
-      } else {
-        shx += (-0.5 - shx) * idle; shy += (-s * 0.34 - shy) * idle; elx += (-0.9 - elx) * idle;
-      }
-      shx += breath * 0.02 * idle;
-      shx += (0.35 - shx) * w.dash * 0.8;
-      shz += s * 0.25 * w.air;
-      const a = w.aim[i];
-      const aimX = -Math.PI / 2 - st.aimPitch - this.waist.rotation.x + 0.06;
-      shx += (aimX - shx) * a;
-      shy += (-s * 0.14 - shy) * a;
-      shz += (s * 0.05 - shz) * a;
-      elx += (-0.12 - elx) * a;
-      if (isShield) {
-        const b = w.shield;
-        shx += (-1.05 - shx) * b;
-        shy += (-s * 0.75 - shy) * b;
-        elx += (-1.45 - elx) * b;
-      }
-      const r = w.reload[i];
-      shx += (0.15 - shx) * r;
-      elx += (-1.7 - elx) * r;
-      shx -= w.recoil[i] * 0.22;
-      elx -= w.recoil[i] * 0.4;
-      A.sh.rotation.set(shx, shy, shz);
-      A.elbow.rotation.x = elx;
-      A.hand.rotation.x = -0.05 + w.recoil[i] * 0.15;
-      A.pauldron.rotation.x = -shx * 0.4;
-    }
-
-    // --- thrusters ---
-    // Main nozzles gimbal to push the way the suit is going: back for a dash, down for a climb.
-    const T = this.thrusters, th = st.thrust;
-    const mainGimbal = 0.5 * w.dash - 0.22 * w.air * (1 - w.dash);
-    for (const x of T.main) { x.gimbalTarget = mainGimbal; x.set(th.main, t, dt); }
-    for (const x of T.vern) x.set(th.vern, t, dt);
-    for (const x of T.calf) x.set(th.calf, t, dt);
-    for (const x of T.sole) x.set(th.sole, t, dt);
-    this.thrustLight.intensity = (th.main + th.sole * 0.4) * 45 * (0.85 + Math.random() * 0.3);
-
-    // Hydraulics follow the joints
-    this.root.updateMatrixWorld(true);
-    for (const x of T.main) x.updateRams();
-    for (const pst of this.pistons) pst.update();
-
-    return { height, step, soft: !this.walking };
-  }
-
-  /** Forget planted footholds, e.g. after the mech is moved */
-  resetFeet() { this.feet = null; }
-
-  footWorld(i, out) {
-    return this.legs[i].ankle.getWorldPosition(out);
   }
 }

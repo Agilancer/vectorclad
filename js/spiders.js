@@ -578,6 +578,44 @@ export class SpiderSwarm {
     return true;
   }
 
+  /** Shorted out (an arc, a harpoon): it hangs on where it is, twitching, for dur seconds */
+  stun(s, dur) {
+    if (!s.alive || s.hidden) return;
+    s.stunT = Math.max(s.stunT || 0, dur);
+    s.burst = 0;
+    if (s.laser) this.endLaser(s.laser);
+  }
+
+  /**
+   * A gravity well at center: spiders on walls and roofs within radius are torn off toward it
+   * and spiders in the air are dragged in, held up against gravity; scorpions are pinned where
+   * they stand. Wrecks fall in too.
+   */
+  pull(center, radius, dt) {
+    for (const s of this.list) {
+      if (s.removed || s.hidden) continue;
+      const d = s.c.distanceTo(center);
+      if (d > radius || d < 0.5) continue;
+      const k = 1 - d / radius;
+      _a.subVectors(center, s.c).divideScalar(d);
+      if (s.nest) { if (s.alive) this.stun(s, 0.4); continue; }
+      if (!s.alive) { s.vel.addScaledVector(_a, (20 + 50 * k) * dt); continue; }
+      if (s.state === 'jump' || s.state === 'fall') {
+        s.vel.addScaledVector(_a, (30 + 60 * k) * dt).multiplyScalar(Math.exp(-dt * 1.2));
+        s.vel.y += GRAVITY * dt * 0.9;
+        s.moveVel.copy(s.vel);
+      } else if (Math.random() < dt * (1 + 6 * k)) {
+        // Torn loose
+        s.state = 'fall';
+        s.flight = { t: 0 };
+        s.support = null;
+        s.goal = null;
+        s.vel.copy(_a).multiplyScalar(12 + 14 * k).addScaledVector(s.n, 4);
+        s.moveVel.copy(s.vel);
+      }
+    }
+  }
+
   kill(s, point) {
     s.alive = false;
     s.state = 'dead';
@@ -656,6 +694,19 @@ export class SpiderSwarm {
       return;
     }
     s.moveVel.set(0, 0, 0);
+
+    // Shorted out: it clings on where it is, lights stuttering, until it comes back
+    if (s.stunT > 0) {
+      s.stunT -= dt;
+      if (s.state !== 'jump' && s.state !== 'fall') {
+        s.glow = 0.15 + Math.random() * 0.6;
+        if (Math.random() < dt * 10) this.fx.sparksBurst(s.c, s.n, 3, 0x9fd8ff, 10);
+        this.legs(s, dt);
+        s.pos.copy(s.c);
+        s.vel.set(0, 0, 0);
+        return;
+      }
+    }
 
     // Scorpions hunt and strike on their own; the swarm still walks their legs
     if (s.nest) {

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VECTORCLAD showroom</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #20242b; color: #ece8df; font: 13px "Share Tech Mono", ui-monospace, monospace; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #bar { position: fixed; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 20px); }
+  #bar button, #bar select { background: rgba(13, 15, 18, 0.8); color: inherit; border: 1px solid rgba(236, 232, 223, 0.25); padding: 5px 9px; font: inherit; cursor: pointer; }
+  #bar button[aria-pressed="true"] { background: #f2b632; color: #16130b; }
+  #info { position: fixed; left: 10px; bottom: 10px; background: rgba(13, 15, 18, 0.8); padding: 6px 10px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar"></div>
+<div id="info"></div>
+<!-- A turntable for the frames and weapons, without the city: tools/showroom.html?frame=kestrel&pose=walk -->
+<script type="module" src="showroom.js"></script>
+</body>
+</html>

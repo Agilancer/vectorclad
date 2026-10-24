@@ -4,10 +4,11 @@ import { FX } from './fx.js';
 import { Sound } from './audio.js';
 import { music } from './music.js';
 import { World, SUN_DIR, STEP } from './world.js';
-import { Mech } from './mech.js';
-import { WeaponSystem, PRESETS } from './weapons.js';
+import { FRAMES, frameById, defaultLoadout } from './frames/index.js';
+import { WeaponSystem } from './weapons.js';
 import { Input } from './input.js';
-import { HUD, Hangar } from './ui.js';
+import { HUD, Hangar, FramePicker } from './ui.js';
+import { BODY, setBodyScale } from './playerBody.js';
 import { SpiderSwarm } from './spiders.js';
 import { Destruction } from './destruct/destruct.js';
 import { titleDone, portraitPhone } from './title/title.js';
@@ -24,19 +25,19 @@ const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Mat
 const MECH_HEIGHT_M = 40 * 0.3048;
 let METERS = 1.7;
 
-// Armor points. Spider hits are scaled by HIT_SCALE; armor starts regenerating
-// REGEN_DELAY seconds after the last hit. A raised shield turns away hits from
-// within SHIELD_ARC of the way the mech faces.
-const AP_MAX = 1000;
+// Armor points: each frame has its own (frames/index.js; the Vanguard has 1000). Spider
+// hits are scaled by HIT_SCALE; armor starts regenerating REGEN_DELAY seconds after the
+// last hit, REGEN_RATE of the frame's full armor a second. A raised shield turns away
+// hits from within SHIELD_ARC of the way the mech faces.
 const HIT_SCALE = 1.5;
 const REGEN_DELAY = 4;
-const REGEN_RATE = 26;
+const REGEN_RATE = 0.026;
 const SHIELD_ARC = 1.2;
 const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second
 
 // Boost gauge (0-100). Dashes and jump jets burn it at BOOST_DRAIN times their base
 // rates, so a full gauge lasts 2.5x as long; regen is unchanged, so a refill takes
-// the same time.
+// the same time. A frame's boost stat stretches that further (lights) or cuts it (heavies).
 const BOOST_DRAIN = 1 / 2.5;
 
 // Saves live under vectorclad.* keys. Builds before the move to this repo saved under
@@ -128,12 +129,21 @@ const sound = new Sound();
 window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
-let world, fx, mech, weapons, hud, hangar, mats, spiders;
+let world, fx, mech, weapons, hud, hangar, picker, mats, spiders;
 
-const DEFAULT = PRESETS[0];
-// Bumped storage key: loadouts saved for the earlier frame start fresh on this one.
-const loadout = store.get('vectorclad.loadout', null) || { paint: DEFAULT.paint, slots: JSON.parse(JSON.stringify(DEFAULT.slots)) };
-if (!PAINTS.some((p) => p.id === loadout.paint)) loadout.paint = PAINTS[0].id;
+// The frame in use, and a loadout for each frame, kept separately so switching frames
+// doesn't lose one. A save from before there were frames is the Vanguard's loadout.
+let frame = frameById(store.get('vectorclad.frame', 'vanguard'));
+const loadouts = store.get('vectorclad.loadouts', null) || {};
+if (!loadouts.vanguard) { const old = store.get('vectorclad.loadout', null); if (old && old.slots) loadouts.vanguard = old; }
+function loadoutFor(f) {
+  const L = (loadouts[f.id] = loadouts[f.id] || defaultLoadout(f));
+  if (!PAINTS.some((p) => p.id === L.paint)) L.paint = f.paint;
+  for (const id of f.slots) if (!L.slots[id]) L.slots[id] = [null, 'gunmetal'];
+  return L;
+}
+let loadout = loadoutFor(frame);
+const saveLoadouts = () => { store.set('vectorclad.loadouts', loadouts); store.set('vectorclad.frame', frame.id); };
 
 // Additive glow on the ground under the thrusters
 const washMat = new THREE.MeshBasicMaterial({ color: 0x7fb4ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -150,7 +160,8 @@ const P = {
   phase: 0, gaitDir: 1, legYaw: 0,
   dashing: false, ascending: false, onLip: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
-  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0,
+  ap: frame.ap, apMax: frame.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0,
+  lunge: new V3(), lungeT: 0,
   chest: new V3(),
 };
 const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
@@ -163,8 +174,8 @@ function shake(pos, amount) {
   cam.shake = Math.min(1.2, cam.shake + amount / (1 + d / 40));
 }
 
-/** Height of the top of the mech's head in its idle stance, in game units */
-function measureMech() {
+/** Height of the top of a mech's head in its idle stance, in game units */
+function measureMech(mech) {
   const st = {
     gait: 0, air: 0, dash: 0, crouch: 0, vel: new V3(), bodyYaw: 0, ground: 0, legYaw: 0, aimYaw: 0, aimPitch: 0,
     aim: [0, 0], recoil: [0, 0], reload: [false, false], shield: false, hasShield: false,
@@ -172,6 +183,7 @@ function measureMech() {
   };
   for (let i = 0; i < 90; i++) mech.animate(1 / 30, st);
   mech.root.updateMatrixWorld(true);
+  mech.resetFeet();
   let top = 0;
   const v = new V3();
   mech.head.traverse((o) => {
@@ -193,8 +205,8 @@ async function init() {
   applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
   fx = new FX(scene, { onShake: shake, sound });
   hud = new HUD({ touch: isTouch });
-  mech = new Mech(mats, fx.glowTex);
-  METERS = MECH_HEIGHT_M / measureMech();
+  // The world is scaled to the Vanguard, whichever frame is picked: the others stand taller or shorter
+  METERS = MECH_HEIGHT_M / measureMech(mechFor(frameById('vanguard')));
   $('#load-msg').textContent = 'Building Port Meridian…';
   await new Promise((r) => setTimeout(r, 30));
   world = new World(scene, mats, fx, sound, { M: 1 / METERS, cityTex: tex.city }, {
@@ -210,7 +222,7 @@ async function init() {
         sound.warning();
       },
       onWaveClear: (n) => {
-        P.ap = Math.min(AP_MAX, P.ap + AP_MAX * 0.3);
+        P.ap = Math.min(P.apMax, P.ap + P.apMax * 0.3);
         hud.toast(`WAVE ${n} CLEARED · ARMOR PATCHED`, 2.8);
       },
       onKill: (s) => {
@@ -255,8 +267,6 @@ async function init() {
   D.spiders = spiders;
   D.onPlayerHit = (amount, from, kind) => hurt(amount, from, kind);
   P.pos.copy(world.spawn);
-  mech.root.position.copy(P.pos);
-  mech.resetFeet();
   if (world.city.landmark) {
     P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
   }
@@ -266,21 +276,30 @@ async function init() {
   wash.rotation.x = -Math.PI / 2;
   wash.renderOrder = 2;
   scene.add(wash);
-  mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  scene.add(mech.root);
-  weapons = new WeaponSystem({ scene, fx, sound, world, mech, mats });
+  weapons = new WeaponSystem({ scene, fx, sound, world, mech: null, mats });
   weapons.onShake = shake;
-  weapons.equip(loadout);
+  weapons.player = P;
+  // A laser blade throws the frame at its victim
+  weapons.onLunge = (dir, speed, dur) => {
+    // When it gets there it plants and bleeds off the speed
+    if (!dur) { if (P.lungeT > 0) { P.vel.x *= 0.25; P.vel.z *= 0.25; P.vel.y = Math.min(P.vel.y, 2); } P.lungeT = 0; return; }
+    P.lunge.copy(dir).multiplyScalar(speed);
+    P.lungeT = dur;
+  };
+  useFrame(frame);
 
   hangar = new Hangar({
-    loadout, settings, sound, touch: isTouch,
+    frame, loadout, settings, sound, touch: isTouch,
+    onFrame: (id) => pickFrame(id),
     onChange: () => {
       applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
-      weapons.equip(loadout);
-      store.set('vectorclad.loadout', loadout);
+      weapons.equip(loadout, frame);
+      saveLoadouts();
     },
     onSettings: applySettings,
   });
+  // Frame select on the intro card
+  picker = new FramePicker($('#frame-pick'), { frame, sound, onPick: (id) => pickFrame(id) });
   applySettings();
 
   if (isTouch) {
@@ -324,7 +343,53 @@ async function init() {
   $('#intro').hidden = false;
   mode = 'intro';
   if (!isTouch) $('#btn-launch').focus({ preventScroll: true });
-  requestAnimationFrame(frame);
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------------------
+// Frames
+// ---------------------------------------------------------------------------
+
+const mechs = {}; // frames built so far, kept so switching back is instant
+function mechFor(f) {
+  if (!mechs[f.id]) {
+    const m = (mechs[f.id] = f.make(mats, fx.glowTex));
+    m.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  }
+  return mechs[f.id];
+}
+
+/** Put a frame in the bay: its model, its loadout and paint, its armor and size */
+function useFrame(f) {
+  const prevMax = P.apMax;
+  frame = f;
+  if (mech) scene.remove(mech.root);
+  mech = mechFor(f);
+  mech.root.position.copy(P.pos);
+  mech.root.rotation.y = P.bodyYaw;
+  mech.resetFeet();
+  mech.root.traverse((o) => { if (o.userData.isOutline) o.visible = settings.outlines; });
+  scene.add(mech.root);
+  setBodyScale(mech.rig.scale);
+  loadout = loadoutFor(f);
+  applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
+  weapons.mech = mech;
+  weapons.equip(loadout, f);
+  // Armor carries over as a fraction, so a swap mid-fight neither heals nor hurts
+  P.apMax = f.ap;
+  P.ap = deployed && P.alive ? (P.ap / prevMax) * f.ap : f.ap;
+  $('.unit-code').textContent = f.code;
+  $('.unit-name').textContent = f.name.toUpperCase();
+}
+
+/** The player picked a frame, on the intro card or in the hangar */
+function pickFrame(id) {
+  const f = frameById(id);
+  if (f === frame) return;
+  useFrame(f);
+  saveLoadouts();
+  hangar.setFrame(f, loadout);
+  picker.set(f);
 }
 
 function startPlay() {
@@ -340,14 +405,15 @@ function startPlay() {
 /** Fresh frame on the starting plaza, fresh waves */
 function redeploy() {
   deployed = true;
-  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
+  Object.assign(P, { lungeT: 0, ap: frame.ap, apMax: frame.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
   P.vel.set(0, 0, 0);
   if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
   P.pitch = 0.05;
   mech.root.position.copy(P.pos);
   mech.resetFeet();
-  weapons.equip(loadout);
+  weapons.arsenal.clear();
+  weapons.equip(loadout, frame);
   setHardLock(null);
   spiders.start(START_WAVE);
   hud.resetKills();
@@ -369,10 +435,10 @@ function hurt(amount, from, kind) {
   P.ap -= dmg;
   P.hurtT = 0;
   // Screen angle of the shooter: 0 straight ahead, clockwise
-  hud.damage(dmg / AP_MAX, -wrap(bearing - P.yaw), blocked);
+  hud.damage(dmg / P.apMax, -wrap(bearing - P.yaw), blocked);
   if (blocked) {
     _t.normalize();
-    _t2.set(P.pos.x + Math.sin(P.bodyYaw) * 2.2, P.pos.y + 4.6, P.pos.z + Math.cos(P.bodyYaw) * 2.2);
+    _t2.set(P.pos.x + Math.sin(P.bodyYaw) * 2.2 * BODY.scale, P.pos.y + 4.6 * BODY.scale, P.pos.z + Math.cos(P.bodyYaw) * 2.2 * BODY.scale);
     fx.sparksBurst(_t2, _t, 10, 0x9fffd0, 22);
     sound.shieldBlock();
     shake(null, 0.06);
@@ -430,7 +496,7 @@ function updatePlayer(dt, c) {
   P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -0.7, 1.0);
   // Lock-on steers the camera so the target stays in view; the mouse still adds on top
   if (playing && hard.target) {
-    _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6.2, P.pos.z));
+    _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6.2 * BODY.scale, P.pos.z));
     const ty = Math.atan2(_t.x, _t.z);
     const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -0.7, 1.0);
     P.yaw = dampAngle(P.yaw, ty, 3.5, dt);
@@ -448,14 +514,15 @@ function updatePlayer(dt, c) {
   if (P.pinT > 0) P.pinT = Math.max(0, P.pinT - dt * (playing && c.dash ? 3 : 1));
   const pinned = P.pinT > 0;
 
-  // Boost / dash
+  // Boost / dash. The frame sets how hard and fast it goes and how long the gauge lasts.
+  const F = frame, K = BODY.scale, drain = BOOST_DRAIN / F.boost;
   const canBoost = P.boost > 0 && !P.overheat;
-  if (playing && c.dashPressed && canBoost && P.boost > 6 * BOOST_DRAIN && !pinned) {
+  if (playing && c.dashPressed && canBoost && P.boost > 6 * drain && !pinned) {
     sound.boostIgnite();
-    P.boost -= 6 * BOOST_DRAIN;
+    P.boost -= 6 * drain;
     const dir = wishLen > 0.1 ? _t.copy(_w).normalize() : _t.copy(_f);
-    P.vel.x += dir.x * 14; P.vel.z += dir.z * 14;
-    if (P.grounded) fx.dust(P.pos, 0.8, 8);
+    P.vel.x += dir.x * F.kick; P.vel.z += dir.z * F.kick;
+    if (P.grounded) fx.dust(P.pos, 0.8 * K, 8);
   }
   P.dashing = playing && !!c.dash && canBoost;
   // Web slows the mech; dashing tears through it faster
@@ -467,8 +534,9 @@ function updatePlayer(dt, c) {
       fx.smoke.emit(P.pos.x + Math.cos(a) * 1.6, P.pos.y + 1 + Math.random() * 5, P.pos.z + Math.sin(a) * 1.6, 0, -0.5, 0, 0.9, 1.2, 2.2, 0.9, 0.95, 1, 0.55, 0.85, 0.9, 1, 0, 1, 0);
     }
   }
-  const maxSpeed = (P.dashing ? 36 : 7.5) * (webbed ? 0.45 : 1) * (pinned ? 0 : 1);
-  const accel = P.grounded ? (P.dashing ? 70 : 30) : (P.dashing ? 45 : 14);
+  const maxSpeed = (P.dashing ? F.dash : F.walk) * (webbed ? 0.45 : 1) * (pinned ? 0 : 1);
+  const agile = P.dashing ? F.dash / 36 : F.walk / 7.5;
+  const accel = (P.grounded ? (P.dashing ? 70 : 30) : (P.dashing ? 45 : 14)) * agile;
   const target = _t.set(0, 0, 0);
   if (wishLen > 0.08) target.copy(_w).multiplyScalar(maxSpeed);
   else if (P.dashing) target.copy(_f).multiplyScalar(maxSpeed);
@@ -493,13 +561,13 @@ function updatePlayer(dt, c) {
     if (P.jumpT > 0) {
       P.jumpT -= dt;
       if (P.jumpT <= 0) {
-        P.vel.y = 15;
+        P.vel.y = F.jump;
         P.grounded = false;
         P.launchT = 0.35;
-        if (canBoost) P.boost -= 4 * BOOST_DRAIN;
+        if (canBoost) P.boost -= 4 * drain;
         sound.boostIgnite();
-        fx.dust(P.pos, 1.2, 14);
-        shake(null, 0.25);
+        fx.dust(P.pos, 1.2 * K, 14);
+        shake(null, 0.25 * Math.sqrt(F.weight));
       }
     }
   } else {
@@ -507,16 +575,40 @@ function updatePlayer(dt, c) {
     let g = 32;
     if (playing && c.jump && canBoost && P.airT > 0.12) {
       P.ascending = true;
-      P.vel.y = Math.min(14, P.vel.y + 62 * dt);
+      P.vel.y = Math.min(14 * F.climb, P.vel.y + 62 * F.climb * dt);
       g = 0;
-      P.boost -= 24 * BOOST_DRAIN * dt;
+      P.boost -= 24 * drain * dt;
     } else if (P.dashing) {
       g = 9;
       P.vel.y = Math.max(P.vel.y, -6);
     }
     P.vel.y -= g * dt;
   }
-  if (P.dashing) P.boost -= 26 * BOOST_DRAIN * dt;
+  if (P.dashing) P.boost -= 26 * drain * dt;
+
+  // A harpoon in a wall reels the frame in: straight at the anchor, gravity off, until it
+  // gets there, the cable has pulled for too long, or the pilot jumps off it
+  const R = weapons.reel;
+  if (R && R.active) {
+    R.t += dt;
+    _t.set(R.point.x - P.pos.x, R.point.y - (P.pos.y + 2.5 * K), R.point.z - P.pos.z);
+    const d = _t.length();
+    if (d < 5 * K || R.t > 2.6 || !P.alive || pinned || (playing && c.jumpPressed && R.t > 0.15)) {
+      R.active = false;
+      // Arriving pops the frame up, so it can clear the lip it was hauled to
+      if (d < 5 * K) P.vel.y = Math.max(P.vel.y, 10);
+    } else {
+      const sp = Math.min(52, 18 + R.t * 70);
+      P.vel.lerp(_t.multiplyScalar(sp / d), 1 - Math.exp(-dt * 7));
+      P.grounded = false;
+    }
+  }
+  // A blade lunge carries the frame at its target for a moment
+  if (P.lungeT > 0 && !pinned) {
+    P.lungeT -= dt;
+    P.vel.lerp(P.lunge, 1 - Math.exp(-dt * 20));
+    if (P.lunge.y > 2) P.grounded = false;
+  }
 
   // Integrate
   const prevY = P.pos.y;
@@ -526,24 +618,24 @@ function updatePlayer(dt, c) {
   // Blocked by a wall: stop the motion into it and slide along it. The push-out never adds
   // speed, so a frame pushed out of a wall it has sunk into isn't flung away from it.
   const bx = P.pos.x, bz = P.pos.z;
-  if (world.resolve(P.pos, 1.5, 7, stepY)) {
+  if (world.resolve(P.pos, BODY.r, BODY.h, stepY)) {
     const nx = P.pos.x - bx, nz = P.pos.z - bz, n = Math.hypot(nx, nz);
     const into = n > 1e-6 ? (P.vel.x * nx + P.vel.z * nz) / n : 0;
     if (into < 0) { P.vel.x -= (nx / n) * into; P.vel.z -= (nz / n) * into; }
   }
-  let ground = world.groundHeight(P.pos.x, P.pos.z, stepY, 0.9);
+  let ground = world.groundHeight(P.pos.x, P.pos.z, stepY, 0.9 * K);
   // Feet just short of a roof with the body over its edge: step up onto the lip, or slip
   // off it when moving away, instead of dropping past it into the wall
-  const lip = !P.grounded || P.onLip ? world.ledge(P.pos.x, P.pos.z, stepY, 1.5) : null;
+  const lip = !P.grounded || P.onLip ? world.ledge(P.pos.x, P.pos.z, stepY, BODY.r) : null;
   P.onLip = false;
   if (lip && lip.top > ground + STEP && P.pos.y <= lip.top + 0.05 && P.vel.y <= 1) {
     if (P.vel.x * lip.nx + P.vel.z * lip.nz < 0.5) {
       ground = lip.top;
       P.onLip = true;
-      const pull = Math.min(lip.dist - 0.8, 6 * dt);
+      const pull = Math.min(lip.dist - 0.8 * K, 6 * dt);
       P.pos.x -= lip.nx * pull; P.pos.z -= lip.nz * pull;
     } else {
-      const push = Math.min(1.5 - lip.dist, 6 * dt);
+      const push = Math.min(BODY.r - lip.dist, 6 * dt);
       P.pos.x += lip.nx * push; P.pos.z += lip.nz * push;
     }
   }
@@ -554,10 +646,11 @@ function updatePlayer(dt, c) {
       if (!P.grounded) {
         const impact = -P.vel.y;
         if (impact > 5) {
-          P.landT = clamp(impact / 45, 0.12, 0.45);
-          shake(null, clamp(impact / 40, 0.15, 0.7));
-          fx.dust(P.pos, clamp(impact / 15, 0.8, 2), 16);
-          sound.footstep(P.pos, 1.4);
+          // Heavier frames take longer to recover from a landing, and shake the street more
+          P.landT = clamp(impact / 45, 0.12, 0.45) * Math.sqrt(F.weight);
+          shake(null, clamp(impact / 40, 0.15, 0.7) * Math.sqrt(F.weight));
+          fx.dust(P.pos, clamp(impact / 15, 0.8, 2) * K, 16);
+          sound.footstep(P.pos, 1.4 * Math.sqrt(F.weight));
         }
       }
       P.vel.y = Math.max(0, P.vel.y);
@@ -572,7 +665,7 @@ function updatePlayer(dt, c) {
   if (P.dashing || P.ascending) P.boostDelay = 0.6;
   else if (P.grounded) {
     P.boostDelay -= dt;
-    if (P.boostDelay <= 0) P.boost = Math.min(100, P.boost + 42 * dt * (P.webT > 0 ? 0.4 : 1));
+    if (P.boostDelay <= 0) P.boost = Math.min(100, P.boost + 42 * F.regen * dt * (P.webT > 0 ? 0.4 : 1));
   }
   if (P.boost <= 0 && !P.overheat) {
     P.boost = 0;
@@ -593,11 +686,11 @@ function updatePlayer(dt, c) {
     else { P.legYaw = clamp(Math.atan2(-lx, -lz), -1.0, 1.0); P.gaitDir = -1; }
   } else P.legYaw *= 0.9;
   const walking = P.grounded && !P.dashing && P.landT <= 0;
-  const gait = walking ? clamp(speed / 7.5, 0, 1) : 0;
+  const gait = walking ? clamp(speed / F.walk, 0, 1) : 0;
 
   // Thrusters
   const T = P.thrust;
-  const tMain = P.dashing ? 1 : P.ascending ? 0.85 : P.launchT > 0 ? 0.9 : !P.grounded ? 0.12 : 0;
+  const tMain = P.dashing || P.lungeT > 0 ? 1 : P.ascending ? 0.85 : P.launchT > 0 ? 0.9 : !P.grounded ? 0.12 : 0;
   const tVern = P.dashing ? 0.75 : P.ascending ? 0.55 : P.launchT > 0 ? 0.5 : 0;
   const tCalf = P.ascending ? 0.9 : P.dashing ? 0.55 : P.launchT > 0 ? 0.8 : 0;
   const tSole = P.ascending ? 1 : P.launchT > 0 ? 1 : 0;
@@ -614,20 +707,20 @@ function updatePlayer(dt, c) {
       th.worldExhaust(_t, _t2);
       const s = 6 + 10 * th.level;
       fx.fire.emit(_t.x, _t.y, _t.z, _t2.x * s + P.vel.x, _t2.y * s + P.vel.y, _t2.z * s + P.vel.z,
-        0.07, th.size * 1.3, th.size * 0.3, 0.35, 0.5, 1.0, 0.7, 0.4, 0.2, 0.9, 0, 2);
+        0.07, th.size * 1.3 * K, th.size * 0.3 * K, 0.35, 0.5, 1.0, 0.7, 0.4, 0.2, 0.9, 0, 2);
     }
     const alt = P.pos.y - ground;
-    if (alt < 9 && (P.ascending || P.launchT > 0) && Math.random() < 0.7) {
-      const k = 1 - alt / 9;
-      fx.dust(_t.set(P.pos.x, ground, P.pos.z), 0.7 + k, 2);
+    if (alt < 9 * K && (P.ascending || P.launchT > 0) && Math.random() < 0.7) {
+      const k = 1 - alt / (9 * K);
+      fx.dust(_t.set(P.pos.x, ground, P.pos.z), (0.7 + k) * K, 2);
     }
   }
   {
     const alt = P.pos.y - ground;
-    const k = Math.max(T.main * 0.7, T.sole) * Math.max(0, 1 - alt / 12);
+    const k = Math.max(T.main * 0.7, T.sole) * Math.max(0, 1 - alt / (12 * K));
     washMat.opacity = k * (0.55 + Math.random() * 0.15);
     wash.position.set(P.pos.x, ground + 0.06, P.pos.z);
-    wash.scale.setScalar(6 + alt * 0.8);
+    wash.scale.setScalar(6 * K + alt * 0.8);
   }
   if (P.dashing && P.grounded && Math.random() < 0.8) {
     // Skid sparks and dust behind the feet
@@ -721,20 +814,23 @@ function leadPoint(out) {
 const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3();
 
 function updateCamera(dt, speed) {
-  cam.pivotY = damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
+  const K = BODY.scale;
+  cam.pivotY = damp(cam.pivotY, P.pos.y + 7.4 * K, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
   if (mode === 'play' && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
     // Shoulder offset, pulled in when a wall is close on that side
-    let side = 4.4;
+    let side = 4.4 * K;
     const sideHit = world.raycast(pivot, camRight, side + 1.2, { targets: false });
     if (sideHit) side = Math.max(0, sideHit.dist - 1.2);
     const origin = _t.copy(pivot).addScaledVector(camRight, side);
     // Pull in when something blocks the view
     const back = _t2.copy(camDir).negate();
-    const hit = world.raycast(origin, back, cam.dist, { targets: false });
-    const dist = hit ? Math.max(3, hit.dist - 0.8) : cam.dist;
+    // Bigger frames sit further from the camera
+    const want = cam.dist * Math.pow(K, 0.8);
+    const hit = world.raycast(origin, back, want, { targets: false });
+    const dist = hit ? Math.max(3, hit.dist - 0.8) : want;
     camPos.copy(origin).addScaledVector(back, dist);
     camPos.y += 1.0;
     camPos.y = Math.max(camPos.y, world.groundHeight(camPos.x, camPos.z, camPos.y) + 0.8);
@@ -745,18 +841,18 @@ function updateCamera(dt, speed) {
   } else {
     // Showroom orbit for the intro and hangar
     cam.orbit += dt * cam.orbitSpeed;
-    const r = cam.orbitR;
-    camPos.set(P.pos.x + Math.sin(cam.orbit) * r, P.pos.y + cam.orbitY, P.pos.z + Math.cos(cam.orbit) * r);
+    const r = cam.orbitR * K;
+    camPos.set(P.pos.x + Math.sin(cam.orbit) * r, P.pos.y + cam.orbitY * K, P.pos.z + Math.cos(cam.orbit) * r);
     camera.position.copy(camPos);
-    const look = _t.set(P.pos.x, P.pos.y + cam.lookY, P.pos.z);
+    const look = _t.set(P.pos.x, P.pos.y + cam.lookY * K, P.pos.z);
     // Shift the mech left of center while a side panel covers the right
     const panelOpen = mode === 'hangar' && !hangarSheet.matches;
     const introOpen = mode === 'intro' && window.innerWidth > 720;
     if (panelOpen || introOpen) {
       _t2.subVectors(look, camPos).normalize().cross(new V3(0, 1, 0)).normalize();
-      look.addScaledVector(_t2, panelOpen ? 4.5 : -4.5);
+      look.addScaledVector(_t2, (panelOpen ? 4.5 : -4.5) * K);
     }
-    if (mode === 'hangar' && hangarSheet.matches) look.y -= 2.5;
+    if (mode === 'hangar' && hangarSheet.matches) look.y -= 2.5 * K;
     camera.lookAt(look);
     camDir.subVectors(look, camPos).normalize();
     cam.fov = damp(cam.fov, 50, 3, dt);
@@ -804,8 +900,8 @@ const UPV = new V3(0, 1, 0);
 const spiderCtx = { player: P, camera };
 const shoulder = new V3();
 
-function frame(now) {
-  requestAnimationFrame(frame);
+function loop(now) {
+  requestAnimationFrame(loop);
   const dt = window.__mech && window.__mech.fixedDt ? window.__mech.fixedDt : Math.min(0.05, (now - last) / 1000);
   last = now;
   time += dt;
@@ -818,7 +914,7 @@ function frame(now) {
 
   const { speed, gait } = updatePlayer(dt, c);
   updateCamera(dt, speed);
-  P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
+  P.chest.set(P.pos.x, P.pos.y + 4.8 * BODY.scale, P.pos.z);
 
   // Armor regenerates out of contact; the swarm runs while playing and over the wreck
   if (mode === 'play' && P.alive) {
@@ -835,7 +931,7 @@ function frame(now) {
       }
       if (P.ap <= 0) die();
     }
-    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(AP_MAX, P.ap + REGEN_RATE * dt);
+    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(P.apMax, P.ap + REGEN_RATE * P.apMax * dt);
   }
   if (mode === 'play' || mode === 'over') spiders.update(dt, spiderCtx);
   if (mode === 'over') {
@@ -853,7 +949,7 @@ function frame(now) {
   }
 
   // Aim angles from the shoulders toward the aim point
-  shoulder.set(P.pos.x, P.pos.y + 6.2, P.pos.z);
+  shoulder.set(P.pos.x, P.pos.y + 6.2 * BODY.scale, P.pos.z);
   _t.subVectors(aim.point, shoulder);
   const aimYawWorld = Math.atan2(_t.x, _t.z);
   const aiming = mode === 'play' && !cam.debugOrbit;
@@ -873,16 +969,17 @@ function frame(now) {
     vel: P.vel, bodyYaw: P.bodyYaw, ground: P.pos.y,
     crouch: !P.alive ? 1 : P.jumpT > 0 ? 1 : P.landT > 0 ? Math.min(1, P.landT * 3) : 0,
     legYaw: P.legYaw, aimYaw, aimPitch,
-    aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload],
+    aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload], slash: [H[0].slash || 0, H[1].slash || 0],
     shield: weapons.shieldUp, hasShield: !!(weapons.slots.leftHand && weapons.slots.leftHand.def.kind === 'shield'),
     thrust: (window.__mech && window.__mech.forceThrust) || P.thrust, time,
   });
   if (res.step >= 0) {
     mech.footWorld(res.step, _t);
     _t.y = P.pos.y;
-    const k = res.soft ? 0.45 : 1;
-    fx.dust(_t, (0.6 + gait * 0.4) * k, res.soft ? 4 : 8);
-    sound.footstep(_t, (0.75 + gait * 0.4) * k);
+    // Footfalls land as hard as the frame is heavy
+    const k = (res.soft ? 0.45 : 1) * frame.weight;
+    fx.dust(_t, (0.6 + gait * 0.4) * k * BODY.scale / frame.weight ** 0.5, res.soft ? 4 : 8);
+    sound.footstep(_t, (0.75 + gait * 0.4) * Math.min(1.8, k));
     shake(null, (0.16 + gait * 0.12) * k);
   }
 
@@ -891,7 +988,7 @@ function frame(now) {
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {
     hud.update(dt, {
-      ap: P.ap, apMax: AP_MAX, wave: spiders.wave, hostiles: spiders.hostiles, boss: spiders.boss,
+      ap: P.ap, apMax: P.apMax, wave: spiders.wave, hostiles: spiders.hostiles, boss: spiders.boss,
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
@@ -909,7 +1006,8 @@ init().catch((err) => {
 
 // Debug/test hook
 window.__mech = {
-  P, cam, input, startPlay, openHangar, redeploy, hurt, AP_MAX, get spiders() { return spiders; }, scene, camera,
+  P, cam, input, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return P.apMax; }, get spiders() { return spiders; }, scene, camera,
+  FRAMES, pickFrame: (id) => pickFrame(id), get frame() { return frame; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
   renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
 };

@@ -326,6 +326,8 @@ export const PAINTS = [
   { id: 'glint', name: 'Glint White', armor: '#f2f3f5', second: '#5a6680', frame: '#7d8594', trim: '#4fa8ff', eye: '#7fd8ff' },
   { id: 'desert', name: 'Desert Ops', armor: '#c2ad85', second: '#51473b', frame: '#6a6156', trim: '#e2782c', eye: '#9dff8a' },
   { id: 'crimson', name: 'Crimson', armor: '#9a3633', second: '#322d2c', frame: '#56504c', trim: '#d39a45', eye: '#ffe08a' },
+  { id: 'scout', name: 'Field Khaki', armor: '#a39a83', second: '#55524c', frame: '#6c675e', trim: '#d6d0bf', eye: '#3fd2ff' },
+  { id: 'storm', name: 'Storm Indigo', armor: '#4f5a78', second: '#2c303b', frame: '#5a6175', trim: '#a3acc0', eye: '#ff8a3a' },
 ];
 
 export const SKINS = [
@@ -352,6 +354,8 @@ export function makeMaterials(tex) {
     joint: std({ color: 0x2a2d33, roughness: 0.38, metalness: 0.8 }),
     trim: std({ color: 0xd39a45, roughness: 0.32, metalness: 0.75 }),
     red: std({ color: 0xc8262a, roughness: 0.45, metalness: 0.2 }),
+    // Unpainted white plates (knee caps, chin guards), the same in every scheme
+    white: std({ map: body, bumpMap: body, bumpScale: 2.5, roughness: 0.5, metalness: 0.15, color: 0xd9dbdf }),
     nozzle: std({ color: 0x55575c, roughness: 0.3, metalness: 0.9 }),
     eye: new THREE.MeshBasicMaterial({ color: 0x7dffb6, toneMapped: false }),
     sensor: new THREE.MeshBasicMaterial({ color: 0xff3048, toneMapped: false }),

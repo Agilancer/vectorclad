@@ -1,6 +1,7 @@
 import * as THREE from './three.js';
 import { PAINTS, SKINS } from './atlas.js';
-import { WEAPONS, SLOTS, PRESETS, allowedFor } from './weapons.js';
+import { WEAPONS, slotsFor, allowedFor } from './weapons.js';
+import { FRAMES, CLASSES } from './frames/index.js';
 
 const $ = (s) => document.querySelector(s);
 const _v = new THREE.Vector3();
@@ -85,7 +86,7 @@ export class HUD {
     this.rows = status.map((s) => {
       const row = document.createElement('div');
       row.className = 'wrow';
-      const short = { rightHand: 'R', leftHand: 'L', shoulderL: 'SH-L', shoulderR: 'SH-R', legL: 'LG-L', legR: 'LG-R' }[s.slot.id];
+      const short = { rightHand: 'R', leftHand: 'L', shoulderL: 'SH-L', shoulderR: 'SH-R', backC: 'BACK', legL: 'LG-L', legR: 'LG-R', hipL: 'HP-L', hipR: 'HP-R' }[s.slot.id];
       row.innerHTML = `<span class="slot">${short}</span><span class="wname"></span><span class="ammo"></span><div class="meter"><i></i></div>`;
       root.appendChild(row);
       return { row, name: row.querySelector('.wname'), ammo: row.querySelector('.ammo'), bar: row.querySelector('.meter i'), key: '' };
@@ -136,9 +137,11 @@ export class HUD {
       }
       let cls = 'wrow';
       if (s.kind === 'missile') cls += ' missile';
-      if (s.reload != null) cls += ' reloading';
+      if (s.reload != null || s.reloading) cls += ' reloading';
       let ammo = s.kind === 'shield' ? this.shieldHint : `${s.ammo}/${s.max}`;
       let frac = s.kind === 'shield' ? 1 : s.ammo / s.max;
+      // Weapons that don't count rounds (blade, drones) say what they're doing
+      if (s.label) { ammo = s.label; frac = s.frac; }
       if (s.reload != null) { ammo = 'RELOAD'; frac = s.reload; }
       if (s.charge != null) { ammo = s.charge >= 1 ? 'FIRING' : 'CHARGE'; frac = Math.min(1, s.charge); }
       const key = `${cls}|${s.name}|${ammo}|${Math.round(frac * 40)}`;
@@ -210,14 +213,69 @@ export class HUD {
 }
 
 // ---------------------------------------------------------------------------
+// Frame select: a card per frame with its class and how it stacks up, on the
+// intro card and at the top of the hangar
+// ---------------------------------------------------------------------------
+
+// Stat bars run from nothing to the best in the bay
+const STAT_BARS = [
+  ['ARMOR', (f) => f.ap / 2000],
+  ['SPEED', (f) => f.walk / 9.6],
+  ['BOOST', (f) => f.boost / 2.3],
+  ['ARMS', (f) => f.slots.length / 9],
+];
+
+export class FramePicker {
+  constructor(root, { frame, sound, onPick }) {
+    this.root = root;
+    this.frame = frame;
+    this.sound = sound;
+    this.onPick = onPick;
+    this.render();
+  }
+
+  set(frame) {
+    this.frame = frame;
+    this.render();
+  }
+
+  render() {
+    const root = this.root;
+    if (!root) return;
+    root.innerHTML = '';
+    const grid = div('frame-grid');
+    for (const f of FRAMES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `frame-card ${f.class}`;
+      b.setAttribute('aria-pressed', f === this.frame ? 'true' : 'false');
+      b.innerHTML = `<span class="fc-head"><span class="fc-class">${CLASSES[f.class]}</span><span class="fc-code">${f.code}</span></span><b class="fc-name">${f.name}</b>`
+        + `<span class="fc-stats">${STAT_BARS.map(([label, v]) => `<span class="fc-stat"><span>${label}</span><i><b style="width:${Math.round(Math.min(1, v(f)) * 100)}%"></b></i></span>`).join('')}</span>`;
+      b.addEventListener('click', () => {
+        this.sound && this.sound.click();
+        if (f !== this.frame) this.onPick(f.id);
+      });
+      grid.appendChild(b);
+    }
+    root.appendChild(grid);
+    const f = this.frame;
+    const desc = div('frame-desc');
+    desc.innerHTML = `<b>${f.code} ${f.name}</b> · ${CLASSES[f.class]} · ${f.ap} AP · ${f.slots.length} hardpoints. ${f.blurb}`;
+    root.appendChild(desc);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hangar (loadout menu)
 // ---------------------------------------------------------------------------
 
 export class Hangar {
-  constructor({ loadout, settings, onChange, onSettings, sound, touch = false }) {
+  constructor({ frame, loadout, settings, onFrame, onChange, onSettings, sound, touch = false }) {
     this.touch = touch;
+    this.frame = frame;
     this.loadout = loadout;
     this.settings = settings;
+    this.onFrame = onFrame;
     this.onChange = onChange;
     this.onSettings = onSettings;
     this.sound = sound;
@@ -227,17 +285,33 @@ export class Hangar {
 
   click() { this.sound && this.sound.click(); }
 
+  /** A different frame went into the bay, with its own loadout */
+  setFrame(frame, loadout) {
+    this.frame = frame;
+    this.loadout = loadout;
+    const scroll = this.body.scrollTop;
+    this.render();
+    this.body.scrollTop = scroll;
+  }
+
   render() {
-    const L = this.loadout, b = this.body;
+    const L = this.loadout, b = this.body, F = this.frame;
     b.innerHTML = '';
 
+    // Frame
+    const fr = section('Frame', `${CLASSES[F.class]} · ${F.code}`);
+    const fp = div('frame-pick');
+    new FramePicker(fp, { frame: F, sound: null, onPick: (id) => { this.click(); this.onFrame(id); } });
+    fr.appendChild(fp);
+    b.appendChild(fr);
+
     // Presets
-    const pre = section('Presets', 'Quick loadouts');
+    const pre = section('Presets', `Quick loadouts for the ${F.name}`);
     const pc = div('chips');
-    for (const p of PRESETS) {
+    for (const p of F.presets) {
       pc.appendChild(chip(p.name, false, () => {
-        L.paint = p.paint;
-        for (const k in p.slots) L.slots[k] = [...p.slots[k]];
+        L.paint = p.paint || F.paint;
+        for (const id of F.slots) L.slots[id] = [...(p.slots[id] || [null, (L.slots[id] || [])[1] || 'gunmetal'])];
         this.click();
         this.onChange();
         this.render();
@@ -262,7 +336,7 @@ export class Hangar {
     b.appendChild(paint);
 
     // Slots
-    for (const slot of SLOTS) {
+    for (const slot of slotsFor(F)) {
       const [wid, skinId] = L.slots[slot.id] || [null, 'white'];
       const card = div(`slot-card${wid ? ' filled' : ''}`);
       const head = div('hsec-title');
@@ -270,14 +344,16 @@ export class Hangar {
       card.appendChild(head);
       const chips = div('chips');
       chips.appendChild(chip('None', !wid, () => this.setSlot(slot.id, null, skinId)));
-      for (const id of allowedFor(slot)) {
-        chips.appendChild(chip(WEAPONS[id].short.replace(/\b\w+/g, (w) => w[0] + w.slice(1).toLowerCase()), wid === id,
-          () => this.setSlot(slot.id, id, skinId)));
+      for (const id of allowedFor(slot, F)) {
+        const c = chip(WEAPONS[id].short.replace(/\b\w+/g, (w) => w[0] + w.slice(1).toLowerCase()), wid === id,
+          () => this.setSlot(slot.id, id, skinId));
+        if (WEAPONS[id].heavy) c.classList.add('heavy');
+        chips.appendChild(c);
       }
       card.appendChild(chips);
-      if (wid) {
+      if (wid && WEAPONS[wid]) {
         const desc = div('slot-desc');
-        desc.textContent = `${WEAPONS[wid].name}. ${WEAPONS[wid].desc}`;
+        desc.textContent = `${WEAPONS[wid].name}${WEAPONS[wid].heavy ? ' (heavy class)' : ''}. ${WEAPONS[wid].desc}`;
         card.appendChild(desc);
         const skins = div('swatches');
         for (const s of SKINS) {

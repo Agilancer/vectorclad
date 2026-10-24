@@ -300,6 +300,41 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .touch-note { margin: 0; font-size: 13px; color: var(--dim); }
 .intro-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 
+/* ---------- frame select (intro card and hangar) ---------- */
+.frame-pick { display: grid; gap: 8px; }
+.frame-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.frame-card {
+  --cls: var(--signal);
+  display: grid; gap: 3px; text-align: left;
+  border: 1px solid var(--line); border-top: 2px solid var(--cls);
+  background: var(--panel); color: var(--fg);
+  padding: 7px 9px 8px;
+  font-family: var(--font-display);
+}
+.frame-card.light { --cls: var(--hud); }
+.frame-card.heavy { --cls: var(--alert); }
+.frame-card:hover { background: rgba(255, 255, 255, 0.08); }
+.frame-card[aria-pressed="true"] { border-color: var(--signal); background: rgba(242, 182, 50, 0.14); box-shadow: inset 0 0 0 1px var(--signal); }
+.fc-head { display: flex; justify-content: space-between; gap: 6px; font: 10px var(--font-mono); letter-spacing: 0.12em; }
+.fc-class { color: var(--cls); text-transform: uppercase; }
+.fc-code { color: var(--dim); }
+.fc-name { font-size: 15px; letter-spacing: 0.04em; }
+.fc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; margin-top: 2px; }
+.fc-stat { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 4px; font: 9px var(--font-mono); color: var(--dim); letter-spacing: 0.06em; }
+.fc-stat i { display: block; height: 3px; background: rgba(255, 255, 255, 0.1); }
+.fc-stat i b { display: block; height: 100%; background: var(--cls); }
+.frame-desc { font-size: 13px; line-height: 1.45; color: #d6d2c8; }
+.frame-desc b { color: var(--signal); font-weight: 600; letter-spacing: 0.04em; }
+#hangar .frame-grid { gap: 5px; }
+#hangar .frame-card { padding: 6px 7px 7px; }
+#hangar .fc-name { font-size: 13px; }
+#hangar .fc-stats { grid-template-columns: 1fr; }
+#hangar .frame-desc { font-size: 12px; color: var(--dim); }
+.chip.heavy { border-color: rgba(224, 57, 47, 0.55); }
+/* Short screens: the frame select takes the lede's place */
+@media (max-height: 860px) { .intro-card .lede { display: none; } }
+@media (max-width: 520px) { .frame-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* ---------- hangar ---------- */
 #hangar {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;

@@ -1,5 +1,6 @@
 import * as THREE from './three.js';
 import { SPIDER_ATLAS, SPIDER_PARTS } from './spiderParts.js';
+import { BODY } from './playerBody.js';
 
 // ---------------------------------------------------------------------------
 // Shared by spider-frames and scorpion-frames: plates and hulls cut from the
@@ -233,12 +234,14 @@ export function markerTexture() {
 }
 
 // ---------------------------------------------------------------------------
-// The player mech as a capsule from its hips to its head
+// The player mech as a capsule from its hips to its head, sized to its frame: a
+// bigger frame's capsule is taller and fatter, so hits reach it from further out
 // ---------------------------------------------------------------------------
 
 export function capsuleDist(p, base) {
-  const y = clamp(p.y, base.y + 1.5, base.y + 6.8);
-  return Math.hypot(p.x - base.x, p.y - y, p.z - base.z);
+  const k = BODY.scale;
+  const y = clamp(p.y, base.y + 1.5 * k, base.y + 6.8 * k);
+  return Math.hypot(p.x - base.x, p.y - y, p.z - base.z) - (k - 1) * 1.4;
 }
 
 /** First point along a-b inside the capsule, or null */

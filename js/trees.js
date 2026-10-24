@@ -1,4 +1,5 @@
 import * as THREE from './three.js';
+import { BODY } from './playerBody.js';
 
 // ---------------------------------------------------------------------------
 // Street and park trees.
@@ -20,7 +21,6 @@ import * as THREE from './three.js';
 const V3 = THREE.Vector3;
 const GRAVITY = 30;
 const SUBSTEP = 1 / 120;
-const MECH_R = 1.5, MECH_H = 7; // the mech's collision cylinder in main.js
 const EMBER = [0.34, 0.11, 0.03], CHAR_LEAF = [0.05, 0.045, 0.04], CHAR_WOOD = [0.07, 0.05, 0.04];
 const rand = (a, b) => a + Math.random() * (b - a);
 const mix = (a, b, t) => a + (b - a) * t;
@@ -379,9 +379,9 @@ export class Trees {
         this.contact(t, _e.copy(c).addScaledVector(_n, -r), _n, 0.3, 0.4);
       }
       // The mech kicks it along: at least as fast as the mech is moving into it, with a little lift
-      if (P && c.y + r > P.y && c.y - r < P.y + MECH_H) {
+      if (P && c.y + r > P.y && c.y - r < P.y + BODY.h) {
         let dx = c.x - P.x, dz = c.z - P.z;
-        const d = Math.hypot(dx, dz), min = MECH_R + r;
+        const d = Math.hypot(dx, dz), min = BODY.r + r;
         if (d < min && d > 1e-4) {
           dx /= d; dz /= d;
           t.pos.x += dx * (min - d); t.pos.z += dz * (min - d);
@@ -405,8 +405,8 @@ export class Trees {
   touchesMech(t, P) {
     for (const [h, r] of t.spheres) {
       const c = this.axisPoint(t, h, _p);
-      if (c.y + r <= P.y || c.y - r >= P.y + MECH_H) continue;
-      if (Math.hypot(c.x - P.x, c.z - P.z) < MECH_R + r) return true;
+      if (c.y + r <= P.y || c.y - r >= P.y + BODY.h) continue;
+      if (Math.hypot(c.x - P.x, c.z - P.z) < BODY.r + r) return true;
     }
     return false;
   }
@@ -462,8 +462,8 @@ export class Trees {
           return;
         }
         const d = Math.hypot(t.base.x - P.x, t.base.z - P.z);
-        if (d > MECH_R + t.trunkR + t.canopyR * 0.5) return;
-        if (P.y > t.base.y + t.canopyY + t.canopyR * 0.7 || P.y + MECH_H < t.base.y) return;
+        if (d > BODY.r + t.trunkR + t.canopyR * 0.5) return;
+        if (P.y > t.base.y + t.canopyY + t.canopyR * 0.7 || P.y + BODY.h < t.base.y) return;
         struck.push(t);
       });
     }

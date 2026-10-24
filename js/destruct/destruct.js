@@ -6,6 +6,7 @@ import { interiorMaterials } from './textures.js';
 import { extractSkin, partGeometry, skinMaterial, skinDepthMaterial, makeLut, makeMask, uploadMask, clipSkin } from './skin.js';
 import { Body, Physics, makeProbes } from './physics.js';
 import { Debris } from './debris.js';
+import { BODY } from '../playerBody.js';
 
 // ---------------------------------------------------------------------------
 // Destruction: everything the city is built of can be shot apart.
@@ -2127,7 +2128,7 @@ export class Destruction {
     }
     const P = this.player;
     if (P && P.alive && this.onPlayerHit && speed > 3 * this.M) {
-      for (const h of [1.5, 4.5]) {
+      for (const h of [1.5 * BODY.scale, 4.5 * BODY.scale]) {
         if (inside(_c.set(P.pos.x, P.pos.y + h, P.pos.z))) {
           this.onPlayerHit(Math.min(140, 10 + speed * Math.cbrt(b.cells) * 0.25), b.x.clone(), 'crush');
           break;

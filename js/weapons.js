@@ -1,5 +1,7 @@
 import * as THREE from './three.js';
 import { W, WEAPON_SHEET, SKINS, chamferBox, frontPrism, cylZ, cylX, mesh, place, canvasTexture, addOutline } from './atlas.js';
+import { beamMaterial, BEAM_GEO } from './beams.js';
+import { Arsenal, buildArsenalModel } from './arsenal.js';
 
 const V3 = THREE.Vector3;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -27,32 +29,51 @@ export const WEAPONS = {
   heavyPod: { name: 'HMP-8 Heavy Missile Pod', short: 'HEAVY MSL', slots: ['shoulder'], kind: 'missile', missiles: 8, cols: 4, rows: 2, dmg: 60, splash: 8, mscale: 1.5, interval: 0.14, reloadTime: 9, speed: 80, desc: 'Eight large warheads. Slow, huge blasts.' },
   microPod: { name: 'μMP-24 Micro Missile Pod', short: 'MICRO MSL', slots: ['shoulder', 'leg'], kind: 'missile', missiles: 24, cols: 6, rows: 4, dmg: 12, splash: 3.5, mscale: 0.6, interval: 0.035, reloadTime: 8, speed: 105, wobble: 1.7, desc: 'Twenty-four swarming micro missiles.' },
   shield: { name: 'RX-S Shield', short: 'SHIELD', slots: ['leftHand'], kind: 'shield', desc: 'Forearm shield. Hold the left trigger to raise it.' },
+  // The second wave of the arsenal: models and behavior in arsenal.js
+  railgun: { name: 'RG-3 Rail Gun', short: 'RAILGUN', slots: ['hand'], kind: 'rail', ammo: 5, reload: 3.4, rate: 1.1, charge: 0.32, dmg: 150, color: 0x7fe6ff, desc: 'Spools its coils for a beat, then fires a hypersonic slug through every target in line and deep into whatever stops it.' },
+  arcCaster: { name: 'ES-4 Arc Caster', short: 'ARC CASTER', slots: ['hand'], kind: 'arc', ammo: 14, reload: 2.8, rate: 0.5, dmg: 30, chain: 5, jump: 34, stun: 1.4, color: 0x8fd8ff, desc: 'Lightning that leaps from target to target, five deep, and shorts each one out where it stands.' },
+  flamer: { name: 'FT-6 Hellhound', short: 'FLAMER', slots: ['hand'], kind: 'flame', ammo: 120, reload: 3, rate: 0.035, dmg: 2.6, speed: 72, desc: 'Flamethrower. A roaring stream that burns everything in front of it, lights the trees and scorches the street.' },
+  blade: { name: 'LB-1 Moonlight Blade', short: 'LASER BLADE', slots: ['hand'], kind: 'blade', rate: 0.9, dmg: 170, lunge: 90, range: 52, color: 0x9fb8ff, desc: 'Energy sword. The frame lunges at whatever is in front of it and cuts it down, walls and all.' },
+  sawLauncher: { name: 'SL-3 Saw Launcher', short: 'SAW LAUNCHER', slots: ['hand'], kind: 'saw', ammo: 6, reload: 3, rate: 0.42, dmg: 48, speed: 105, bounces: 3, desc: 'Spinning saw discs that slice through everything in their path and ricochet off walls three times.' },
+  harpoon: { name: 'GH-2 Grapple Harpoon', short: 'HARPOON', slots: ['hand'], kind: 'harpoon', ammo: 1, reload: 0.8, rate: 0.4, dmg: 110, stun: 1.2, speed: 240, range: 190, desc: 'Harpoon on a cable. It spears a target, or bites into a wall and reels the frame in. Jump to let go.' },
+  drones: { name: 'DR-4 Bit Drones', short: 'BIT DRONES', slots: ['shoulder'], kind: 'drone', count: 4, life: 20, recharge: 12, dmg: 14, color: 0x6dffd8, desc: 'Four gun drones. They launch on the cannon trigger, hunt on their own for twenty seconds, then dock to recharge.' },
+  hydra: { name: 'HY-4 Hydra Missile Pod', short: 'HYDRA MSL', slots: ['shoulder'], kind: 'missile', missiles: 4, cols: 2, rows: 2, dmg: 30, splash: 5, mscale: 1.35, interval: 0.16, reloadTime: 8, speed: 85, split: 5, desc: 'Four cluster missiles. Short of the target each one bursts into five homing submunitions.' },
+  singularity: { name: 'GW-0 Singularity Projector', short: 'SINGULARITY', slots: ['shoulder'], kind: 'grav', ammo: 2, reload: 9, rate: 2, speed: 55, radius: 26, life: 3, dps: 40, dmg: 150, splash: 16, color: 0xb070ff, desc: 'Fires a gravity well that tears spiders off the walls and drags them in, then implodes.' },
+  artillery: { name: 'AC-155 Siege Cannon', short: 'SIEGE CANNON', slots: ['shoulder', 'back'], heavy: true, kind: 'artillery', ammo: 3, reload: 6.5, rate: 2.2, dmg: 190, splash: 15, desc: 'Heavy howitzer. Its barrel lifts to range the reticle and drops a 155 mm shell on it from a high arc.' },
+  mines: { name: 'ML-8 Mine Layer', short: 'MINES', slots: ['leg'], kind: 'mine', missiles: 6, cols: 3, rows: 2, dmg: 85, splash: 9, interval: 0.12, reloadTime: 10, desc: 'Proximity mines. Q tosses one ahead, E scatters them all around the frame. They wait for anything that walks by.' },
+  orbital: { name: 'SOL-1 Orbital Uplink', short: 'ORBITAL', slots: ['shoulder', 'back'], heavy: true, kind: 'orbital', ammo: 1, reload: 18, rate: 1, charge: 1.6, duration: 3.4, dps: 260, radius: 7, color: 0xffe2a0, desc: 'Paints the reticle for a satellite, which answers with a column of light from orbit that follows your aim.' },
 };
 
-// key: the keyboard/mouse control; touch: the on-screen button that fires it
+// key: the keyboard/mouse control; touch: the on-screen button that fires it.
+// A frame has some of these (frames/index.js); the back deck and hips are on heavies only.
 export const SLOTS = [
   { id: 'rightHand', label: 'Right hand', type: 'hand', key: 'LMB', touch: 'FIRE' },
   { id: 'leftHand', label: 'Left hand', type: 'hand', key: 'RMB', touch: 'L' },
   { id: 'shoulderL', label: 'Left shoulder', type: 'shoulder', key: 'F', touch: 'CNN' },
   { id: 'shoulderR', label: 'Right shoulder', type: 'shoulder', key: 'F', touch: 'CNN' },
+  { id: 'backC', label: 'Back deck', type: 'back', key: 'F', touch: 'CNN' },
   { id: 'legL', label: 'Left leg', type: 'leg', key: 'Q/E', touch: 'MSL/SALVO' },
   { id: 'legR', label: 'Right leg', type: 'leg', key: 'Q/E', touch: 'MSL/SALVO' },
+  { id: 'hipL', label: 'Left hip', type: 'hip', key: 'Q/E', touch: 'MSL/SALVO' },
+  { id: 'hipR', label: 'Right hip', type: 'hip', key: 'Q/E', touch: 'MSL/SALVO' },
 ];
+// What each kind of hardpoint takes: the back deck takes shoulder weapons, hips take leg pods
+const ACCEPTS = { hand: ['hand'], shoulder: ['shoulder'], back: ['back', 'shoulder'], leg: ['leg'], hip: ['hip', 'leg'] };
 
-export function allowedFor(slot) {
-  return Object.keys(WEAPONS).filter((id) => {
-    const d = WEAPONS[id];
-    return d.slots.includes(slot.type) || d.slots.includes(slot.id);
-  });
+/** The hardpoints a frame has, in display order */
+export function slotsFor(frame) {
+  return SLOTS.filter((s) => frame.slots.includes(s.id));
 }
 
-export const PRESETS = [
-  { name: 'Vanguard', paint: 'lynx', slots: { rightHand: ['beamRifle', 'bronze'], leftHand: ['shield', 'gunmetal'], shoulderL: ['missilePod', 'gunmetal'], shoulderR: ['microPod', 'gunmetal'], legL: ['missilePod', 'gunmetal'], legR: ['missilePod', 'gunmetal'] } },
-  { name: 'Full Armor', paint: 'desert', slots: { rightHand: ['machineGun', 'olive'], leftHand: ['shield', 'olive'], shoulderL: ['heavyPod', 'olive'], shoulderR: ['heavyPod', 'olive'], legL: ['microPod', 'olive'], legR: ['microPod', 'olive'] } },
-  { name: 'Artillery', paint: 'steel', slots: { rightHand: ['bazooka', 'gunmetal'], leftHand: ['grenade', 'gunmetal'], shoulderL: ['beamCannon', 'gunmetal'], shoulderR: ['missilePod', 'gunmetal'], legL: ['missilePod', 'gunmetal'], legR: ['missilePod', 'gunmetal'] } },
-  { name: 'Beam Striker', paint: 'glint', slots: { rightHand: ['beamRifle', 'white'], leftHand: ['beamCannon', 'white'], shoulderL: ['vulcanPod', 'white'], shoulderR: ['vulcanPod', 'white'], legL: [null, 'white'], legR: [null, 'white'] } },
-  { name: 'Breacher', paint: 'unsung', slots: { rightHand: ['shotgun', 'hazard'], leftHand: ['machineGun', 'hazard'], shoulderL: ['microPod', 'hazard'], shoulderR: ['microPod', 'hazard'], legL: ['missilePod', 'hazard'], legR: ['missilePod', 'hazard'] } },
-];
+/** Weapons that fit a hardpoint. Heavy-class weapons only go on heavy frames. */
+export function allowedFor(slot, frame) {
+  const types = ACCEPTS[slot.type];
+  return Object.keys(WEAPONS).filter((id) => {
+    const d = WEAPONS[id];
+    if (d.heavy && frame && frame.class !== 'heavy') return false;
+    return d.slots.includes(slot.id) || d.slots.some((t) => types.includes(t));
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Weapon models. All are built along +Z (muzzle forward). Hand weapons have
@@ -232,7 +253,8 @@ function buildShield(m) {
 export function buildWeaponModel(id, skin, mats) {
   const def = WEAPONS[id];
   const m = mats.weaponFor(skin);
-  let model;
+  let model = buildArsenalModel(id, def, m);
+  if (model) { model.def = def; return model; }
   switch (id) {
     case 'beamRifle': model = buildBeamRifle(m); break;
     case 'bazooka': model = buildBazooka(m); break;
@@ -248,48 +270,25 @@ export function buildWeaponModel(id, skin, mats) {
   return model;
 }
 
+/**
+ * The model for a weapon on a hardpoint, scaled for it, and the mount it hangs from.
+ * Pods sit smaller on legs and hips and on the shoulders; the beam cannon gets its
+ * turret base on a shoulder or the back deck; the shield goes on the forearm.
+ */
+export function mountWeapon(slot, wid, skinId, mats) {
+  const skin = SKINS.find((s) => s.id === skinId) || SKINS[0];
+  const def = WEAPONS[wid];
+  const back = slot.type === 'shoulder' || slot.type === 'back';
+  const model = back && wid === 'beamCannon' ? Object.assign(buildBeamCannon(mats.weaponFor(skin), true), { def }) : buildWeaponModel(wid, skin, mats);
+  if (slot.type === 'leg' || slot.type === 'hip') model.group.scale.setScalar(0.66);
+  if (back && def.kind === 'missile') model.group.scale.setScalar(0.76);
+  return { model, mount: wid === 'shield' ? 'leftShield' : slot.id };
+}
+
 // ---------------------------------------------------------------------------
 // Projectile visuals
 // ---------------------------------------------------------------------------
 
-// Beams are ribbons that run along local +Y (0..1) and turn about that axis
-// to face the camera, so they read as solid light from any angle.
-const BEAM_VERT = /* glsl */`
-uniform float uWidth;
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  vec3 base = (modelMatrix * vec4(0.0, position.y, 0.0, 1.0)).xyz;
-  vec3 axis = normalize((modelMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-  vec3 side = cross(axis, cameraPosition - base);
-  float L = length(side);
-  side = L > 1e-5 ? side / L : vec3(1.0, 0.0, 0.0);
-  gl_Position = projectionMatrix * viewMatrix * vec4(base + side * position.x * uWidth, 1.0);
-}`;
-const BEAM_FRAG = /* glsl */`
-uniform vec3 uColor; uniform float uTime; uniform float uAlpha; uniform float uCore;
-varying vec2 vUv;
-void main() {
-  float d = abs(vUv.x - 0.5) * 2.0;
-  float glow = pow(1.0 - d, 2.2);
-  float core = smoothstep(0.32, 0.0, d) * uCore;
-  float ripple = 0.85 + 0.15 * sin(vUv.y * 160.0 - uTime * 90.0);
-  vec3 col = uColor * glow * 1.4 + vec3(1.0) * core;
-  gl_FragColor = vec4(col * ripple * uAlpha, 1.0);
-}`;
-
-function beamMaterial(color, core = 1, width = 1) {
-  return new THREE.ShaderMaterial({
-    vertexShader: BEAM_VERT,
-    fragmentShader: BEAM_FRAG,
-    uniforms: { uColor: { value: new THREE.Color(color) }, uTime: { value: 0 }, uAlpha: { value: 1 }, uCore: { value: core }, uWidth: { value: width } },
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
-  });
-}
-
-// Ribbon from y=0 to y=1, oriented later with a quaternion
-const BEAM_GEO = new THREE.PlaneGeometry(1, 1, 1, 8).translate(0, 0.5, 0);
 const TRACER_GEO = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, -0.5);
 
 function missileTexture() {
@@ -344,28 +343,30 @@ export class WeaponSystem {
     this.hardTarget = null; // target held by the lock-on button
     this.missileCycle = 0;
     this.onShake = () => {};
+    // The newer weapons (arsenal.js), and what they ask of the frame: a blade's lunge, a harpoon's reel
+    this.arsenal = new Arsenal(this);
+    this.onLunge = () => {};
+    this.reel = null;
+    this.player = null;
   }
 
-  equip(loadout) {
+  /** Hang the loadout on the frame's hardpoints. frame: the entry from frames/index.js */
+  equip(loadout, frame = this.frame) {
     // Clear existing models
     for (const id in this.slots) {
       const s = this.slots[id];
       if (s.beam) this.endMega(s);
     }
+    this.arsenal.release();
     for (const m of Object.keys(this.mech.mounts)) this.mech.attach(m, null);
     this.queue.length = 0;
     this.slots = {};
-    for (const slot of SLOTS) {
+    this.frame = frame;
+    for (const slot of slotsFor(frame)) {
       const [wid, skinId] = loadout.slots[slot.id] || [null, 'white'];
-      if (!wid) continue;
-      const skin = SKINS.find((s) => s.id === skinId) || SKINS[0];
+      if (!wid || !WEAPONS[wid] || !allowedFor(slot, frame).includes(wid)) continue;
       const def = WEAPONS[wid];
-      const mounted = slot.type === 'shoulder' && wid === 'beamCannon';
-      const model = mounted ? Object.assign(buildBeamCannon(this.mats.weaponFor(skin), true), { def }) : buildWeaponModel(wid, skin, this.mats);
-      let mount = slot.id;
-      if (wid === 'shield') mount = 'leftShield';
-      if (slot.type === 'leg') model.group.scale.setScalar(0.66);
-      if (slot.type === 'shoulder' && def.kind === 'missile') model.group.scale.setScalar(0.76);
+      const { model, mount } = mountWeapon(slot, wid, skinId, this.mats);
       for (const o of addOutline(model.group, 0.022)) o.visible = this.outlines !== false;
       this.mech.attach(mount, model.group);
       this.slots[slot.id] = {
@@ -415,8 +416,11 @@ export class WeaponSystem {
     for (let i = 0; i < 2; i++) {
       const s = this.slots[handSlots[i]], H = this.hand[i];
       H.reload = false;
+      H.slash = 0;
       if (!s) { H.aim = 0; continue; }
       if (s.def.kind === 'shield') { this.shieldUp = held[i]; H.aim = 0; continue; }
+      // The blade swings from the hip: no aiming first
+      if (s.def.kind === 'blade') { H.aim = 0; H.recoil = 0; this.tickWeapon(dt, s, held[i], aim); H.slash = s.slashP || 0; continue; }
       if (held[i]) H.lastUse = T;
       H.aim = T - H.lastUse < 1.4 ? 1 : 0;
       if (s.reloadT > 0) { H.reload = true; H.aim = 0; }
@@ -425,7 +429,7 @@ export class WeaponSystem {
       H.recoil = s.recoil;
     }
     // Shoulder weapons fire with the cannon trigger
-    for (const id of ['shoulderL', 'shoulderR']) {
+    for (const id of ['shoulderL', 'shoulderR', 'backC']) {
       const s = this.slots[id];
       if (s && s.def.kind !== 'missile') this.tickWeapon(dt, s, ctrl.fireS, aim);
     }
@@ -435,7 +439,7 @@ export class WeaponSystem {
     if (ctrl.salvo) this.fireSalvo(aim);
     for (const id in this.slots) {
       const s = this.slots[id];
-      if (s.def.kind !== 'missile') continue;
+      if (s.def.kind !== 'missile' && s.def.kind !== 'mine') continue;
       const open = T < s.hatchOpenUntil ? 1 : 0;
       s.hatch += (open - s.hatch) * (1 - Math.exp(-dt * 14));
       s.model.hatch.rotation.x = -1.95 * s.hatch;
@@ -450,10 +454,11 @@ export class WeaponSystem {
     this.queue.sort((a, b) => a.t - b.t);
     while (this.queue.length && this.queue[0].t <= T) {
       const q = this.queue.shift();
-      this.launchMissile(q.slot, q.tube, q.target, q.point);
+      this.launchMissile(q.slot, q.tube, q.target, q.point, q.ring);
     }
 
     this.updateProjectiles(dt, aim);
+    this.arsenal.update(dt, aim);
   }
 
   tickWeapon(dt, s, trigger, aim) {
@@ -475,6 +480,7 @@ export class WeaponSystem {
       return;
     }
     if (def.kind === 'mega') { this.tickMega(dt, s, trigger, aim); return; }
+    if (this.arsenal.tick(dt, s, trigger, aim)) return;
     if (!trigger || s.cool > 0) return;
     if (s.ammo <= 0) { s.reloadT = def.reload; this.sound.reload(); return; }
     this.shoot(s, aim);
@@ -553,6 +559,7 @@ export class WeaponSystem {
         s.recoil = 0.8;
         break;
       }
+      default: this.arsenal.shoot(s, aim);
     }
   }
 
@@ -667,8 +674,9 @@ export class WeaponSystem {
 
   // --- missiles --------------------------------------------------------------
 
+  /** Everything Q and E launch from: missile pods and mine layers */
   pods() {
-    return Object.values(this.slots).filter((s) => s.def.kind === 'missile');
+    return Object.values(this.slots).filter((s) => s.def.kind === 'missile' || s.def.kind === 'mine');
   }
 
   fireSingleMissile(aim) {
@@ -699,7 +707,8 @@ export class WeaponSystem {
         const target = locks.length ? locks[k++ % locks.length] : null;
         const point = aim.point.clone();
         if (!target) point.add(_t.set(rand(-1, 1), rand(-0.3, 1), rand(-1, 1)).multiplyScalar(6 + n * 0.3));
-        this.queue.push({ t: this.time + 0.22 + pi * 0.05 + i * s.def.interval, slot: s, tube: start + i, target, point });
+        const ring = s.def.kind === 'mine' ? { i, n } : null;
+        this.queue.push({ t: this.time + 0.22 + pi * 0.05 + i * s.def.interval, slot: s, tube: start + i, target, point, ring });
       }
       s.loaded = 0;
       s.lastLaunch = this.time + 0.22 + n * s.def.interval;
@@ -707,28 +716,22 @@ export class WeaponSystem {
     });
   }
 
-  launchMissile(s, tubeIndex, target, point) {
+  launchMissile(s, tubeIndex, target, point, ring) {
+    if (s.def.kind === 'mine') { this.arsenal.dropMine(s, tubeIndex, point, ring); return; }
     const tube = s.model.tubes[tubeIndex % s.model.tubes.length];
     tube.getWorldPosition(_p);
     const dir = _d.copy(FWD).applyQuaternion(tube.getWorldQuaternion(_q)).normalize();
-    const A = getMissileAssets();
-    let mObj = this.pool.missile.pop();
-    if (!mObj) {
-      mObj = new THREE.Group();
-      const b = new THREE.Mesh(A.body, A.mat);
-      const f1 = new THREE.Mesh(A.fins, A.finMat), f2 = new THREE.Mesh(A.fins2, A.finMat);
-      b.castShadow = true;
-      mObj.add(b, f1, f2);
-    }
-    const sc = s.def.mscale * (s.slot.type === 'leg' ? 0.8 : 1);
+    const mObj = this.missileObj();
+    const low = s.slot.type === 'leg' || s.slot.type === 'hip';
+    const sc = s.def.mscale * (low ? 0.8 : 1);
     mObj.scale.setScalar(sc * 1.5);
     mObj.position.copy(_p);
     mObj.visible = true;
     this.scene.add(mObj);
     // Eject with a random scatter so the swarm fans out before homing in
     let vel;
-    if (s.slot.type === 'leg') {
-      // Leg pods sit low and face down the shin, so they pop their missiles almost straight
+    if (low) {
+      // Leg and hip pods sit low and face down the shin, so they pop their missiles almost straight
       // up and arc them over rather than fire along the tube into the ground ahead
       vel = new V3(dir.x, 0, dir.z).normalize().multiplyScalar(rand(5, 8));
       vel.y = rand(18, 22);
@@ -746,6 +749,46 @@ export class WeaponSystem {
     this.fx.flash(_p, 1.6 * sc, 0xffd8a0, 0.06);
     for (let i = 0; i < 3; i++) this.fx.smoke.emit(_p.x, _p.y, _p.z, dir.x * 3 + rand(-1, 1), dir.y * 3 + rand(0, 2), dir.z * 3 + rand(-1, 1), 1.4, 0.6 * sc, 2.8 * sc, 0.85, 0.85, 0.85, 0.6, 0.85, 0.85, 0.85, 0, 2, 0.4);
     this.sound.missile(_p);
+  }
+
+  missileObj() {
+    const A = getMissileAssets();
+    let mObj = this.pool.missile.pop();
+    if (!mObj) {
+      mObj = new THREE.Group();
+      const b = new THREE.Mesh(A.body, A.mat);
+      const f1 = new THREE.Mesh(A.fins, A.finMat), f2 = new THREE.Mesh(A.fins2, A.finMat);
+      b.castShadow = true;
+      mObj.add(b, f1, f2);
+    }
+    return mObj;
+  }
+
+  /** A hydra missile bursts short of its target into homing submunitions, spread over the locks around it */
+  splitMissile(m) {
+    const def = m.def, fx = this.fx;
+    fx.flash(m.pos, 4, 0xffe0b0, 0.1);
+    fx.sparksBurst(m.pos, m.dir, 14, 0xffd080, 26);
+    for (let i = 0; i < 5; i++) this.fx.smoke.emit(m.pos.x, m.pos.y, m.pos.z, rand(-4, 4), rand(-2, 4), rand(-4, 4), 1.2, 1, 3, 0.8, 0.8, 0.8, 0.5, 0.8, 0.8, 0.8, 0, 1.5, 0.4);
+    this.sound.missile(m.pos);
+    const near = [m.target, ...this.lock.locks.map((l) => l.target)].filter((t, i, a) => t && t.alive && a.indexOf(t) === i
+      && (!m.target || !m.target.alive || t.pos.distanceTo(m.target.pos) < 45));
+    const sub = def.sub || (def.sub = { dmg: def.dmg * 0.66, splash: 3.5, mscale: 0.5, speed: 120, wobble: 1.5 });
+    for (let i = 0; i < def.split; i++) {
+      const target = near.length ? near[i % near.length] : null;
+      const point = m.point.clone().add(_t.set(rand(-1, 1), rand(-0.2, 0.6), rand(-1, 1)).multiplyScalar(7));
+      const vel = m.dir.clone().multiplyScalar(m.speed * 0.6).add(_t.set(rand(-1, 1), rand(-0.5, 1), rand(-1, 1)).multiplyScalar(18));
+      const obj = this.missileObj();
+      obj.scale.setScalar(sub.mscale * 1.5);
+      obj.position.copy(m.pos);
+      obj.visible = true;
+      this.scene.add(obj);
+      this.missiles.push({
+        obj, pos: m.pos.clone(), prev: m.pos.clone(), vel, dir: vel.clone().normalize(), speed: vel.length(),
+        target, point, age: 0.16, def: sub, scale: sub.mscale, seed: Math.random() * 100,
+        f1: rand(3, 6), f2: rand(3, 6), ignited: true,
+      });
+    }
   }
 
   // --- spawns ------------------------------------------------------------------
@@ -830,7 +873,7 @@ export class WeaponSystem {
         if (hit.target) W_.damage(hit.target, b.def.dmg, hit.point);
         else {
           // Bolts blow fist-sized... mech-fist-sized holes
-          if (W_.destruct) W_.destruct.bullet(hit, { radius: 2.2, power: 150, dir: b.dir, speed: 9, chunks: 10 });
+          if (W_.destruct) W_.destruct.bullet(hit, { radius: b.def.hole || 2.2, power: 150, dir: b.dir, speed: 9, chunks: 10 });
           if (hit.normal.y > 0.9 && !hit.struct) fx.scorch(hit.point.x, hit.point.z, 2.2, hit.point.y + 0.03);
         }
       } else b.pos.addScaledVector(b.dir, step);
@@ -939,6 +982,17 @@ export class WeaponSystem {
       }
       m.obj.position.copy(m.pos);
       m.obj.quaternion.setFromUnitVectors(FWD, m.dir);
+      // Hydra missiles burst into submunitions short of the target
+      if (def.split && m.age > 0.5) {
+        const tgt = m.target && m.target.alive ? m.target.pos : m.point;
+        if (m.pos.distanceTo(tgt) < 48 || m.age > 2.2) {
+          this.splitMissile(m);
+          this.scene.remove(m.obj);
+          this.pool.missile.push(m.obj);
+          this.missiles.splice(i, 1);
+          continue;
+        }
+      }
       const step = m.prev.distanceTo(m.pos);
       _d.subVectors(m.pos, m.prev).normalize();
       const hit = m.age > 0.1 ? W_.raycast(m.prev, _d, step + 0.4, { pad: 0.8, props: true }) : null;
@@ -956,12 +1010,14 @@ export class WeaponSystem {
 
   // HUD summary
   status() {
-    return SLOTS.map((slot) => {
+    return slotsFor(this.frame).map((slot) => {
       const s = this.slots[slot.id];
       if (!s) return { slot, empty: true };
       const def = s.def;
       if (def.kind === 'shield') return { slot, name: def.short, kind: 'shield' };
-      if (def.kind === 'missile') return { slot, name: def.short, kind: 'missile', ammo: s.loaded, max: def.missiles };
+      if (def.kind === 'missile' || def.kind === 'mine') return { slot, name: def.short, kind: 'missile', ammo: s.loaded, max: def.missiles };
+      const a = this.arsenal.status(s);
+      if (a) return Object.assign({ slot, name: def.short, kind: def.kind }, a);
       return {
         slot, name: def.short, kind: def.kind, ammo: s.ammo, max: def.ammo,
         reload: s.reloadT > 0 ? 1 - s.reloadT / def.reload : null,

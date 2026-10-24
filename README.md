@@ -1,13 +1,14 @@
 # VECTORCLAD
 
-A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
-loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
-that climb the towers and swarm in growing waves, and scorpion-frames that dig up
-out of the streets to claw and sting at it. The mech walks, boost-dashes,
-jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
-procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from fifty-two more in `textures/city-src/`, and the spiders
-and scorpions from ten in `textures/spider-src/`. There is no build step.
+A three.js tech demo for VECTORCLAD: Armored Core-style mechs loose in Port Meridian,
+a harbor city overrun by spider-frames, six-legged machines that climb the towers and
+swarm in growing waves, and scorpion-frames that dig up out of the streets to claw and
+sting. Six frames, light, medium and heavy, from the stilt-legged Kestrel scout to the
+Bastion walking fortress, walk, boost-dash, jump-jet and fire beam rifles, rail guns,
+laser blades, cannons, drones, gravity wells, orbital strikes and full missile salvos.
+Everything is procedural geometry: the mechs and their weapons are textured from two
+sheets in `textures/`, the city from fifty-two more in `textures/city-src/`, and the
+spiders and scorpions from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
 
@@ -22,6 +23,16 @@ three.js 0.170.0 loads from jsDelivr, so the first load needs a network connecti
 
 Add `?wave=N` to the URL to start the fight at wave N, with every kind that has
 joined by then (every spider and scorpion is in by wave 6).
+
+`tools/showroom.html` shows the frames and weapons on a turntable without the city: pick a
+frame or the six side by side, a pose (idle, walk, aim, dash, air, blade swing, shield),
+or the weapon rack, and drag to turn it. URL parameters set the same things, for example
+`tools/showroom.html?frame=goliath&preset=1&pose=walk`.
+
+`tools/tests/arsenal.js` (headless Chromium through Playwright, like the destruction
+test below) puts every frame through the bay, walks, dashes and jumps it, and fires every
+weapon of the second wave at a pack of spiders, printing what each did and writing
+screenshots to `tools/tests/out/`.
 
 ## Deploy
 
@@ -84,18 +95,20 @@ The song list is at the top of `js/music.js`.
 | Lock on / switch target (press again to release) | `T` | LOCK |
 | Right-hand weapon | Left mouse | FIRE |
 | Left-hand weapon / raise shield | Right mouse | L |
-| Shoulder cannons (vulcan, beam cannon) | `F` or middle mouse | CNN |
-| Single missile | `Q` | MSL |
-| Full missile salvo | `E` | SALVO |
+| Shoulder and back-deck weapons (vulcan, beam cannon, drones, siege cannon...) | `F` or middle mouse | CNN |
+| Single missile, or toss one mine | `Q` | MSL |
+| Full missile salvo, or scatter every mine | `E` | SALVO |
 | Jump (hold to jet upward) | `Space` | JUMP |
 | Boost dash | `Shift` | DASH |
 | Reload | `R` | Reload |
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
 | Camera zoom | Mouse wheel | |
 
-Dashing and jump-jetting draw on one boost gauge. A full gauge holds about nine
-seconds of dash and refills in about three once the mech is back on the ground. If
-it runs dry the boosters overheat and stay off until the gauge is back to 40.
+Dashing and jump-jetting draw on one boost gauge. On the Vanguard a full gauge holds
+about nine seconds of dash and refills in about three once the mech is back on the
+ground; light frames last more than twice as long and refill faster, heavies run dry
+sooner (see Frames). If it runs dry the boosters overheat and stay off until the gauge
+is back to 40.
 
 The lock-on button holds one target. Aimed weapons lead it, the arms track it,
 the camera keeps it in view, and single missiles go to it first. When it is
@@ -105,13 +118,47 @@ Missiles lock onto targets inside the dashed circle. A salvo spreads its missile
 across every lock; with nothing locked they fly to the crosshair. Leg pods pop
 their missiles almost straight up so they arc over the ground in front of the feet.
 
+## Frames
+
+The intro card opens on the frame select, and the hangar has it at the top, so a frame
+can be swapped whenever the hangar is open (armor carries over as a fraction). Each
+frame keeps its own loadout. Light frames are fast, with far more boost, but carry four
+hardpoints on thin armor; heavies are slower and bigger, with eight or nine hardpoints,
+the heavy-class weapons and close to twice the armor.
+
+| Frame | Class | Armor | Walk / dash | Boost | Hardpoints | What it is |
+| --- | --- | --- | --- | --- | --- | --- |
+| **LT-3 Kestrel** | Light | 640 | 9.6 / 45 | 2.3x, refills 1.6x | 2 hands, 2 shoulders | A stilt-legged scout after the light-mech concept: a wedge cockpit pod with a sensor cap and antenna on an exposed spine, drum hip actuators, slab-armored thighs, long segmented shins with chevron lights, skid feet, long thin arms and side hardpoints beside the pod. |
+| **RJ-6 Locust** | Light | 720 | 9 / 41 | 2x, refills 1.45x | 2 hands, 2 legs | A reverse-joint hopper: its knees bend backward over three-toed talons, with a shock ram behind each, and it jumps far higher than any other frame. Four-eyed sensor head, a low wedge thorax and two jump-jet nacelles. No shoulder mounts: its pods ride on its thighs. |
+| **FS-07A Vanguard** | Medium | 1000 | 7.5 / 36 | 1x | 2 hands, 2 shoulders, 2 legs | The prototype (see Design notes). |
+| **KR-11 Revenant** | Medium | 1120 | 7.2 / 35 | 0.95x | 2 hands, 2 shoulders, 2 legs | A knight: a great helm with a crest fin, swept horns and a mono-eye that sweeps its visor slit, layered pauldrons, a ridged cuirass over abdominal lames, tassets, poleyn knees and pointed sabatons, and twin upright booster pods carrying its shoulder mounts. |
+| **HV-90 Goliath** | Heavy | 1750 | 5.8 / 29 | 0.6x | 2 hands, 2 shoulders, 2 legs, 2 hips | A hunched brawler after the heavy-mech concept: a barrel chest and shoulder blocks that rise past its small, low head and toothed white chin guard, long arms with huge gauntlets, short wide legs on white knee caps, and a reactor block with vent stacks. |
+| **TK-40 Bastion** | Heavy | 2000 | 5.2 / 26 | 0.55x | 2 hands, 2 shoulders, back deck, 2 legs, 2 hips | A walking fortress: column legs braced by rams on outrigger feet with stabilizer claws, a tall box body faced in glacis bands, slab shields off the shoulders, a squat turret head with a bar of eyes and a weapons deck across its back. |
+
+The world stays scaled to the Vanguard, 40 feet to the top of its head. The Goliath's
+shoulder blocks rise to about 51 feet and the Bastion's antennas to 65; the Locust is the
+smallest, about 34 feet to the top of its jump jets. A frame's size scales its
+collision, the hit capsule the swarm aims at, the camera, footfalls and landings: heavy
+frames shake the street and take longer to recover from a landing. Heavy-class weapons
+(the siege cannon and the orbital uplink) only go on heavies.
+
 ## Hangar
 
-The hangar sets the loadout for six hardpoints (both hands, both shoulders, both
-legs), a frame paint scheme, and one of eight colorways per weapon. It has five
-presets and settings for sound, music, shadows, ink outlines, look sensitivity, inverted
-look and render resolution. The loadout and settings are saved in `localStorage`
-under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
+The hangar sets the frame and its loadout: a weapon and one of nine colorways on each
+of the frame's hardpoints, and a frame paint scheme. Every frame has its own presets.
+It also has settings for sound, music, shadows, ink outlines, look sensitivity,
+inverted look and render resolution. Loadouts (one per frame), the frame in use and the
+settings are saved in `localStorage` under `vectorclad.*` keys (saves from earlier
+builds under `fs07.*` still load, and a single loadout saved before there were frames
+becomes the Vanguard's).
+
+| Hardpoint | On | Takes | Fires with |
+| --- | --- | --- | --- |
+| Right and left hand | every frame | hand weapons; the left also the shield | `LMB` / `RMB` |
+| Left and right shoulder | all but the Locust | shoulder weapons | `F` |
+| Back deck | Bastion | shoulder and back weapons | `F` |
+| Left and right leg | all but the Kestrel | missile pods and the mine layer | `Q` / `E` |
+| Left and right hip | Goliath, Bastion | leg pods and the mine layer | `Q` / `E` |
 
 Weapons, from the weapon sheet:
 
@@ -126,6 +173,43 @@ Weapons, from the weapon sheet:
 - **HMP-8 Heavy Missile Pod**: 8 large missiles (shoulder)
 - **μMP-24 Micro Missile Pod**: 24 swarming micro missiles (shoulder or leg)
 - **RX-S Shield**: left forearm, raised with the left trigger
+
+And the second wave of the arsenal (`js/arsenal.js`):
+
+- **RG-3 Rail Gun** (hand): its coil rings light up as it spools for a third of a second, then
+  a hypersonic slug goes through every target in line, punches a deep tunnel into whatever
+  stops it, and leaves an ion trail wound with a helix of sparks.
+- **ES-4 Arc Caster** (hand): a forked emitter with a charged ball between its prongs. Lightning
+  goes to the held lock or the target nearest the line of fire, then leaps to the nearest
+  one not yet struck, five deep, shorting each one out where it clings for 1.4 seconds.
+- **FT-6 Hellhound** (hand): a flamethrower on twin fuel tanks with a pilot light. The stream
+  drags, rises and splashes along whatever it hits, burning spiders, lighting trees,
+  setting off cars and scorching the street.
+- **LB-1 Moonlight Blade** (hand): an energy sword. The frame lunges at the held lock or the
+  target nearest the crosshair, steering all the way, plants at sword's reach and swings
+  the blade high and across, cutting through walls as it goes and leaving a trail.
+- **SL-3 Saw Launcher** (hand): spinning saw discs that cut through every target in their path
+  and ricochet off walls three times, biting into each.
+- **GH-2 Grapple Harpoon** (hand): a harpoon on a cable with a winch. It spears and stuns a target,
+  or bites into a wall and reels the frame in across the street or up onto a roof. Jump or
+  pull the trigger again to let go.
+- **DR-4 Bit Drones** (shoulder): four gun drones docked on a rack. They launch on the cannon
+  trigger, hunt the held lock or the nearest targets on their own for twenty seconds,
+  circling each one and shooting it, then dock and recharge.
+- **HY-4 Hydra Missile Pod** (shoulder): four cluster missiles; short of the target each bursts
+  into five homing submunitions spread over the locks around it.
+- **GW-0 Singularity Projector** (shoulder): fires a dark orb that collapses into a gravity well
+  for three seconds. It tears spiders off the walls and drags them in, pins scorpions and
+  wrecks, grinds everything inside it, then implodes and craters the street.
+- **AC-155 Siege Cannon** (shoulder or back deck, heavy class): a howitzer whose barrel lifts on its
+  trunnion to range the reticle. It drops a 155 mm shell on it from a high arc, with a
+  marker on the landing spot, for the biggest blast in the arsenal.
+- **ML-8 Mine Layer** (leg or hip): `Q` tosses a proximity mine ahead, `E` scatters all six around
+  the frame. They arm, blink, and go off under anything that comes within 7 units.
+- **SOL-1 Orbital Uplink** (shoulder or back deck, heavy class): a satellite dish that unfolds while
+  the designator paints the reticle, then a column of light comes down from orbit for
+  3.4 seconds. It follows the reticle slowly, burning everything under it and boring
+  down through roofs and floors.
 
 ## The city
 
@@ -481,7 +565,7 @@ use, so the 24 scorpions that can be alive at once cost about a dozen draw calls
 
 ## Design notes
 
-The suit follows Armored Core's style:
+The FS-07A Vanguard follows Armored Core's style:
 - **Silhouette:** tall, hunched frame, narrow waist, long arms with heavy forearms.
 - **Armor:** sharp, faceted plates that sweep backward.
 - **Head:** a beast head thrust forward between raised collar plates, on red hydraulic neck rams:
@@ -500,6 +584,16 @@ Walking is procedural:
 - **Body motion:** the body sinks after each footfall and rises at the passing pose. Weight shifts over the planted leg, the hips twist with the stride while the torso counter-twists and jolts on impact, and the arms swing against the legs.
 - **Standing still:** the feet settle into a staggered stance. Turning in place shuffles them to follow.
 - **Air and dash:** jumps and dashes use canned leg poses that blend back into the walking system on landing.
+
+Every frame walks on that same system (the `Mech` class in `js/mech.js`); a frame builds
+its own model on the standard joints and sets its rig: leg segment lengths, pelvis height,
+stride width, step height and cadence, the standing stance, how far it hunches and how
+far its arms hang out, the air and dash leg poses, and its scale in the world. Footholds
+and stride timing are worked in the frame's own units and scaled into the world, so a
+heavy plants big, slow steps and a light quick ones. The Locust's knees bend backward:
+the two-joint IK takes a bend direction, and its knee pole points behind it. A laser
+blade's swing is a pose the arm blends into, with the waist winding up and then
+twisting through the cut.
 
 The thrusters are built to read as real hardware:
 
@@ -526,8 +620,13 @@ in the hangar settings.
 | `js/regions.js` | Pixel rectangles of the panels used from each texture sheet |
 | `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
-| `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
-| `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
+| `js/mech.js` | The rig every frame shares (IK foot-planting gait, dash/jump/aim/blade animation), gimbaled bell-nozzle thrusters with plume shaders, hydraulic pistons, armor-shaping helpers, and the Vanguard's model |
+| `js/frames/index.js` | The six frames: class, stats, hardpoints, default paint and presets |
+| `js/frames/kestrel.js`, `locust.js`, `revenant.js`, `goliath.js`, `bastion.js` | The other five frames' models and rigs |
+| `js/playerBody.js` | The size of the frame in use, for everything that tests against it |
+| `js/weapons.js` | Weapon definitions, hardpoints, the first wave's models, projectiles, homing and hydra missiles, lock-on |
+| `js/arsenal.js` | The second wave: rail gun, arc caster, flamethrower, laser blade, saw launcher, harpoon, drones, hydra pod, singularity, siege cannon, mines and orbital uplink, models and what they do |
+| `js/beams.js` | The camera-facing beam ribbon shader every beam weapon draws with |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
 | `js/trees.js` | Street and park trees: instanced trunks and leaves, uprooting, rigid-body tumbling and rolling, burning |
@@ -542,6 +641,8 @@ in the hangar settings.
 | `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
 | `js/destruct/textures.js` | Painted atlas for broken materials, office floors, lit ceilings and plaster |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
+| `tools/tests/arsenal.js` | Headless frame and weapon checks: each frame walks, dashes and jumps, each new weapon fires at a pack of spiders; screenshots |
+| `tools/showroom.html`, `showroom.js` | A turntable for the frames and weapons without the city: poses, lineup, weapon rack |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders and scorpions |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
 | `js/frameParts.js` | Shared by spiders and scorpions: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, the mech's hit capsule |
@@ -550,7 +651,7 @@ in the hangar settings.
 | `js/music.js` | Soundtrack playlist: title theme, shuffled rotation, volume drop after the title |
 | `js/boot.js` | Entry point: downloads the title theme, then loads the title screen and the game |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
-| `js/ui.js` | HUD (armor, waves, damage indicators) and hangar menu |
+| `js/ui.js` | HUD (armor, waves, damage indicators), frame select and hangar menu |
 | `js/main.js` | Renderer, world scale, player physics and armor, camera, game loop, game over |
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |

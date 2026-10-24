@@ -466,4 +466,93 @@ export class Sound {
     this.beamLoop.g.gain.setTargetAtTime(level * 0.35, t, 0.04);
     this.beamOsc.gain.setTargetAtTime(level * 0.09, t, 0.04);
   }
+  /** The orbital column's roar, 0..1; its loop starts the first time it's needed */
+  setOrbital(level) {
+    if (!this.ctx || (!this.orbital && !level)) return;
+    if (!this.orbital) this.orbital = { rumble: this.loop(this.brown, 'lowpass', 220, 0.7), hiss: this.loop(this.noise, 'bandpass', 3200, 1.5) };
+    const t = this.ctx.currentTime;
+    this.orbital.rumble.g.gain.setTargetAtTime(level * 0.9, t, 0.08);
+    this.orbital.hiss.g.gain.setTargetAtTime(level * 0.16, t, 0.08);
+  }
+
+  // ---- the second wave of the arsenal (arsenal.js) -------------------------------
+  railCharge(pos, dur) {
+    this.tone({ type: 'sine', freq: 300, freqEnd: 4200, peak: 0.12, attack: dur, decay: 0.05, pos });
+    this.tone({ type: 'square', freq: 150, freqEnd: 2100, peak: 0.04, attack: dur, decay: 0.05, pos });
+  }
+  rail(pos) {
+    // A supersonic crack over a deep thoom
+    this.noiseHit({ type: 'highpass', freq: 1800, peak: 0.7, attack: 0.001, decay: 0.18, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 600, freqEnd: 90, peak: 0.9, decay: 0.9, pos });
+    this.tone({ type: 'sawtooth', freq: 3400, freqEnd: 220, peak: 0.12, decay: 0.4, pos });
+    this.tone({ type: 'sine', freq: 90, freqEnd: 30, peak: 0.55, decay: 0.6, pos });
+  }
+  bladeIgnite(pos) {
+    this.tone({ type: 'sawtooth', freq: 140, freqEnd: 420, peak: 0.12, attack: 0.04, decay: 0.3, pos });
+    this.noiseHit({ type: 'bandpass', freq: 900, freqEnd: 3800, q: 2, peak: 0.35, attack: 0.08, decay: 0.32, pos });
+    this.tone({ type: 'sine', freq: 620, freqEnd: 880, peak: 0.08, attack: 0.05, decay: 0.45, pos });
+  }
+  bladeHit(pos) {
+    if (!this.gate('bladeHit', 0.05, pos)) return;
+    this.noiseHit({ type: 'highpass', freq: 2200, peak: 0.45, decay: 0.2, pos });
+    this.tone({ type: 'square', freq: 1700, freqEnd: 400, peak: 0.08, decay: 0.2, pos });
+    this.tone({ type: 'sine', freq: 160, freqEnd: 60, peak: 0.4, decay: 0.3, pos });
+  }
+  saw(pos) {
+    this.noiseHit({ type: 'bandpass', freq: 2600, freqEnd: 1400, q: 4, peak: 0.3, attack: 0.01, decay: 0.35, pos });
+    this.tone({ type: 'sawtooth', freq: 900, freqEnd: 1400, peak: 0.07, attack: 0.02, decay: 0.3, pos });
+    this.tone({ type: 'sine', freq: 120, freqEnd: 60, peak: 0.25, decay: 0.15, pos });
+  }
+  harpoon(pos) {
+    this.tone({ type: 'sine', freq: 110, freqEnd: 45, peak: 0.45, decay: 0.2, pos });
+    this.noiseHit({ type: 'bandpass', freq: 1200, freqEnd: 4000, q: 1.5, peak: 0.25, attack: 0.01, decay: 0.45, pos });
+    this.tone({ type: 'square', freq: 520, freqEnd: 260, peak: 0.04, decay: 0.5, pos, delay: 0.05 });
+  }
+  droneLaunch(pos) {
+    this.noiseHit({ type: 'bandpass', freq: 600, freqEnd: 2400, q: 1, peak: 0.3, attack: 0.03, decay: 0.5, pos });
+    for (let i = 0; i < 4; i++) this.tone({ type: 'triangle', freq: 880 + i * 220, peak: 0.05, decay: 0.08, pos, delay: i * 0.07 });
+  }
+  droneShot(pos) {
+    if (!this.gate('droneShot', 0.05, pos)) return;
+    this.tone({ type: 'sawtooth', freq: 2600, freqEnd: 400, peak: 0.07, decay: 0.12, pos });
+    this.noiseHit({ type: 'highpass', freq: 4000, peak: 0.07, decay: 0.06, pos });
+  }
+  gravLaunch(pos) {
+    this.tone({ type: 'sine', freq: 70, freqEnd: 180, peak: 0.45, attack: 0.02, decay: 0.5, pos });
+    this.tone({ type: 'sawtooth', freq: 1200, freqEnd: 140, peak: 0.08, decay: 0.5, pos });
+  }
+  gravWell(pos, dur) {
+    // A deep drone that sinks as the well tightens
+    this.tone({ type: 'sawtooth', freq: 110, freqEnd: 38, peak: 0.25, attack: 0.3, decay: dur, pos });
+    this.tone({ type: 'sine', freq: 55, freqEnd: 24, peak: 0.5, attack: 0.2, decay: dur, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 300, freqEnd: 120, peak: 0.5, attack: 0.4, decay: dur, pos });
+  }
+  implode(pos) {
+    this.noiseHit({ type: 'lowpass', freq: 200, freqEnd: 3000, peak: 0.6, attack: 0.25, decay: 0.08, pos });
+    this.explosion(pos, 2.4);
+    this.tone({ type: 'sine', freq: 40, freqEnd: 20, peak: 0.6, decay: 1.4, pos });
+  }
+  artillery(pos) {
+    this.noiseHit({ type: 'lowpass', freq: 3200, freqEnd: 140, peak: 1.0, attack: 0.002, decay: 1.4, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 500, peak: 1.0, decay: 1.8, pos });
+    this.tone({ type: 'sine', freq: 60, freqEnd: 24, peak: 0.8, decay: 0.9, pos });
+  }
+  mineDrop(pos) {
+    if (!this.gate('mineDrop', 0.06, pos)) return;
+    this.tone({ type: 'square', freq: 240, freqEnd: 120, peak: 0.07, decay: 0.08, pos });
+    this.noiseHit({ type: 'bandpass', freq: 1600, q: 3, peak: 0.12, decay: 0.08, pos });
+  }
+  mineBeep(pos) {
+    this.tone({ type: 'square', freq: 1760, peak: 0.12, decay: 0.06, pos });
+    this.tone({ type: 'square', freq: 1760, peak: 0.12, decay: 0.06, pos, delay: 0.1 });
+  }
+  uplink(pos, dur) {
+    for (let i = 0; i < 5; i++) this.tone({ type: 'square', freq: 1400, peak: 0.05, decay: 0.05, pos, delay: (i * dur) / 5 });
+    this.tone({ type: 'sine', freq: 200, freqEnd: 2400, peak: 0.08, attack: dur, decay: 0.1, pos });
+  }
+  orbitalStrike(pos) {
+    this.noiseHit({ type: 'highpass', freq: 1200, peak: 0.6, attack: 0.002, decay: 0.5, pos });
+    this.explosion(pos, 3);
+    this.tone({ type: 'sawtooth', freq: 2400, freqEnd: 160, peak: 0.12, decay: 1.2, pos });
+  }
 }
