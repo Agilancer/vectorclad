@@ -24,6 +24,7 @@ import { CAR_SKINS } from './kitTiles.js';
 const V3 = THREE.Vector3;
 const N = 28; // stations along a car, as measured
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new V3(), _p = new V3(), _d = new V3(), _up = new V3(0, 1, 0), _col = new THREE.Color();
+const _fr = new THREE.Frustum(), _pv = new THREE.Matrix4(), _sph = new THREE.Sphere();
 const rand = (a, b) => a + Math.random() * (b - a);
 const pickR = (a) => a[Math.floor(Math.random() * a.length)];
 
@@ -215,20 +216,29 @@ export class Cars {
     this.skinAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
     this.skinAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aSkin', this.skinAttr);
+    // Every car's instance, by slot. It isn't drawn itself: each frame cull() copies the cars worth
+    // drawing into the front of `view`, which is.
     const mesh = (this.mesh = new THREE.InstancedMesh(geo, mat, cap));
-    mesh.customDepthMaterial = depth;
-    mesh.castShadow = mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < cap; i++) { mesh.setColorAt(i, _col.setRGB(1, 1, 1)); mesh.setMatrixAt(i, _m.makeScale(0, 0, 0)); }
     for (let i = cap - 1; i >= spots.length; i--) this.free.push(i);
-    city.scene.add(mesh);
+    const vgeo = new THREE.BufferGeometry();
+    for (const k in geo.attributes) if (k !== 'aSkin') vgeo.setAttribute(k, geo.attributes[k]);
+    vgeo.setIndex(geo.index);
+    vgeo.setAttribute('aSkin', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1).setUsage(THREE.DynamicDrawUsage));
+    const view = (this.view = new THREE.InstancedMesh(vgeo, mat, cap));
+    view.customDepthMaterial = depth;
+    view.castShadow = view.receiveShadow = true;
+    view.frustumCulled = false;
+    view.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    view.setColorAt(0, _col.setRGB(1, 1, 1));
+    view.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    view.count = 0;
+    city.scene.add(view);
     spots.forEach(([x, z, yaw], i) => {
       const car = this.make(i, Math.floor(r() * CAR_SKINS.length), x, z, yaw);
       car.collider = city.collide(car.min.x, 0, car.min.z, car.max.x, m(1.8), car.max.z, { walk: true, ref: car });
     });
     this.buildLanes();
-    this.dirty = true;
   }
 
   /** A car in instance slot i with a skin, at (x, z) heading yaw (the model faces +x) */
@@ -240,9 +250,7 @@ export class Cars {
     };
     this.bounds(car);
     this.skinAttr.setX(i, skin);
-    this.skinAttr.needsUpdate = true;
     this.mesh.setColorAt(i, _col.setRGB(1, 1, 1));
-    this.mesh.instanceColor.needsUpdate = true;
     this.place(car);
     this.list.push(car);
     return car;
@@ -259,7 +267,6 @@ export class Cars {
     _q.setFromAxisAngle(_up, car.yaw);
     _m.compose(car.pos, _q, _s.set(1, car.flat ? 0.42 : car.state === 2 ? 0.75 : 1, 1));
     this.mesh.setMatrixAt(car.i, _m);
-    this.dirty = true;
   }
 
   // ---- lanes ------------------------------------------------------------------------
@@ -350,7 +357,6 @@ export class Cars {
     car.lane = null;
     this.world.removeCollider(car.collider);
     this.mesh.setMatrixAt(car.i, _m.makeScale(0, 0, 0));
-    this.dirty = true;
     this.free.push(car.i);
     const k = this.list.indexOf(car);
     if (k >= 0) this.list.splice(k, 1);
@@ -472,9 +478,37 @@ export class Cars {
       this.world.moveCollider(car.collider);
       this.place(car);
     }
-    if (this.dirty) {
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.dirty = false;
+    if (ctx.camera) this.cull(ctx.camera, P);
+  }
+
+  /**
+   * Draw only the cars worth drawing: those in view, out to where a car is a few pixels long, and
+   * those near the mech whose shadows can fall in view. The rest of the city's thousand-odd cars
+   * would cost their vertices, and the skin lookups the vertex shader makes for each, for nothing.
+   */
+  cull(camera, P) {
+    camera.updateMatrixWorld();
+    _fr.setFromProjectionMatrix(_pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const C = camera.position, far2 = this.city.m(1200) ** 2, R = this.city.m(3.5);
+    const sun = this.world.sun, sr = P && sun.castShadow ? sun.shadow.camera.right * Math.SQRT2 + R : 0;
+    const src = this.mesh, M = src.instanceMatrix.array, K = src.instanceColor.array, S = this.skinAttr.array;
+    const v = this.view, VM = v.instanceMatrix.array, VK = v.instanceColor.array, VS = v.geometry.attributes.aSkin.array;
+    let n = 0;
+    for (const car of this.list) {
+      const p = car.pos;
+      const near = sr > 0 && (p.x - P.x) ** 2 + (p.z - P.z) ** 2 < sr * sr;
+      if (!near && ((p.x - C.x) ** 2 + (p.z - C.z) ** 2 > far2 || !_fr.intersectsSphere(_sph.set(p, R)))) continue;
+      const i = car.i;
+      for (let k = 0; k < 16; k++) VM[n * 16 + k] = M[i * 16 + k];
+      VK[n * 3] = K[i * 3]; VK[n * 3 + 1] = K[i * 3 + 1]; VK[n * 3 + 2] = K[i * 3 + 2];
+      VS[n] = S[i];
+      n++;
+    }
+    v.count = n;
+    for (const a of [v.instanceMatrix, v.instanceColor, v.geometry.attributes.aSkin]) {
+      a.clearUpdateRanges();
+      a.addUpdateRange(0, n * a.itemSize);
+      a.needsUpdate = true;
     }
   }
 
@@ -496,6 +530,5 @@ export class Cars {
     car.speed = 0;
     this.place(car);
     this.mesh.setColorAt(car.i, _col.setRGB(0.07, 0.065, 0.06));
-    this.mesh.instanceColor.needsUpdate = true;
   }
 }

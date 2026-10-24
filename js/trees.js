@@ -152,9 +152,9 @@ function blobGeometry(detail = 1) {
 }
 
 /** A needled cone: wide at its foot, its rim drooping in ragged points */
-function coneGeometry() {
+function coneGeometry(sides = 14, rows = 3) {
   // Closed: the underside of a tier shows from below
-  const g = new THREE.ConeGeometry(1, 1, 14, 3);
+  const g = new THREE.ConeGeometry(1, 1, sides, rows);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -230,6 +230,9 @@ export class Trees {
       trunk: (() => { const g = new THREE.CylinderGeometry(0.62, 1, 1, 9, 2); g.translate(0, 0.5, 0); return g; })(),
       stump: (() => { const g = new THREE.CylinderGeometry(0.85, 1, 1, 9, 1); g.translate(0, 0.5, 0); return g; })(),
       blob: blobGeometry(1), blobHi: blobGeometry(2), cone: coneGeometry(),
+      // Far off, coarser shapes: the clumps are a few pixels across there
+      trunkLo: (() => { const g = new THREE.CylinderGeometry(0.62, 1, 1, 5, 1); g.translate(0, 0.5, 0); return g; })(),
+      blobLo: blobGeometry(0), coneLo: coneGeometry(7, 1),
     };
     const mk = (src, mat, count) => {
       // Each mesh has its own per-instance tiles, over the shared shape
@@ -246,6 +249,20 @@ export class Trees {
       city.scene.add(m);
       return m;
     };
+    const variant = (src, shape) => {
+      const m = new THREE.InstancedMesh(new THREE.BufferGeometry(), src.material, src.instanceMatrix.count);
+      for (const k of ['position', 'normal', 'uv']) if (shape.attributes[k]) m.geometry.setAttribute(k, shape.attributes[k]);
+      m.geometry.setIndex(shape.index);
+      m.geometry.setAttribute('aTile', src.geometry.attributes.aTile);
+      m.geometry.setAttribute('aRep', src.geometry.attributes.aRep);
+      m.instanceMatrix = src.instanceMatrix;
+      m.instanceColor = src.instanceColor;
+      m.count = src.count;
+      m.castShadow = m.receiveShadow = true;
+      m.visible = false;
+      city.scene.add(m);
+      return m;
+    };
     this.chunks = [];
     const tch = new Array(n);
     for (const c of chunks.values()) {
@@ -254,17 +271,12 @@ export class Trees {
         leaf: mk(base.blob, leafMat, c.nBlob), cone: mk(base.cone, leafMat, c.nCone), nt: 0, nb: 0, nc: 0,
       };
       ch.stump.count = 0;
-      // Near the camera the clumps are finer: the same instances, a rounder shape
-      ch.leafHi = new THREE.InstancedMesh(new THREE.BufferGeometry(), leafMat, ch.leaf.instanceMatrix.count);
-      for (const k of ['position', 'normal']) ch.leafHi.geometry.setAttribute(k, base.blobHi.attributes[k]);
-      ch.leafHi.geometry.setAttribute('aTile', ch.leaf.geometry.attributes.aTile);
-      ch.leafHi.geometry.setAttribute('aRep', ch.leaf.geometry.attributes.aRep);
-      ch.leafHi.instanceMatrix = ch.leaf.instanceMatrix;
-      ch.leafHi.instanceColor = ch.leaf.instanceColor;
-      ch.leafHi.count = ch.leaf.count;
-      ch.leafHi.castShadow = ch.leafHi.receiveShadow = true;
-      ch.leafHi.visible = false;
-      city.scene.add(ch.leafHi);
+      // Near the camera the clumps are finer, far off everything is coarser (lod()): the same
+      // instances, in another shape
+      ch.leafHi = variant(ch.leaf, base.blobHi);
+      ch.leafLo = variant(ch.leaf, base.blobLo);
+      ch.coneLo = variant(ch.cone, base.coneLo);
+      ch.trunkLo = variant(ch.trunk, base.trunkLo);
       this.chunks.push(ch);
       for (const i of c.trees) tch[i] = ch;
     }
@@ -323,6 +335,9 @@ export class Trees {
       }
       ch.stump.boundingSphere = ch.trunk.boundingSphere.clone();
       ch.leafHi.boundingSphere = ch.leaf.boundingSphere.clone();
+      ch.leafLo.boundingSphere = ch.leaf.boundingSphere.clone();
+      ch.coneLo.boundingSphere = ch.cone.boundingSphere.clone();
+      ch.trunkLo.boundingSphere = ch.trunk.boundingSphere.clone();
     }
     this.flushMeshes(true);
   }
@@ -718,10 +733,11 @@ export class Trees {
   /** ctx: { player: V3 (feet), vel: V3 } */
   /** Fine clumps for the chunks whose trees come near the camera, coarse ones further out */
   lod(cam) {
-    const near = this.city.m(120);
+    const near = this.city.m(120), far = this.city.m(450);
     for (const ch of this.chunks) {
-      const hi = !!ch.box && ch.box.distanceToPoint(cam) < near;
-      ch.leafHi.visible = hi; ch.leaf.visible = !hi;
+      const d = ch.box ? ch.box.distanceToPoint(cam) : 0, hi = d < near, lo = d > far;
+      ch.leafHi.visible = hi; ch.leaf.visible = !hi && !lo; ch.leafLo.visible = lo;
+      ch.cone.visible = ch.trunk.visible = !lo; ch.coneLo.visible = ch.trunkLo.visible = lo;
     }
   }
 
@@ -832,7 +848,7 @@ export class Trees {
       // Rolled or pushed off: its chunk's bounds take it in, so it isn't culled where it lies now
       _sph.set(t.C, t.canopyR + t.canopyY);
       const ch = t.ch;
-      for (const m of [ch.trunk, ch.leaf, ch.leafHi, ch.cone]) if (m.boundingSphere && !m.boundingSphere.containsPoint(t.C)) m.boundingSphere.union(_sph);
+      for (const m of [ch.trunk, ch.trunkLo, ch.leaf, ch.leafHi, ch.leafLo, ch.cone, ch.coneLo]) if (m.boundingSphere && !m.boundingSphere.containsPoint(t.C)) m.boundingSphere.union(_sph);
     } else _w.compose(t.base, ID_Q, _s.set(1, 1, 1));
     // The trunk runs on up into the crown
     _m.compose(_b.set(0, 0, 0), ID_Q, _s.set(t.trunkR, t.trunkH + (t.canopyY - t.trunkH) * 0.9, t.trunkR));

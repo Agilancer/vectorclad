@@ -16,6 +16,7 @@ import { Furniture } from './furniture.js';
 import { Train } from './train.js';
 import { setCeilingTextures } from './destruct/ceilings.js';
 import { titleDone, portraitPhone } from './title/title.js';
+import { Post } from './post.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -80,13 +81,32 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.6, 9000);
 
-const settings = Object.assign({ sound: true, music: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('vectorclad.settings', {}));
+const settings = Object.assign({ sound: true, music: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true, graphics: isTouch ? 'low' : 'auto' }, store.get('vectorclad.settings', {}));
+
+// Bloom, glare, ambient occlusion and god rays (js/post.js) for the High and Ultra graphics settings
+const post = new Post(renderer, scene, camera, SUN_DIR);
+const TIERS = ['low', 'high', 'ultra'];
+// Auto: Ultra to begin with, a step down whenever play runs slow for a while (see pace())
+const autoGfx = { tier: 'ultra', t0: 0, n: 0, slow: 0 };
+const graphicsTier = () => (settings.graphics === 'auto' ? autoGfx.tier : TIERS.includes(settings.graphics) ? settings.graphics : 'high');
+
+function applyGraphics() {
+  const tier = graphicsTier();
+  post.setQuality(tier);
+  // Ultra's shadows are twice as sharp
+  const size = tier === 'ultra' ? 4096 : 2048, sh = world && world.sun.shadow;
+  if (sh && sh.mapSize.x !== size) {
+    sh.mapSize.set(size, size);
+    if (sh.map) { sh.map.dispose(); sh.map = null; }
+  }
+}
 
 function applySettings() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.hires ? 2 : 1.25));
   resize();
   renderer.shadowMap.enabled = settings.shadows;
   if (world) world.sun.castShadow = settings.shadows;
+  applyGraphics();
   scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined) o.material.needsUpdate = true; });
   sound.setEnabled(settings.sound);
   music.setEnabled(settings.music);
@@ -297,7 +317,7 @@ async function init() {
   wash.rotation.x = -Math.PI / 2;
   wash.renderOrder = 2;
   scene.add(wash);
-  mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  mech.root.traverse((o) => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; });
   scene.add(mech.root);
   weapons = new WeaponSystem({ scene, fx, sound, world, mech, mats });
   weapons.onShake = shake;
@@ -515,7 +535,7 @@ function setFrame(id) {
     mech.root.position.copy(P.pos);
     mech.root.rotation.set(0, P.bodyYaw, 0);
     mech.resetFeet();
-    mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; if (o.userData.isOutline) o.visible = settings.outlines; });
+    mech.root.traverse((o) => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; if (o.userData.isOutline) o.visible = settings.outlines; });
     scene.add(mech.root);
     weapons.equip(loadout);
     if (mode !== 'loading') { fx.dust(P.pos, 1.2, 14); sound.servo(P.pos); }
@@ -1099,7 +1119,49 @@ function frame(now) {
     });
   }
 
-  if (!(window.__mech && window.__mech.skipRender)) renderer.render(scene, camera);
+  if (!(window.__mech && window.__mech.skipRender)) {
+    skipEmpty();
+    if (post.active) {
+      // A hit flashes red in from the edges and shakes the colors apart; low armor keeps a pulse of red
+      const hit = mode === 'play' ? Math.exp(-P.hurtT * 3.5) : 0, low = mode === 'play' && P.alive ? smoothstep(0.3, 0.1, P.ap / spec.ap) : 0;
+      post.state.hurt = Math.min(1, hit * 0.8 + low * (0.3 + 0.12 * Math.sin(time * 5)));
+      post.state.ca = hit * 0.05 + (P.dashing ? 0.012 : 0);
+      post.render(dt);
+    } else renderer.render(scene, camera);
+  }
+  pace(now);
+}
+
+/**
+ * Instanced meshes with nothing in them (furniture before a building breaks open, spider parts
+ * between waves, stumps, idle particles) would still bind their shaders and upload their
+ * uniforms every frame, and again for the shadow map: off the camera's layer while empty.
+ */
+function skipEmpty() {
+  scene.traverseVisible((o) => {
+    if (!o.isMesh && !o.isPoints && !o.isLine) return;
+    const g = o.geometry, n = o.isInstancedMesh ? o.count : g.isInstancedBufferGeometry ? g.instanceCount : g.drawRange.count;
+    if (n > 0) o.layers.enable(0); else o.layers.disable(0);
+  });
+}
+
+/**
+ * Auto graphics: while playing, watch how long frames take, and step down a setting when play
+ * stays slow (under about 45 frames a second for most of four seconds).
+ */
+function pace(now) {
+  const A = autoGfx;
+  if (settings.graphics !== 'auto' || mode !== 'play' || A.tier === 'low') { A.t0 = 0; return; }
+  if (!A.t0) { A.t0 = now; A.n = 0; return; }
+  A.n++;
+  if (now - A.t0 < 2000) return;
+  A.slow = (now - A.t0) / A.n > 1000 / 45 ? A.slow + 1 : 0;
+  A.t0 = 0;
+  if (A.slow >= 2) {
+    A.slow = 0;
+    A.tier = TIERS[TIERS.indexOf(A.tier) - 1];
+    applyGraphics();
+  }
 }
 
 init().catch((err) => {
@@ -1112,5 +1174,5 @@ window.__mech = {
   P, cam, input, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
   openFrames, openLoadout, startDrop, setFrame, get frame() { return spec; }, get allies() { return allies; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
-  renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
+  renderer, post, settings, applySettings, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
 };
