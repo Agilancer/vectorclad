@@ -17,10 +17,10 @@ const _q = new THREE.Quaternion();
 
 export const WEAPONS = {
   beamRifle: { name: 'BR-07 Beam Rifle', short: 'BEAM RIFLE', slots: ['hand'], kind: 'beam', ammo: 16, reload: 2.6, rate: 0.3, dmg: 30, speed: 330, color: 0xff4fc8, desc: 'Fast mega-particle bolts. Precise and reliable.' },
-  bazooka: { name: 'HB-90 Hyper Bazooka', short: 'BAZOOKA', slots: ['hand'], kind: 'rocket', ammo: 5, reload: 3.4, rate: 0.95, dmg: 90, splash: 9, speed: 120, desc: 'Heavy unguided rockets with a wide blast.' },
+  bazooka: { name: 'HB-90 Hyper Bazooka', short: 'BAZOOKA', slots: ['hand'], kind: 'rocket', ammo: 5, reload: 3.4, rate: 0.95, dmg: 90, splash: 6.3, speed: 120, desc: 'Heavy unguided rockets with a wide blast.' },
   machineGun: { name: 'MG-79 Machine Gun', short: 'MACHINE GUN', slots: ['hand'], kind: 'bullet', ammo: 90, reload: 2.4, rate: 0.075, dmg: 6, speed: 400, spread: 0.012, desc: 'Rotary 90 mm. Sustained suppressing fire.' },
   shotgun: { name: 'SC-12 Shotgun Cannon', short: 'SHOTGUN', slots: ['hand'], kind: 'pellet', ammo: 6, reload: 2.8, rate: 0.75, dmg: 9, pellets: 10, spread: 0.055, speed: 320, desc: 'Ten-pellet spread. Devastating up close.' },
-  grenade: { name: 'GL-6 Grenade Launcher', short: 'GRENADES', slots: ['hand'], kind: 'grenade', ammo: 8, reload: 3, rate: 0.42, dmg: 55, splash: 7, speed: 80, desc: 'Rotary drum of arcing high-explosive shells.' },
+  grenade: { name: 'GL-6 Grenade Launcher', short: 'GRENADES', slots: ['hand'], kind: 'grenade', ammo: 8, reload: 3, rate: 0.42, dmg: 55, splash: 4.9, speed: 80, desc: 'Rotary drum of arcing high-explosive shells.' },
   beamCannon: { name: 'MBC-2 Mega Beam Cannon', short: 'BEAM CANNON', slots: ['hand', 'shoulder'], kind: 'mega', ammo: 3, reload: 4.5, rate: 2.2, charge: 0.6, duration: 1.4, dps: 150, color: 0xffb84a, desc: 'Charged sustained beam that cuts through everything.' },
   vulcanPod: { name: 'VP-4 Vulcan Pod', short: 'VULCAN', slots: ['shoulder'], kind: 'bullet', ammo: 200, reload: 3, rate: 0.05, dmg: 4, speed: 420, spread: 0.022, desc: 'Shoulder gatling. Fires with the cannon trigger.' },
   missilePod: { name: 'MP-6 Missile Pod', short: 'MISSILES', slots: ['shoulder', 'leg'], kind: 'missile', missiles: 6, cols: 3, rows: 2, dmg: 34, splash: 5, mscale: 1, interval: 0.09, reloadTime: 6, speed: 95, desc: 'Six homing missiles behind an armored hatch.' },
@@ -639,6 +639,7 @@ export class WeaponSystem {
       }
       if (Math.random() < 0.5) this.fx.smoke.emit(p.x, p.y, p.z, rand(-2, 2), rand(3, 7), rand(-2, 2), rand(2, 3.5), 2, 9, 0.25, 0.24, 0.22, 0.6, 0.45, 0.45, 0.45, 0, 0.8, 0.5);
       if (Math.random() < 0.4) this.fx.sparksBurst(p, hit.normal, 4, 0xffc070, 40);
+      if (this.world.people) this.world.people.hit(p, 2);
       if (hit.target) this.world.damage(hit.target, def.dps * dt, p);
       // It cuts through whatever it touches: walls, floors, whole buildings
       else if (this.world.destruct) this.world.destruct.beam(hit, dir, dt);
@@ -827,6 +828,7 @@ export class WeaponSystem {
         b.pos.copy(hit.point);
         fx.beamHit(hit.point, hit.normal, b.def.color);
         this.sound.impact(hit.point);
+        if (W_.people) W_.people.hit(hit.point, 1.2);
         if (hit.target) W_.damage(hit.target, b.def.dmg, hit.point);
         else {
           // Bolts blow fist-sized... mech-fist-sized holes
@@ -854,6 +856,7 @@ export class WeaponSystem {
       const hit = W_.raycast(t.pos, t.dir, step, { props: true });
       if (hit) {
         fx.sparksBurst(hit.point, hit.normal, 6, 0xffb060, 25);
+        if (W_.people) W_.people.hit(hit.point, 0.5);
         if (Math.random() < 0.4) fx.smoke.emit(hit.point.x, hit.point.y, hit.point.z, rand(-1, 1), rand(1, 3), rand(-1, 1), 1, 0.6, 2.2, 0.55, 0.52, 0.48, 0.5, 0.6, 0.58, 0.55, 0, 1.5, 0.3);
         if (hit.target) W_.damage(hit.target, t.def.dmg, hit.point);
         // Every round takes its own bite out of what it hits

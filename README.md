@@ -5,11 +5,14 @@ loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machi
 that climb the towers and swarm in growing waves, and scorpion-frames that dig up
 out of the streets to claw and sting at it. Every tenth wave brings a black
 robotic millipede long enough to lie across several city blocks. The mech walks, boost-dashes,
-jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
+jump-jets, and fires beam rifles, cannons and full missile salvos. The city is alive:
+people walk its sidewalks and fill its buildings, traffic drives its streets and trains
+run on its elevated railway, and all of it can be blown apart. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from fifty-two more in `textures/city-src/`, the ceilings inside
-its buildings from five in `textures/ceiling-src/`, and the spiders and scorpions from
-ten in `textures/spider-src/`. There is no build step.
+`textures/`, the city from fifty-two more in `textures/city-src/` and the eighty
+asset packs' sheets in `assets/` (facades, storefronts, roofs, bark and foliage, and
+car skins), the ceilings inside its buildings from five in `textures/ceiling-src/`,
+and the spiders and scorpions from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
 
@@ -119,10 +122,10 @@ under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 Weapons, from the weapon sheet:
 
 - **BR-07 Beam Rifle**: fast pink beam bolts
-- **HB-90 Hyper Bazooka**: heavy rockets with back-blast and smoke trails
+- **HB-90 Hyper Bazooka**: heavy rockets with back-blast and smoke trails (a 30% tighter blast than it used to have)
 - **MG-79 Machine Gun**: spinning rotary barrels and tracers
 - **SC-12 Shotgun Cannon**: ten-pellet spread
-- **GL-6 Grenade Launcher**: rotating drum, arcing shells
+- **GL-6 Grenade Launcher**: rotating drum, arcing shells (blast 30% tighter, like the bazooka's; the missile pods keep theirs)
 - **MBC-2 Mega Beam Cannon**: charge, then a sustained beam (hand or shoulder)
 - **VP-4 Vulcan Pod**: shoulder gatling
 - **MP-6 Missile Pod**: 6 homing missiles behind an opening hatch (shoulder or leg)
@@ -132,8 +135,9 @@ Weapons, from the weapon sheet:
 
 ## The city
 
-Port Meridian: a 10 x 10 grid of blocks on a peninsula between two rivers and a harbor,
-built entirely from the city texture sheets. The mech stands 40 ft (12.2 m) tall: at startup `main.js`
+Port Meridian: a 15 x 15 grid of blocks on a peninsula between two rivers and a harbor,
+with a forest along its west side, built entirely from the city texture sheets and the
+asset packs. The mech stands 40 ft (12.2 m) tall: at startup `main.js`
 measures the top of its head in the idle stance and sets the world scale from
 that (about 1.71 m per game unit), and the city is laid out in real meters.
 
@@ -146,7 +150,7 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
     - Each road keeps one asphalt per wear level along its whole length, laid in world space and mirrored at the tile edges, so it has no seams. Avenues run unbroken through the intersections, and the surface only changes where the wear does. The asphalt is drawn from plain tiles without painted lines and close in tone.
     - Each sidewalk picks its own tile, so the paving changes block by block. The original slab tiles stay in the clean mix.
     - Manholes, sidewalk covers and grates, tree pits under the street trees, and the starting plaza's paving (setts, fan cobbles, herringbone brick or pavers) come from the kits too.
-- **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters (one around the starting plaza, one to the southeast):
+- **Buildings:** several kinds, mixed by how close a block is to one of three tall clusters (one around the starting plaza, one to the southeast and a smaller one beyond it toward the highway):
   - Walk-ups with storefronts and cornices; prewar mid-rises with setbacks.
   - Glass office slabs and towers with mechanical penthouses; a third of the towers wear a crown instead.
   - Twisting towers, whose square floors turn a quarter turn or so on the way up, and tapering octagonal and hexagonal towers with spires.
@@ -162,19 +166,107 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
     - Piers frame the corners and split long sides into evenly sized groups of bays.
     - Offices and towers get a louvered mechanical floor every 40 to 85 m and under each setback, and their penthouses wear the kit's louvers.
     - Walk-ups draw from the brick, limestone and masonry kits; prewar buildings and art deco towers from the masonry and warm stone kits; offices and towers from the glass, metal and dark stone ones.
-- **Open spaces:** a starting plaza with an armillary of steel rings and planters, a park with a fountain, a small green, and the plaza under the gate building.
+  - Twenty more kits come from the skyscraper facade sheets (`assets/skyscraper-facades`): silver aluminum, art deco limestone with bronze, white precast, black steel curtain wall, red brick industrial, brutalist concrete, champagne aluminum, terracotta rainscreen, pale granite, green copper, white ceramic tile, 1920s sandstone, blue-gray metal panel, dark basalt with bronze, travertine fins, weathered 1970s concrete, burgundy metal and brick, pale green enamel, ribbed titanium and neo-gothic limestone. Each sheet's window bays, wall panels (with a pier cut down the middle of each) and louvers join the facade mix by style.
+  - Ground floors open onto the street through twenty storefront kits (`assets/street-level-storefronts`): bakeries, bookshops, coffee shops, pharmacies, florists, butchers, barbers, laundromats, galleries, record shops, tailors and more. A street front is a run of their shop windows and doorways, now and then one with its shutter down, under a sign board; their upper-floor windows face walk-ups and row houses too.
+  - Roofs are covered from twenty roof sheets (`assets/rooftop-textures`): rubber membrane, gravel ballast, standing seam, copper, terracotta, slate, white membrane, concrete, bitumen, sedum, solar, corrugated steel, pavers, decking, zinc, shingles and more, with drains, vents and hatches from the same sheet set into them.
+- **Residential streets:** the blocks by the forest are detached houses, two floors or so under hipped roofs of terracotta, slate, shingle, ceramic, zinc or copper, set back behind lawns with a path to the door and a tree in the yard. Beyond them, and along much of the south waterfront, row houses stand wall to wall, three or four floors over their doorways, with cornices along the top.
+- **The forest:** a belt of woods 190 m deep runs the length of the city between its westernmost avenue and the west esplanade. Gravel trails carry every cross street through it and one runs its length; boulders and fallen logs lie along them. A smooth field drifts the stands from oak, beech, maple, birch, elm, linden and poplar woods into pines, spruces, firs and cedars, with groves of redwoods twice their height.
+- **Open spaces:** a starting plaza with an armillary of steel rings and planters, two parks with fountains, three small greens, and the plaza under the gate building.
 - **Elevated structures:** built from ten structure kits (railway, steel truss, overpass, viaduct, interchange, footing, suspension, cable-stay, stonework and industrial).
-  - An elevated railway runs down the avenue beside the starting plaza: double track on a deck carried by lattice girders, on steel bents every 15 m.
+  - An elevated railway runs down the avenue beside the starting plaza: double track on a deck carried by lattice girders, on steel bents about every 15 m (never in a cross street's roadway: there they step back to the crosswalks, and the traffic passes under). Trains run on it (see **Trains** below).
   - An elevated expressway runs along the east waterfront: four lanes on girders and hammerhead piers, with lamps along its barriers. At the south end a ramp brings it down to the esplanade.
   - Both decks clear the mech (17 m up), so it can walk under them, and both are solid: jump up onto either, or walk up the highway ramp, and walk along the top. Railings and barriers keep it on unless it jumps them. Spiders perch on them like roofs.
-- **Waterfront:** an esplanade with railings on the east and west and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
-- **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, the odd steam vent, and parked cars (the teal ones are taxis).
+- **Waterfront:** an esplanade with railings on the east and west (past the forest) and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
+- **Street life:** streetlights, traffic signals, transit entrances with blue lamps, kiosks with screens, street trees, the odd steam vent, cars parked along the curbs and driving the streets, and people on the sidewalks (see **People** below).
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
   - Running into a tree rips it out of the ground, leaving a stump, and it tumbles and rolls away. Walk or dash into a fallen tree to kick it along.
   - Any shot, blast or beam that hits a tree knocks it loose and sets it burning, and so do spider fire, a Scorcher's flames and the burning ground they leave. A burning tree chars and drops its leaves, and sets alight any tree it rolls into.
+- **Trees:** twelve species, each with its own bark and foliage from the bark-and-foliage sheets (`assets/bark-and-foliage`) and its own crown: round heads of leafy clumps on oaks, maples, beeches and lindens, vase-shaped elms, slender birches with pale bark, columnar poplars, tiered pines, spruces and firs, conical cedars, and redwoods with long bare trunks. Every tree is sized and shaped a little differently. The streets and parks have the broadleaf kinds and the odd pine; the forest has them all. Trees are drawn in chunks of the city, so whole chunks drop out of view and out of the sun's shadow pass.
 - **Scenery:** skylines on the far shores of both rivers, uptown towers to the north led by a twisting supertall, and out in the harbor a lighthouse on a rocky islet and a line of wind turbines whose rotors turn.
   - A suspension bridge across the east river: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
   - A cable-stayed bridge across the west river, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
+
+### Cars and traffic
+
+Every car wears one of a hundred skins from the car sheets in `assets/car-sprites`
+(ten each of sedans, hatchbacks, coupes, supercars, muscle cars, SUVs, pickups, vans,
+wagons and rally cars), and its body is built to fit its skin. Each sheet holds unfolded
+car nets: a plan strip (hood, roof, trunk) between two full-length side profiles, the
+front fascia above and the rear below. `tools/build_asset_atlas.py` cuts every net into its
+five pieces (where pieces touch, the fascias hang off the plan strip like tabs; they are
+cut free along the narrowest gap, row by row, and where a side's windows run into the plan
+strip, along the plan strip's edge as it runs there; each piece is trimmed to its opaque
+pixels, which drops the sheets' soft fringes, and the plan strip loses its mirror arms) and
+measures the side profile and plan at 28 stations from bumper to bumper. The car's sides follow the painted silhouette, wheels,
+arches, windshield and roof line included, its top wears the plan strip and its ends the
+fascias. All cars share one topology and one draw call: the vertex shader reads each
+instance's skin from a data texture and moves the vertices to fit it.
+
+- **Parked cars** line the curb lanes of every street.
+- **Traffic** keeps to the middle lanes, one way along the avenues and one way or two way
+  on the cross streets; the roads round the edge of the city run both ways, so a car that
+  comes to the edge always has somewhere to turn. Cars follow the car ahead, turn at intersections where the streets
+  allow, and stop for the mech, for wrecks, rubble and pieces of building in the road, and
+  for fallen trees. Up to 180 drive at once; new ones keep coming in out of the mech's
+  sight to replace those lost, and wrecks are cleared away once nobody is near.
+- Driving cars are as breakable as parked ones: the mech treads on them, and shots and
+  blasts set them burning.
+
+### People
+
+The city is full of people, at their true size beside the 12 m mech (`js/people.js`):
+
+- **Fifty models:** twenty you'd meet in a city (office workers, a banker, a businesswoman,
+  a construction worker in a hard hat, a police officer, a nurse, a cook, joggers, a
+  tourist, students, a courier, retirees, children, a skater, a mechanic, a doctor, a
+  musician) and thirty more from the city's wardrobe. Each is a build (height, girth), a
+  skin tone, a haircut, clothes (shirts and jackets with short or long sleeves, trousers,
+  shorts or skirts, shoes) and now and then a hat or a bag.
+- **Animated on a rig of joint angles:** they idle (shifting their weight, looking round),
+  walk, run, die (toppling over), slide backward off a ledge (leaning back, feet scrabbling,
+  arms windmilling) and fall (tumbling, flailing). Every part of every person is one
+  InstancedMesh, so the crowd draws in a handful of calls.
+- **On the sidewalks:** a few hundred walk the loops round the blocks near the mech,
+  stopping now and then and crossing the streets at the corners. Those left far behind are
+  moved on to blocks near the mech again, out of its sight.
+- **In the buildings:** when a building is first broken open, its floors round the hole
+  fill with people and furniture, some buildings far more than others (offices most, homes
+  fewer). The ones by the hole are thrown out of it or slide backward off the broken floor
+  and fall; the rest stay inside until the next blast throws them or the floor under them
+  goes.
+- **What happens to them:** explosions throw and kill them, rounds and beams cut them down,
+  the mech's feet squash them, falling pieces of building and train cars crush them, and a
+  fall from more than a storey or so ends in a little red splat on the pavement. Blasts,
+  falling buildings and the mech coming close send everyone near running.
+
+**Furniture** (`js/furniture.js`): sixteen pieces modeled in three.js from boxes and
+cylinders: desks with monitors and office chairs, filing cabinets, bookshelves full of
+books, water coolers and potted plants for the offices; sofas, armchairs, beds, tables
+and chairs, televisions, fridges, wardrobes and floor lamps for the homes. Blasts throw
+them out through the holes, tumbling; a piece whose floor is shot away falls; they bounce
+and come to rest on the street, on the rubble or on the floors below.
+
+### Trains
+
+A train comes in on the elevated railway about once a minute, out of the north end of the
+line beyond the barricade (`js/train.js`): cab cars at both ends and four coaches between, stainless steel
+from the silver aluminum facade sheet with ribbed titanium roofs, on bogies. It runs south
+down the line, stops at the end of it by the water, crosses over to the other track and
+runs back north out of the city.
+
+It brakes to a stop for the mech standing on the track, and for a train stopped ahead of it,
+so trains held up queue behind each other (and the next one waits to come in). But wherever the deck has been shot
+away under it, or a wreck is lying on the line, it derails: the cars stay coupled while it
+brakes, and each one leaves the rails as it runs off the broken end of the track (the
+leading one as it runs into the wreck ahead), going on as a rigid body with the train's
+speed. It tumbles off and crashes down onto whatever is below, crushing cars, people and
+trees. Whatever is left when the train stops lies on the deck for the next one to plough
+into. The trains keep coming whether or not the line is still there, so the wrecks pile up
+in and under the gap, each settled car becoming something solid for the next ones to land
+on and for the mech to climb. A settled wreck stays put only while something holds it up:
+shoot the deck out from under one, or the wreck it lies on, and it comes down.
+
+### Atlases
 
 All city surfaces sample six texture atlases (`textures/city-facade.jpg`,
 `city-surface.jpg`, `city-ground.jpg`, `city-panels.jpg`, `city-roads.jpg`,
@@ -186,7 +278,15 @@ panels ever outgrow one 4096 px page, the build splits them over `city-panels2.j
 the city gives each page its materials. The structure atlas is WebP so its see-through
 pieces keep their alpha.
 `tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
-source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
+source sheets in `textures/city-src/`. The asset packs add four more pages, built by
+`python3 tools/build_asset_atlas.py [--review DIR]` (it needs NumPy, Pillow and SciPy)
+into `js/kitTiles.js`, which merges them into the city's tiles: `city-kits.jpg` (the
+skyscraper facade kits), `city-stores.jpg` (the storefront kits), `city-roofs.jpg` (roof
+coverings and details), plus `trees.jpg` (bark and foliage) and `cars.webp` (the car
+skins, with alpha). Every facade, storefront, roof and foliage sheet is a 4 x 4 grid of
+modules; the build finds the grid lines near the quarter marks and cuts each module a
+little inside them, so no sliver of its neighbor repeats along an edge. `--review` draws
+the car cuts over each car sheet. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
 
 The panel kits (the sheets named in `KITS` in `tools/build_city_atlas.py`) are
@@ -244,6 +344,8 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
 
   Spider fire chips the city too, but less: plasma bolts, lasers, mortar shells and
   skitterer blasts.
+  - Outer walls are built a little tougher than the rest: every cell facing the outside
+    has a quarter more hit points.
 - **Holes are cut to the pixel.** A damaged structure keeps the triangles it was drawn
   with as a skin. A 3D mask texture, one texel per cell, drops every fragment whose cell is
   gone, with torn cladding at the edges and scorch around them, and the shadow map uses the
@@ -326,6 +428,11 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
 - **Rubble and dust:** up to 2,400 tumbling chunks (900 on touch devices), shaped by
   material: rocks, glass shards, timber splinters and steel rods. Collapses throw out dust
   surges, and straining levels groan and shed grit before they go.
+- **Shrapnel:** explosions also tear big chunks off what they hit, slabs of wall and floor
+  one to three meters across and lengths of twisted steel, thrown hard out of the crater:
+  one for about every twelve cubic meters blown away, so a bigger hole throws more.
+- **What's inside comes out:** people and furniture fill the floors round a hole and spill
+  out of it (see **People** under **The city**).
 - **The mech walks into what it breaks open.** It stands on broken floors and climbs
   rubble.
 
@@ -648,10 +755,15 @@ in the hangar settings.
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
-| `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
-| `js/trees.js` | Street and park trees: instanced trunks and leaves, uprooting, rigid-body tumbling and rolling, burning |
+| `js/city.js` | Port Meridian: street grid, buildings, houses and row houses, roofs, parks, the forest, street furniture, elevated railway and highway, waterfront, bridges, distant scenery |
+| `js/trees.js` | Trees: species, textured trunks and crowns instanced by chunk, uprooting, rigid-body tumbling and rolling, burning |
+| `js/cars.js` | Cars: bodies shaped to their skins in the vertex shader, parked cars, lane-following traffic that turns and respawns |
+| `js/people.js` | People: fifty models, the rig and its animations, sidewalk walkers, panic, building occupants, falls and splats |
+| `js/furniture.js` | Furniture: sixteen modeled pieces, furnishing broken floors, thrown and tumbling pieces |
+| `js/train.js` | The El's trains: the route, derailing where the track is gone or blocked, wrecks as rigid boxes that pile up |
+| `js/kitTiles.js` | Generated: the facade, storefront and roof kits, tree tiles and car skins with their measured outlines |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
-| `js/world.js` | Sky, lights, spatial collision grid (colliders and trees), raycasts (through voxel structures and falling pieces), damage routing |
+| `js/world.js` | Sky, lights, spatial collision grid (colliders, moving cars and trees), raycasts (through voxel structures and falling pieces), damage routing, filling broken buildings |
 | `js/destruct/destruct.js` | Destruction: activating structures, damage, structural checks (islands, bending sections, chunks, spans, remnants), tipping on hinges, breaking away, crushing, shattering, rendering budgets |
 | `js/destruct/grid.js` | Voxel grids on lines snapped to the original surfaces, materials, ray marching and push-out |
 | `js/destruct/voxelize.js` | Turns a city owner's recorded volumes into walls, floors, columns, cores and rooms |
@@ -679,6 +791,7 @@ in the hangar settings.
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
 | `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade, ground and structure kits |
+| `tools/build_asset_atlas.py` | Packs the asset packs in `assets/`: facade, storefront and roof kits, tree tiles, and the car nets cut into pieces and measured |
 | `tools/city-panels.json` | Each facade, ground and structure panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 | `tools/build_ceiling_atlas.py` | Cuts the light fixtures, ceiling tiles and vents out of their sheets and packs them into the ceiling atlas and glow map |
