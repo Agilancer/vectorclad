@@ -1,0 +1,222 @@
+[
+  {
+    "index": 1,
+    "file": "01-flat-commercial-roof.png",
+    "style": "Flat commercial roof: weathered charcoal EPDM rubber membrane, seam strips, patch modules, square drain, low curb, simple louvered vent",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-835442db-bc66-4b21-899b-86c0a3315014.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Flat commercial roof: weathered charcoal EPDM rubber membrane, seam strips, patch modules, square drain, low curb, simple louvered vent",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "1e4a33f8103fd0f4be3135b43990128dc122a23573aa78325b1cdde913c6210f",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 2,
+    "file": "02-gravel-ballast-roof.png",
+    "style": "Gravel ballast roof: pale gray pea gravel, exposed perimeter flashing, drain grate, concrete equipment pad, dark service hatch",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-0f4aecaf-b83f-4092-bebb-d96db9ab3aa9.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Gravel ballast roof: pale gray pea gravel, exposed perimeter flashing, drain grate, concrete equipment pad, dark service hatch",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "9782619e065b4d9719332f8bb9bfcb620e40340f4157070e0acd9872fc1914e1",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 3,
+    "file": "03-industrial-standing-seam-roof.png",
+    "style": "Industrial standing seam roof: galvanized silver gray sheet metal, regular seams, ridge trim, gutter channels, simple metal vent",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-61258794-ab64-475d-8e03-89986aaf4c2f.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Industrial standing seam roof: galvanized silver gray sheet metal, regular seams, ridge trim, gutter channels, simple metal vent",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "30d5a7cf067e6e4643fb109a14cc9e91f7646d3101a5032f546f229110467798",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 4,
+    "file": "04-aged-copper-roof.png",
+    "style": "Aged copper roof: rich green verdigris metal panels, standing seams, copper flashing, drain and flat maintenance hatch",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-0927c23e-39c6-4030-9974-95446d51fd70.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Aged copper roof: rich green verdigris metal panels, standing seams, copper flashing, drain and flat maintenance hatch",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "3d07bbc2440dda5239c486e090a05d820d73d5fc4e10aee7515c4f476980692d",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 5,
+    "file": "05-terracotta-roof.png",
+    "style": "Terracotta roof: warm orange clay barrel tiles, matching ridge caps, edge trims, small tile repairs and vent tiles",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-dfc995b2-8951-4373-af52-e59f84139443.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Terracotta roof: warm orange clay barrel tiles, matching ridge caps, edge trims, small tile repairs and vent tiles",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "d6d25f7cd558164ece84018ff3739aa25167e5ed99cb6fc0f9997c3f111cf588",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 6,
+    "file": "06-slate-roof.png",
+    "style": "Slate roof: dark blue gray overlapping natural slate shingles, ridge and flashing modules, subtle chipped edges, vent cap",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-1d290f6c-af47-48b1-b19e-d31ecb523fe9.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Slate roof: dark blue gray overlapping natural slate shingles, ridge and flashing modules, subtle chipped edges, vent cap",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "53d5f90dec8e5e2c8cbc9c0ce7af5db5006463f7c072c7cd2267970687507f6d",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 7,
+    "file": "07-modern-white-cool-roof.png",
+    "style": "Modern white cool roof: off-white TPO membrane, welded seams, dark patched square, roof drain, white service hatch and curb",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-57e0d3ad-0510-45a5-8c98-d44956010859.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Modern white cool roof: off-white TPO membrane, welded seams, dark patched square, roof drain, white service hatch and curb",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "2d356ca653222b2f2e2b9f645799e0bf3ebc745b1c732dd2ba40f695972bea1b",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 8,
+    "file": "08-brutalist-concrete-roof.png",
+    "style": "Brutalist concrete roof: weathered raw gray concrete slabs, expansion joints, drain grates, raised equipment pad, vent curb",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-aadd761b-ccf5-459b-8988-987241bdf2fa.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Brutalist concrete roof: weathered raw gray concrete slabs, expansion joints, drain grates, raised equipment pad, vent curb",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "47c4977845dc3af8abc18eb70ed57b137f7bb1e2ac54003ebd3c15ef22824875",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 9,
+    "file": "09-black-bitumen-roof.png",
+    "style": "Black bitumen roof: asphalt roll roofing, tar seams, rectangular repairs, gritty texture, drain and hatch modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-8fd3f85d-fdd3-4599-ba1c-59689fb5e367.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Black bitumen roof: asphalt roll roofing, tar seams, rectangular repairs, gritty texture, drain and hatch modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "b53d898d01dbb5c584023a21a106f15c45116fd435e363caa446809b56665860",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 10,
+    "file": "10-green-sedum-roof.png",
+    "style": "Green sedum roof: low dense mossy sedum mat textures, gravel separation strips, metal edge trim, drain inspection box, no trees",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-03c8ba0e-a9b7-4a70-9d9a-1744a68df05d.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Green sedum roof: low dense mossy sedum mat textures, gravel separation strips, metal edge trim, drain inspection box, no trees",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "a1101f2c46ef964aa96db30ef8136784d502fc7008e2a8ab8378e0e8d6fe29c1",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 11,
+    "file": "11-solar-roof.png",
+    "style": "Solar roof: dark nonreflective blue black photovoltaic panels seen exactly top-down, matte cells and grid lines, metal mounting rail modules, asphalt gap and service walkway",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-722cdfe8-e5a3-45a2-a9a4-e62748d83fa3.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Solar roof: dark nonreflective blue black photovoltaic panels seen exactly top-down, matte cells and grid lines, metal mounting rail modules, asphalt gap and service walkway",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "69077ce3445166680de9d1d1b4da2ae8933ebe6dcf052c623e6e930141ba7c6a",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 12,
+    "file": "12-warehouse-corrugated-metal-roof.png",
+    "style": "Warehouse corrugated metal roof: weathered muted red corrugated steel, repaired sheet patch, ridge cap, gutter and low vent",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-4d4720de-4eab-420f-8177-641ff87337e4.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Warehouse corrugated metal roof: weathered muted red corrugated steel, repaired sheet patch, ridge cap, gutter and low vent",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "aed7751e6044f138a037d33ea7c49519fcfc2a491e6ed2370cf1b108b9321248",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 13,
+    "file": "13-urban-rooftop-pavers.png",
+    "style": "Urban rooftop pavers: buff concrete square pavers, joints and light grime, pedestal edge trim, service grate, drain and access hatch",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-c8356f1b-5a19-4caf-94dc-d2e77689b122.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Urban rooftop pavers: buff concrete square pavers, joints and light grime, pedestal edge trim, service grate, drain and access hatch",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "0f324f8a220b0935c7023b5982748ad895b8f768c372376b9e9a4dd6c1680a85",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 14,
+    "file": "14-wood-rooftop-deck.png",
+    "style": "Wood rooftop deck: weathered gray brown timber boards, aligned plank joints, slatted drain cover, edge strips and metal inspection hatch",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-53458838-5ef5-42ad-b3f3-3ac7962ad924.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Wood rooftop deck: weathered gray brown timber boards, aligned plank joints, slatted drain cover, edge strips and metal inspection hatch",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "c02bd14ab27795d9120f4e20e0f08d6551736a8b8cf988f3965e0a5f53ddde5c",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 15,
+    "file": "15-blue-industrial-membrane-roof.png",
+    "style": "Blue industrial membrane roof: muted blue PVC roofing, heat welded seam strips, patched sections, roof drain and raised vent base",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-14136be6-0392-4b71-a573-05fdff9fe47c.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Blue industrial membrane roof: muted blue PVC roofing, heat welded seam strips, patched sections, roof drain and raised vent base",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "38573126e9671acc0a1f30977a48b1c79306d786987c93111f52f55b1ac6e5c3",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 16,
+    "file": "16-zinc-roof.png",
+    "style": "Zinc roof: matte blue gray zinc standing seam panels, folded joints, ridge trim, gutter sections and service hatch",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-f83757c2-723f-430a-b696-c16504972a40.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Zinc roof: matte blue gray zinc standing seam panels, folded joints, ridge trim, gutter sections and service hatch",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "d0595721bee12a688e671c07ee49512ebf550ed53cb51cff042cc6552fd37b51",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 17,
+    "file": "17-brown-asphalt-shingle-roof.png",
+    "style": "Brown asphalt shingle roof: overlapping brown mineral asphalt shingles, ridge caps, repaired patch modules, flashing and roof vent",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-4e03aff5-de44-4354-8562-b256ef9b341f.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Brown asphalt shingle roof: overlapping brown mineral asphalt shingles, ridge caps, repaired patch modules, flashing and roof vent",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "4f36de9fef8fc8ee318583c20560183fb1fa18d79cc3b29e71365917716e67c4",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 18,
+    "file": "18-white-gravel-and-dark-skylight-roof.png",
+    "style": "White gravel and dark skylight roof: limestone gravel fields, black nonreflective opaque skylight panes in low rectangular frames, drains and metal curbs",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-61f5c941-fed6-4d37-845d-9a29aa3b2067.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: White gravel and dark skylight roof: limestone gravel fields, black nonreflective opaque skylight panes in low rectangular frames, drains and metal curbs",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "7235d6c860a9411a455e57be7dfecdbea71364f061ee0191a1638c9ff4fcb190",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 19,
+    "file": "19-weathered-ceramic-roof.png",
+    "style": "Weathered ceramic roof: muted gray green flat interlocking ceramic tiles, subtle moss seams, ridge tiles, metal flashing and vent tile modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-4cf56b7d-03c0-498c-a11a-e1303290d7f9.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Weathered ceramic roof: muted gray green flat interlocking ceramic tiles, subtle moss seams, ridge tiles, metal flashing and vent tile modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "4a157392ac3f8bc0556ede71130eac5ca1cd94b5518845facd93fb56299eb005",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 20,
+    "file": "20-large-tower-utility-roof.png",
+    "style": "Large tower utility roof: gray concrete and black membrane, exactly overhead HVAC grille modules, duct top panels, matte dark skylight, service hatch, drain and walkway texture",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-0628e891-4396-4322-a922-a5520cd5a285.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame rooftop material texture sprite sheet / modular base color atlas. Produce ONE square high resolution image, request 2048x2048 pixels. Exactly 4 columns by 4 rows of equal square texture modules, filling image edge-to-edge, no gutters or margins. Camera exactly straight down orthographic TOP DOWN, no perspective, no horizon, no visible building walls or sides. Sixteen consistent scale modular roof surface sprites: top two rows eight mostly continuous roof covering variants with material seams, wear or repair variation; third row four edge/flashing/ridge/service-walkway material modules appropriate to roof style; bottom row four top-down drain/vent/hatch/curb detail modules appropriate to style. Realistic high detail material surfaces, clean straight atlas alignment. Uniform neutral diffuse illumination, minimal baked shading, no directional cast shadows. Any skylight or solar glass must be OPAQUE MATTE DARK with NO REFLECTIONS of sky, clouds, buildings or other scenery; no glare, shine or specular highlights. No text, labels, numbers, logos, borders, grid overlays, watermark, people, vehicles, loose props, background or scene. Flat usable roof texture atlas artwork, not a photograph of an entire building and not an isometric object collection. Material/style: Large tower utility roof: gray concrete and black membrane, exactly overhead HVAC grille modules, duct top panels, matte dark skylight, service hatch, drain and walkway texture",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "29af2b7297575b68200c869fa3efe508d96db56085f4dd6170ddd1978b1a9054",
+    "generator": "Built-in ImageGen"
+  }
+]
