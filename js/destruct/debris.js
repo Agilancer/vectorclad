@@ -280,12 +280,15 @@ export class Slabs {
         let nx = px + d[o + 3] * dt, ny = py + vy * dt, nz = pz + d[o + 5] * dt;
         const gy = env.ground(nx, nz);
         let hit = false, down = false;
-        if (ny - half < gy) {
+        if (gy < 0) {
+          // Into the river: it sinks
+          if (ny < gy - 2 * half) { d[o + 13] = 0; continue; }
+        } else if (ny - half < gy) {
           ny = gy + half; hit = down = true;
           d[o + 4] = -vy * 0.2; d[o + 3] *= 0.55; d[o + 5] *= 0.55;
         } else if (d[o + 13] - d[o + 12] > 0.25 && env.solid(nx, ny - half, nz)) {
-          // (the first moment it is let through the edges of the hole it came out of)
-          // Find which way its underside came in and bounce off that face
+          // Find which way its underside came in and bounce off that face (a moment after it is
+          // thrown: until then it may pass the edges of the hole it came out of)
           hit = true;
           if (!env.solid(px, ny - half, pz)) { nx = px; nz = pz; d[o + 3] *= -0.3; d[o + 5] *= -0.3; } else if (!env.solid(nx, py - half, nz)) {
             ny = py; down = vy < 0;
@@ -312,7 +315,6 @@ export class Slabs {
             d[o + 1] += h - half;
           }
         }
-        // Lost in the water or flung away
         if (ny < -30) d[o + 13] = 0;
       } else {
         d[o + 12] -= dt;
