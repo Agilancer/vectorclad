@@ -13,7 +13,7 @@ run on its elevated railway, and all of it can be blown apart. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
 `textures/`, the city from fifty-two more in `textures/city-src/` and the eighty
 asset packs' sheets in `assets/` (facades, storefronts, roofs, bark and foliage, and
-car skins), the ceilings inside its buildings from five in `textures/ceiling-src/`,
+car skins) and its sixty billboard ads, the ceilings inside its buildings from five in `textures/ceiling-src/`,
 and the spiders and scorpions from ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
@@ -236,7 +236,8 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Crowns: a sloped glass wedge, a glowing halo ring held on struts over a glass drum, or a steel lattice lantern around a needle.
   - Signature blocks: the observation needle (the city's landmark, a tapering concrete shaft with a flared pod, a glass viewing ring and a beaconed mast), twin towers on a podium joined by a sky bridge, a gate building whose bridge of floors spans a plaza the mech can walk through, and a stepped ziggurat with a garden and trees on every terrace.
   - Roofs carry gardens, steel tanks, masts, solar panels, billboards and helipads. About half the walk-ups and prewar buildings also carry an old timber water tower on braced steel legs.
-  - Big screens for made-up brands hang over the streets on some tall buildings.
+  - Big screens hang over the streets on some tall buildings.
+  - Every billboard, wall screen and kiosk screen shows one of the sixty ads in `assets/billboards`: forty eccentric products (Miracle Office Shrimp, Sleepless Mint, Crunchy Water and the rest) and twenty serious corporate campaigns. The ads are dealt out in a shuffled order, the whole pack before any repeats, so every one of them is up somewhere in the city (each shows on six or seven of its 380 screens).
   - Party walls are brick, but buildings taller than their neighbors get windows on every side.
   - Many facades are composed from twenty panel kits, each a family of materials: steel, precast, graphite, brick, concrete, limestone, teal glass, aluminum, navy, slate, sandstone, indigo, silver, travertine, seaglass, masonry, ivory, basalt, azure, and a sheet of whole facades.
     - Each building picks one kit and one window bay, so its floors line up.
@@ -365,7 +366,9 @@ coverings and details), plus `trees.jpg` (bark and foliage) and `cars.webp` (the
 skins, with alpha). Every facade, storefront, roof and foliage sheet is a 4 x 4 grid of
 modules; the build finds the grid lines near the quarter marks and cuts each module a
 little inside them, so no sliver of its neighbor repeats along an edge. `--review` draws
-the car cuts over each car sheet. Collision uses a spatial grid, and rays walk
+the car cuts over each car sheet. `python3 tools/build_billboard_atlas.py` (Pillow and
+NumPy) scales the billboard ads into the 16:9 cells of `textures/billboards.jpg` and
+writes where each one sits into `js/billboards.js`. Collision uses a spatial grid, and rays walk
 it with a 2D DDA.
 
 The panel kits (the sheets named in `KITS` in `tools/build_city_atlas.py`) are
