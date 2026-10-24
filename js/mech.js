@@ -59,6 +59,7 @@ const LEG_SIDE = [-1, 1];
 const _q1 = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _q3 = new THREE.Quaternion();
+const _q4 = new THREE.Quaternion();
 const _m1 = new THREE.Matrix4();
 const _m2 = new THREE.Matrix4();
 const _eu = new THREE.Euler();
@@ -69,6 +70,8 @@ const _gd = new THREE.Vector3();
 const _ge = new THREE.Vector3();
 const _gf = new THREE.Vector3();
 const _pole = new THREE.Vector3();
+const _aimDir = new THREE.Vector3(), _hold = new THREE.Vector3();
+const _go = new THREE.Vector3(), _gx = new THREE.Vector3(), _gy = new THREE.Vector3(), _gz = new THREE.Vector3();
 const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // ---------------------------------------------------------------------------
@@ -478,6 +481,11 @@ export class Mech {
     if (this.arms[1].shieldMount) m.leftShield = this.arms[1].shieldMount;
     if (this.legs[0].mount) m.legR = this.legs[0].mount;
     if (this.legs[1].mount) m.legL = this.legs[1].mount;
+    // Arm lengths for the arm IK: shoulder to elbow, elbow to the grip in the hand
+    for (const A of this.arms) {
+      A.upper = A.elbow.position.length();
+      A.fore = _ga.copy(A.hand.position).add(A.mount.position).length();
+    }
     this.outlines = addOutline(this.root, 0.016);
     this.root.scale.setScalar(this.rig.scale);
   }
@@ -782,58 +790,91 @@ export class Mech {
       if (p > 0) slashTwist += this.arms[i].s * (0.5 - 1.1 * smoothstep(0.3, 0.55, p)) * slashWeight(p);
     }
     this.waist.rotation.y = clamp(w.twist + slashTwist, -1.3, 1.3) - hipTwist * 0.7 + 0.16 * idle;
-    this.waist.rotation.x = R.hunch + w.dash * 0.3 + w.crouch * 0.25 - st.aimPitch * 0.12 + breath * 0.012 + W * 0.08 + jolt * 0.06 + R.hunchIdle * idle;
+    this.waist.rotation.x = R.hunch + w.dash * 0.3 + w.crouch * 0.25 - st.aimPitch * 0.12 + Math.max(0, -st.aimPitch - 0.4) * 0.3 + breath * 0.012 + W * 0.08 + jolt * 0.06 + R.hunchIdle * idle;
     this.waist.rotation.z = -0.03 * idle;
     const sweep = Math.pow(Math.sin(t * 0.42), 5) * 0.5 * idle * (1 - w.aim[0]);
     this.head.rotation.y = clamp((st.aimYaw - w.twist) * 0.8, -0.6, 0.6) - 0.12 * idle + sweep;
-    this.head.rotation.x = clamp(-st.aimPitch * 0.65, -0.5, 0.45) - (w.dash * 0.25) - this.waist.rotation.x * 0.7 + 0.08 * idle;
+    this.head.rotation.x = clamp(-st.aimPitch * 0.65, -0.5, 0.8) - (w.dash * 0.25) - this.waist.rotation.x * 0.7 + 0.08 * idle;
     this.head.rotation.z = 0.04 * idle;
 
     // --- arms ---
+    // An arm holding a gun carries it like a soldier would: elbow bent and low, the gun at
+    // low ready across the body, raised along the line of sight to aim (arm IK), and the free
+    // hand on its foregrip when the other hand is empty. Empty arms swing with the stride;
+    // the shield, reload and blade poses blend in over the top.
+    this.chest.updateWorldMatrix(true, false);
+    this.chest.getWorldQuaternion(_q4).invert();
+    const yawW = (st.bodyYaw || 0) + st.aimYaw, cp = Math.cos(st.aimPitch);
+    _aimDir.set(Math.sin(yawW) * cp, Math.sin(st.aimPitch), Math.cos(yawW) * cp).applyQuaternion(_q4);
+    const armed = st.armed || [false, false];
     for (let i = 0; i < 2; i++) {
       const A = this.arms[i], s = A.s;
       const swing = -Math.sin(this.armPhase + (i === 0 ? 0 : Math.PI)) * 0.28 * W * (1 - w.dash);
       const isShield = i === 1 && st.hasShield;
-      let shx = 0.05 + swing, shy = 0, shz = s * (R.armOut + 0.16 * idle), elx = isShield ? -1.2 : -0.75;
-      // Idle: rifle at low ready across the body; shield arm in a guard
+      let shx = 0.05 + (armed[i] ? swing * 0.3 : swing), shy = 0, shz = s * (R.armOut + 0.16 * idle), elx = isShield ? -1.2 : -0.75;
+      // Idle: shield arm in a guard, an empty arm hanging loose
       if (isShield) {
         shx += (-0.42 - shx) * idle; shy += (-s * 0.12 - shy) * idle; elx += (-1.15 - elx) * idle;
       } else {
-        shx += (-0.5 - shx) * idle; shy += (-s * 0.34 - shy) * idle; elx += (-0.9 - elx) * idle;
+        shx += (-0.22 - shx) * idle; shy += (-s * 0.1 - shy) * idle; elx += (-0.5 - elx) * idle;
       }
       shx += breath * 0.02 * idle;
       shx += (0.35 - shx) * w.dash * 0.8;
       shz += s * 0.25 * w.air;
-      const a = w.aim[i];
-      const aimX = -Math.PI / 2 - st.aimPitch - this.waist.rotation.x + 0.06;
-      shx += (aimX - shx) * a;
-      shy += (-s * 0.14 - shy) * a;
-      shz += (s * 0.05 - shz) * a;
-      elx += (-0.12 - elx) * a;
+      _q2.setFromEuler(_eu.set(shx, shy, shz, 'YXZ'));
+      // A gun is held at low ready, and swung up to the line of sight to aim
+      if (armed[i]) {
+        const a = w.aim[i];
+        // Low ready: angled down across the body, in the world rather than the hunched chest
+        const hy = (st.bodyYaw || 0) + w.twist, cx = -s * 0.36, cz = 0.8;
+        _hold.set(cx * Math.cos(hy) + cz * Math.sin(hy), -0.42 + breath * 0.01, -cx * Math.sin(hy) + cz * Math.cos(hy)).applyQuaternion(_q4).normalize();
+        _hold.lerp(_aimDir, a).normalize();
+        this.armAim(A, _hold, _q3);
+        const k = Math.max(a, 1 - w.dash * 0.75 - w.air * 0.25);
+        _q2.slerp(_q3, k);
+        elx += (A.ikEl - elx) * k;
+      }
       if (isShield) {
         const b = w.shield;
-        shx += (-1.05 - shx) * b;
-        shy += (-s * 0.75 - shy) * b;
+        _q2.slerp(_q3.setFromEuler(_eu.set(-1.05, -s * 0.75, shz, 'YXZ')), b);
         elx += (-1.45 - elx) * b;
       }
       const r = w.reload[i];
-      shx += (0.15 - shx) * r;
-      elx += (-1.7 - elx) * r;
+      if (r > 0.001) {
+        _q2.slerp(_q3.setFromEuler(_eu.set(0.15, -s * 0.3, shz, 'YXZ')), r);
+        elx += (-1.7 - elx) * r;
+      }
       // Blade swing: raise the arm high and out, then sweep it down across the body
       const p = w.slash[i];
       if (p > 0) {
         const k = slashWeight(p), e = smoothstep(0.3, 0.55, p);
-        shx += (-2.3 + 1.2 * e - shx) * k;
-        shy += (s * (0.7 - 1.65 * e) - shy) * k;
-        shz += (s * (0.55 - 0.45 * e) - shz) * k;
+        _q2.slerp(_q3.setFromEuler(_eu.set(-2.3 + 1.2 * e, s * (0.7 - 1.65 * e), s * (0.55 - 0.45 * e), 'YXZ')), k);
         elx += (-1.25 + 1.1 * e - elx) * k;
       }
-      shx -= w.recoil[i] * 0.22;
-      elx -= w.recoil[i] * 0.4;
-      A.sh.rotation.set(shx, shy, shz);
-      A.elbow.rotation.x = elx;
-      A.hand.rotation.x = -0.05 + w.recoil[i] * 0.15;
-      if (A.pauldron) A.pauldron.rotation.x = -shx * 0.4;
+      A.sh.quaternion.copy(_q2);
+      // Recoil kicks the forearm up and the shoulder back
+      A.sh.rotateX(w.recoil[i] * 0.16);
+      A.elbow.rotation.x = Math.min(0, elx - w.recoil[i] * 0.35);
+      A.hand.rotation.x = -0.05 + w.recoil[i] * 0.12;
+      if (A.pauldron) {
+        _ga.set(0, -1, 0).applyQuaternion(A.sh.quaternion);
+        A.pauldron.rotation.x = 0.4 * Math.atan2(_ga.z, -_ga.y);
+      }
+    }
+    // The free hand takes the foregrip of the gun in the other
+    if (st.support && this.mounts.rightHand) {
+      const g = this.mounts.rightHand.children[0], fg = g && g.userData.foregrip;
+      const k = (1 - w.dash) * (1 - w.reload[0]) * (1 - w.air * 0.6) * (1 - w.reload[1]);
+      if (fg && k > 0.01) {
+        const A = this.arms[1];
+        this.arms[0].sh.updateWorldMatrix(true, true);
+        fg.getWorldPosition(_gc);
+        this.chest.worldToLocal(_gc).sub(A.sh.position);
+        this.armReach(A, _gc, _q3);
+        A.sh.quaternion.slerp(_q3, k);
+        A.elbow.rotation.x += (A.ikEl - A.elbow.rotation.x) * k;
+        A.hand.rotation.x += (0.5 - A.hand.rotation.x) * k;
+      }
     }
 
     // --- thrusters ---
@@ -853,6 +894,45 @@ export class Mech {
     if (this.onAnimate) this.onAnimate(dt, st, idle);
 
     return { height, step, soft: !this.walking };
+  }
+
+  /**
+   * Arm IK for a held gun: the forearm points along d (chest space), the elbow hangs below
+   * and a little out from the shoulder, the upper arm reaches from the shoulder to it.
+   * Returns the shoulder's quaternion in out, the elbow's bend in A.ikEl.
+   */
+  armAim(A, d, out) {
+    const U = A.upper, s = A.s;
+    const o = _go.set(s * 0.2 * U, -0.52 * U, 0.2 * U);
+    const od = o.dot(d);
+    const u = -od + Math.sqrt(Math.max(0, od * od - o.lengthSq() + U * U));
+    const up = o.addScaledVector(d, u).normalize();
+    return this.armBasis(A, up, d, out);
+  }
+
+  /** Two-bone arm IK reaching the hand to T (chest space, relative to the shoulder), elbow down and out */
+  armReach(A, T, out) {
+    const U = A.upper, F = A.fore - 0.12, s = A.s;
+    const D = clamp(T.length(), Math.abs(U - F) + 0.05, U + F - 0.02);
+    const cosA = clamp((U * U + D * D - F * F) / (2 * U * D), -1, 1), sinA = Math.sqrt(1 - cosA * cosA);
+    const t = _gd.copy(T).normalize();
+    const pole = _ge.set(s * 0.7, -1, -0.15).normalize();
+    pole.addScaledVector(t, -pole.dot(t)).normalize();
+    const up = _gf.copy(t).multiplyScalar(cosA).addScaledVector(pole, sinA);
+    const fore = _gb.copy(T).addScaledVector(up, -U).normalize();
+    return this.armBasis(A, up, fore, out);
+  }
+
+  /** Shoulder orientation with the upper arm along up and the forearm bending toward fore */
+  armBasis(A, up, fore, out) {
+    const Y = _gy.copy(up).negate();
+    const Z = _gz.copy(fore).addScaledVector(up, -up.dot(fore));
+    if (Z.lengthSq() < 1e-5) Z.set(0, 0, 1).addScaledVector(up, -up.z);
+    Z.normalize();
+    const X = _gx.crossVectors(Y, Z);
+    out.setFromRotationMatrix(_m1.makeBasis(X, Y, Z));
+    A.ikEl = -Math.acos(clamp(up.dot(fore), -1, 1));
+    return out;
   }
 
   /** Forget planted footholds, e.g. after the mech is moved */

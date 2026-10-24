@@ -3,7 +3,7 @@
 //   frame=<id>|lineup   which frame, or all six side by side
 //   preset=<n>          which of the frame's presets to equip (default 0)
 //   pose=idle|walk|dash|air|aim|slash|shield
-//   paint=<paint id>    yaw=<radians> pitch=<radians> dist=<units>   rack=1 (every weapon)
+//   paint=<paint id>    yaw=<radians> pitch=<radians> dist=<units>   rack=1 (every weapon), rack=new, rack=<weapon id>
 // window.__show drives it from a test.
 import * as THREE from '../js/three.js';
 import { makeMaterials, applyPaint, PAINTS, addOutline, glowTexture } from '../js/atlas.js';
@@ -91,7 +91,9 @@ function addFrame(frame, x, presetIdx = 0) {
   }
   mech.root.position.set(x, 0, 0);
   scene.add(mech.root);
-  const u = { frame, mech, x, z: 0, hasShield: preset.slots.leftHand && preset.slots.leftHand[0] === 'shield' };
+  const gun = (id) => !!id && id !== 'shield' && id !== 'blade' && !!WEAPONS[id];
+  const R = (preset.slots.rightHand || [])[0], L = (preset.slots.leftHand || [])[0];
+  const u = { frame, mech, x, z: 0, hasShield: L === 'shield', armed: [gun(R), gun(L)], support: gun(R) && !L };
   units.push(u);
   return u;
 }
@@ -118,8 +120,8 @@ function info() {
 // The weapons laid out on a wall rack, muzzles to the right: rack=1 for all of them, rack=new for the arsenal's
 function rack(which = qs.get('rack')) {
   clear();
-  const ids = Object.keys(WEAPONS).filter((id) => which !== 'new' || ARSENAL.includes(id));
-  const cols = which === 'new' ? 3 : 4, rows = Math.ceil(ids.length / cols);
+  const ids = WEAPONS[which] ? [which] : Object.keys(WEAPONS).filter((id) => which !== 'new' || ARSENAL.includes(id));
+  const cols = Math.min(ids.length, which === 'new' ? 3 : 4), rows = Math.ceil(ids.length / cols);
   const g = new THREE.Group();
   ids.forEach((id, i) => {
     const m = buildWeaponModel(id, { id: 'white', tint: '#ffffff', stripe: '#d8322b' }, mats);
@@ -152,6 +154,9 @@ function step(dt) {
     if (u.rack) continue;
     const s = st();
     s.hasShield = u.hasShield;
+    s.armed = u.armed;
+    s.support = u.support;
+    s.aimPitch = view.aimPitch || 0;
     const speed = pose === 'walk' ? u.frame.walk : 0;
     if (pose === 'walk') {
       u.z += speed * dt;
@@ -160,7 +165,7 @@ function step(dt) {
     }
     if (pose === 'dash') { s.dash = 1; s.thrust = { main: 1, vern: 0.75, calf: 0.55, sole: 0 }; }
     if (pose === 'air') { s.air = 1; s.thrust = { main: 0.85, vern: 0.55, calf: 0.9, sole: 1 }; }
-    if (pose === 'aim') { s.aim = [1, 1]; s.aimPitch = 0.05; }
+    if (pose === 'aim') { s.aim = [1, 1]; s.aimPitch = view.aimPitch ?? 0.05; }
     if (pose === 'shield') { s.aim = [1, 0]; s.shield = true; }
     if (pose === 'slash') s.slash = [(time * 0.8) % 1, 0];
     u.mech.root.position.set(u.x, 0, u.z);

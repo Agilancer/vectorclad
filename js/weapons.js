@@ -282,6 +282,13 @@ export function mountWeapon(slot, wid, skinId, mats) {
   const model = back && wid === 'beamCannon' ? Object.assign(buildBeamCannon(mats.weaponFor(skin), true), { def }) : buildWeaponModel(wid, skin, mats);
   if (slot.type === 'leg' || slot.type === 'hip') model.group.scale.setScalar(0.66);
   if (back && def.kind === 'missile') model.group.scale.setScalar(0.76);
+  // Where the free hand takes hold of a hand gun: under the barrel, ahead of the grip
+  if (slot.type === 'hand' && model.muzzles.length) {
+    const mz = model.muzzles[0].position, fg = new THREE.Object3D();
+    fg.position.set(0, (model.foregrip ? model.foregrip.y : mz.y - 0.16), model.foregrip ? model.foregrip.z : Math.max(0.9, mz.z * 0.42));
+    model.group.add(fg);
+    model.group.userData.foregrip = fg;
+  }
   return { model, mount: wid === 'shield' ? 'leftShield' : slot.id };
 }
 

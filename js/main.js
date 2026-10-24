@@ -33,6 +33,10 @@ const HIT_SCALE = 1.5;
 const REGEN_DELAY = 4;
 const REGEN_RATE = 0.026;
 const SHIELD_ARC = 1.2;
+// The camera and the guns can look nearly straight down (and up to here)
+const PITCH_DOWN = 1.45;
+/** A hand slot holding a gun, carried and aimed with both arms' IK (not a shield or a blade) */
+const heldGun = (s) => !!s && s.def.kind !== 'shield' && s.def.kind !== 'blade';
 const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second
 
 // Boost gauge (0-100). Dashes and jump jets burn it at BOOST_DRAIN times their base
@@ -493,12 +497,12 @@ function updatePlayer(dt, c) {
   // Look
   const sens = 0.0022 * settings.sens;
   P.yaw -= c.lookX * sens;
-  P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -0.7, 1.0);
+  P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -PITCH_DOWN, 1.0);
   // Lock-on steers the camera so the target stays in view; the mouse still adds on top
   if (playing && hard.target) {
     _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6.2 * BODY.scale, P.pos.z));
     const ty = Math.atan2(_t.x, _t.z);
-    const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -0.7, 1.0);
+    const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -PITCH_DOWN, 1.0);
     P.yaw = dampAngle(P.yaw, ty, 3.5, dt);
     P.pitch = damp(P.pitch, tp, 3, dt);
   }
@@ -953,7 +957,7 @@ function loop(now) {
   _t.subVectors(aim.point, shoulder);
   const aimYawWorld = Math.atan2(_t.x, _t.z);
   const aiming = mode === 'play' && !cam.debugOrbit;
-  const aimPitch = aiming ? clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)), -0.8, 1.0) : 0;
+  const aimPitch = aiming ? clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)), -PITCH_DOWN, 1.1) : 0;
   const aimYaw = aiming ? clamp(wrap(aimYawWorld - P.bodyYaw), -1.2, 1.2) : 0;
 
   // Weapons (input only while playing)
@@ -971,6 +975,7 @@ function loop(now) {
     legYaw: P.legYaw, aimYaw, aimPitch,
     aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload], slash: [H[0].slash || 0, H[1].slash || 0],
     shield: weapons.shieldUp, hasShield: !!(weapons.slots.leftHand && weapons.slots.leftHand.def.kind === 'shield'),
+    armed: [heldGun(weapons.slots.rightHand), heldGun(weapons.slots.leftHand)], support: heldGun(weapons.slots.rightHand) && !weapons.slots.leftHand,
     thrust: (window.__mech && window.__mech.forceThrust) || P.thrust, time,
   });
   if (res.step >= 0) {

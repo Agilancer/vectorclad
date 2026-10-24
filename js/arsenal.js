@@ -36,94 +36,169 @@ function muzzleAt(g, x, y, z) {
   g.add(o);
   return o;
 }
-const grip = (g, m, y = -0.15, z = 0) => place(g, WP(chamferBox(0.16, 0.42, 0.22, 0.05), m.metal), 0, y, z);
-
 // ---------------------------------------------------------------------------
 // Models. Built along +Z (muzzle forward); hand weapons have the grip at the
-// origin, mounted weapons their base.
+// origin, mounted weapons their base. They're built like the reference rifles:
+// angular slabs cut to a side profile (with skeleton cut-outs), faceted barrels,
+// cooling fins and vent slots, dark recessed panels and thin lit accent lines.
 // ---------------------------------------------------------------------------
+
+/** A slab cut to a side profile of [z, y] points, w wide across X, with optional [z, y] holes */
+function slab(pts, w, mat, faces, holes = [], bevel = 0.02) {
+  const shape = new THREE.Shape();
+  shape.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+  shape.closePath();
+  for (const h of holes) {
+    const p = new THREE.Path();
+    p.moveTo(h[0][0], h[0][1]);
+    for (let i = 1; i < h.length; i++) p.lineTo(h[i][0], h[i][1]);
+    p.closePath();
+    shape.holes.push(p);
+  }
+  const b = Math.min(bevel, w * 0.3);
+  const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.002, w - 2 * b), bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 1, curveSegments: 4 });
+  g.translate(0, 0, -(w - 2 * b) / 2);
+  g.rotateY(-Math.PI / 2);
+  return WP(g, mat, faces);
+}
+const rect = (z0, y0, z1, y1) => [[z0, y0], [z1, y0], [z1, y1], [z0, y1]];
+/** A thin lit line (accent light, glowing slit) */
+function glowLine(parent, mat, sx, sy, sz, x, y, z, rx = 0, ry = 0, rz = 0) {
+  const g = place(parent, new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat), x, y, z, rx, ry, rz);
+  g.userData.noOutline = true;
+  return g;
+}
+/** n dark vent slots in a row along z, on both sides at ±x */
+function vents(parent, m, n, x, y, z0, step, sy = 0.08, sz = 0.05) {
+  for (let i = 0; i < n; i++) for (const sd of [-1, 1]) place(parent, WP(chamferBox(0.02, sy, sz, 0.005), m.bore), sd * x, y, z0 + i * step);
+}
+/** A faceted barrel along z, flats top and bottom */
+const prismZ = (rTop, rBot, len, sides = 6) => cylZ(rTop, rBot, len, sides).rotateZ(Math.PI / sides);
+/** An angled pistol grip at the origin, with a trigger guard */
+function grip(g, m) {
+  place(g, slab([[-0.12, 0.04], [0.12, 0.04], [0.04, -0.46], [-0.2, -0.46], [-0.18, -0.36]], 0.17, m.metal));
+  place(g, slab([[0.12, 0.0], [0.42, 0.0], [0.42, -0.2], [0.36, -0.2], [0.36, -0.05], [0.14, -0.05]], 0.06, m.metal));
+}
 
 function buildRailgun(m) {
   const g = new THREE.Group();
-  place(g, WP(chamferBox(0.42, 0.56, 1.5, 0.08), m.body, { x: W.bcWhite, all: W.bcWhite2 }), 0, 0.22, 0.3);
-  place(g, WP(chamferBox(0.36, 0.48, 0.74, 0.08), m.raw, { all: W.bcDark }), 0, 0.2, -0.78);
-  // Two rails with a slot between them, braced top and bottom
-  for (const x of [-0.12, 0.12]) place(g, WP(chamferBox(0.1, 0.2, 2.7, 0.03), m.metal), x, 0.3, 2.3);
-  place(g, WP(chamferBox(0.34, 0.05, 2.5, 0.02), m.metal), 0, 0.43, 2.2);
-  place(g, WP(chamferBox(0.34, 0.05, 2.5, 0.02), m.metal), 0, 0.17, 2.2);
-  // Coil rings that light up as it spools
-  const coil = new THREE.MeshStandardMaterial({ color: 0x1c2a33, emissive: 0x4fd8ff, emissiveIntensity: 0.25, metalness: 0.6, roughness: 0.3 });
-  for (let i = 0; i < 5; i++) place(g, new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 6, 18), coil), 0, 0.3, 1.25 + i * 0.42);
-  for (const x of [-0.12, 0.12]) place(g, WP(chamferBox(0.13, 0.26, 0.2, 0.03), m.metal), x, 0.3, 3.62);
-  place(g, WP(chamferBox(0.43, 0.07, 0.5, 0.02), m.stripe), 0, 0.48, 0.5);
-  place(g, WP(chamferBox(0.16, 0.2, 0.5, 0.04), m.raw, { all: W.rifleDark }), 0, 0.6, 0.15);
-  place(g, new THREE.Mesh(cylZ(0.06, 0.06, 0.04, 12), LENS), 0, 0.6, 0.41);
+  const coil = new THREE.MeshStandardMaterial({ color: 0x08141a, emissive: 0x5fe0ff, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.5 });
+  const cyan = lit(0x7fe6ff);
+  // Bullpup receiver with a skeleton stock
+  place(g, slab([[-1.5, -0.3], [-1.5, 0.24], [-1.25, 0.42], [0.3, 0.48], [1.25, 0.42], [1.35, 0.12], [0.55, 0.02], [0.3, -0.1], [-0.3, -0.1], [-0.45, -0.3]], 0.34,
+    m.body, { x: W.bcWhite, all: W.bcWhite2 }, [[[-1.3, -0.16], [-0.62, -0.16], [-0.62, 0.14], [-1.3, 0.2]]]));
+  for (const sd of [-1, 1]) {
+    place(g, slab([[-0.5, 0.06], [1.1, 0.1], [1.2, 0.34], [-0.4, 0.36]], 0.02, m.raw, { all: W.bcDark }), sd * 0.178, 0, 0);
+    glowLine(g, cyan, 0.012, 0.025, 1.3, sd * 0.19, 0.3, 0.35);
+  }
+  place(g, slab([[-1.56, -0.32], [-1.46, -0.32], [-1.46, 0.26], [-1.56, 0.22]], 0.38, m.metal));
+  place(g, slab([[-1.0, 0.36], [0.9, 0.4], [0.9, 0.45], [-1.0, 0.41]], 0.36, m.stripe));
+  // Split rails, with the coil channel glowing between them
+  place(g, slab([[0.9, 0.52], [4.05, 0.52], [4.4, 0.43], [4.4, 0.36], [0.9, 0.36]], 0.24, m.metal));
+  place(g, slab([[0.9, 0.2], [4.4, 0.2], [4.4, 0.13], [4.05, 0.04], [0.9, 0.04]], 0.24, m.metal));
+  place(g, new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 3.4), coil), 0, 0.28, 2.65).userData.noOutline = true;
+  // Shroud plates down both sides, windowed onto the channel
+  for (const sd of [-1, 1]) {
+    place(g, slab([[1.0, 0.56], [3.0, 0.56], [3.35, 0.34], [3.0, 0.0], [1.0, 0.0]], 0.035, m.body, { all: W.bcWhite2 },
+      [rect(1.3, 0.2, 1.75, 0.38), rect(1.95, 0.2, 2.4, 0.38), rect(2.6, 0.22, 2.95, 0.36)]), sd * 0.15, 0, 0);
+  }
+  // Heat-sink fins raked along the top, and a muzzle frame binding the rails
+  for (let i = 0; i < 6; i++) place(g, WP(chamferBox(0.3, 0.16, 0.035, 0.01), m.metal), 0, 0.6, 1.25 + i * 0.27, -0.55, 0, 0);
+  place(g, slab([[4.2, 0.58], [4.34, 0.58], [4.38, -0.0], [4.2, -0.0]], 0.32, m.metal, null, [rect(4.24, 0.12, 4.36, 0.44)]));
+  // Capacitor pack under the fore end with charge slits, and a long sight on top
+  place(g, slab([[0.5, 0.02], [1.3, 0.02], [1.18, -0.22], [0.6, -0.22]], 0.3, m.raw, { all: W.bcDark }));
+  for (const sd of [-1, 1]) for (let k = 0; k < 3; k++) glowLine(g, coil, 0.015, 0.03, 0.12, sd * 0.152, -0.1, 0.65 + k * 0.17);
+  place(g, slab([[-0.4, 0.5], [0.7, 0.52], [0.82, 0.62], [0.76, 0.72], [-0.3, 0.72], [-0.42, 0.62]], 0.15, m.metal));
+  place(g, new THREE.Mesh(cylZ(0.05, 0.05, 0.03, 10), LENS), 0, 0.63, 0.83);
   grip(g, m);
-  place(g, WP(chamferBox(0.2, 0.36, 0.3, 0.05), m.raw, { all: W.rifleDark }), 0, -0.15, 0.7);
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.3, 3.75)], coil };
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.28, 4.45)], coil, foregrip: { y: -0.24, z: 0.9 } };
 }
 
 function buildArcCaster(m) {
   const g = new THREE.Group();
-  place(g, WP(chamferBox(0.42, 0.5, 1.3, 0.08), m.body, { x: W.sgWhite, all: W.sgWhite }), 0, 0.2, 0.3);
-  place(g, WP(chamferBox(0.3, 0.4, 0.6, 0.08), m.raw, { all: W.sgLabel }), 0, 0.14, -0.6);
-  // Ceramic insulator stack out to a forked emitter with a charged ball between its prongs
-  for (let i = 0; i < 5; i++) place(g, new THREE.Mesh(cylZ(0.21 - (i % 2) * 0.05, 0.21 - (i % 2) * 0.05, 0.1, 14), i % 2 ? m.metal : CERAMIC), 0, 0.26, 1.02 + i * 0.12);
-  place(g, WP(cylZ(0.11, 0.11, 0.7, 10), m.metal), 0, 0.26, 1.3);
-  for (const sd of [-1, 1]) {
-    const prong = place(g, WP(chamferBox(0.08, 0.12, 1.0, 0.02), m.metal), sd * 0.2, 0.26, 2.05, 0, sd * 0.12, 0);
-    place(prong, new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), lit(0xbfeaff)), 0, 0, 0.5).userData.noOutline = true;
+  const cyan = lit(0x9fe4ff);
+  place(g, slab([[-0.95, -0.1], [-0.95, 0.3], [-0.75, 0.42], [0.75, 0.42], [0.95, 0.3], [0.95, 0.0], [0.3, -0.1], [-0.35, -0.1]], 0.36, m.body, { x: W.sgWhite, all: W.sgWhite }));
+  for (const sd of [-1, 1]) place(g, slab([[-0.6, 0.06], [0.8, 0.06], [0.8, 0.3], [-0.6, 0.3]], 0.02, m.raw, { all: W.sgLabel }), sd * 0.188, 0, 0);
+  // Power cell on top with two lit cells, and conduits running forward to the emitter
+  place(g, slab([[-0.7, 0.42], [0.35, 0.42], [0.25, 0.6], [-0.6, 0.6]], 0.26, m.metal));
+  for (const z of [-0.42, -0.1]) glowLine(g, cyan, 0.27, 0.06, 0.18, 0, 0.53, z);
+  for (const sd of [-1, 1]) place(g, new THREE.Mesh(cylZ(0.025, 0.025, 1.9, 6), cyan), sd * 0.2, 0.36, 0.95).userData.noOutline = true;
+  // Ceramic insulator stack on a faceted spine
+  place(g, WP(prismZ(0.1, 0.1, 1.3), m.metal), 0, 0.2, 1.5);
+  for (let i = 0; i < 4; i++) place(g, new THREE.Mesh(prismZ(0.24 - i * 0.025, 0.24 - i * 0.025, 0.09), CERAMIC), 0, 0.2, 1.05 + i * 0.17);
+  // Three prongs closing on a charged core, a trident crown
+  for (let k = 0; k < 3; k++) {
+    const pr = new THREE.Group();
+    pr.position.set(0, 0.2, 0);
+    pr.rotation.z = (k / 3) * Math.PI * 2;
+    g.add(pr);
+    place(pr, slab([[1.55, 0.14], [2.25, 0.27], [2.8, 0.12], [2.74, 0.07], [2.2, 0.17], [1.55, 0.06]], 0.07, m.metal));
+    place(pr, new THREE.Mesh(new THREE.OctahedronGeometry(0.045), cyan), 0, 0.09, 2.78).userData.noOutline = true;
   }
-  place(g, WP(chamferBox(0.5, 0.08, 0.14, 0.02), m.metal), 0, 0.26, 1.6);
-  const ball = place(g, new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), lit(0xbfeaff)), 0, 0.26, 2.25);
-  ball.userData.noOutline = true;
-  const halo = place(g, sprite(0x8fd8ff, 0.9, 0.7), 0, 0.26, 2.25);
-  place(g, WP(chamferBox(0.43, 0.06, 0.4, 0.02), m.stripe), 0, 0.46, 0.5);
+  place(g, new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 1), lit(0xd8f4ff)), 0, 0.2, 2.45).userData.noOutline = true;
+  const halo = place(g, sprite(0x8fd8ff, 0.9, 0.7), 0, 0.2, 2.45);
   grip(g, m);
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.26, 2.3)], halo };
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.2, 2.6)], halo, foregrip: { y: -0.08, z: 1.1 } };
 }
 
 function buildFlamer(m) {
   const g = new THREE.Group();
-  place(g, WP(chamferBox(0.4, 0.46, 1.2, 0.08), m.body, { x: W.glWhite, all: W.glWhite }), 0, 0.22, 0.35);
-  // Fuel tanks slung under the body, hazard-banded
+  const amber = lit(0xffa040);
+  place(g, slab([[-1.0, -0.1], [-1.0, 0.28], [-0.8, 0.44], [0.8, 0.44], [1.05, 0.3], [1.05, 0.0], [0.3, -0.12], [-0.3, -0.12]], 0.38, m.body, { x: W.glWhite, all: W.glWhite }));
+  place(g, slab([[-0.7, 0.44], [0.6, 0.44], [0.6, 0.52], [-0.7, 0.52]], 0.3, m.metal, null, [rect(-0.5, 0.46, 0.4, 0.5)]));
+  // Twin fuel cells slung under the body, with lit gauge windows
   for (const sd of [-1, 1]) {
-    place(g, WP(cylZ(0.17, 0.17, 1.3, 14), m.body, { x: W.bazWhite, y: W.bazWhite }), sd * 0.2, -0.16, 0.05);
-    for (const z of [-0.35, 0.45]) place(g, WP(cylZ(0.175, 0.175, 0.08, 14), m.stripe), sd * 0.2, -0.16, z);
+    place(g, WP(prismZ(0.15, 0.15, 1.2), m.body, { x: W.bazWhite, y: W.bazWhite }), sd * 0.21, -0.14, -0.15);
+    for (const z of [-0.78, 0.48]) place(g, WP(prismZ(0.11, 0.155, 0.12), m.metal), sd * 0.21, -0.14, z);
+    glowLine(g, amber, 0.02, 0.05, 0.6, sd * 0.36, -0.14, -0.15);
+    place(g, WP(prismZ(0.155, 0.155, 0.06), m.stripe), sd * 0.21, -0.14, 0.15);
   }
-  // Long nozzle under a perforated heat shield, with a pilot light at the tip
-  place(g, WP(chamferBox(0.34, 0.34, 1.1, 0.06), m.raw, { all: W.mgDark }), 0, 0.26, 1.5);
-  place(g, WP(cylZ(0.12, 0.15, 1.7, 12), m.metal), 0, 0.26, 1.85);
-  place(g, WP(cylZ(0.2, 0.12, 0.3, 12), m.metal), 0, 0.26, 2.78);
-  place(g, WP(cylZ(0.13, 0.13, 0.02, 12), m.bore), 0, 0.26, 2.94);
-  place(g, WP(cylZ(0.04, 0.04, 0.9, 6), m.metal), 0, 0.06, 2.2);
-  const pilot = place(g, sprite(0x6fa8ff, 0.36, 0.9), 0, 0.06, 2.68);
+  // Long nozzle in a vented, faceted heat shroud, flaring into four petals
+  place(g, WP(prismZ(0.2, 0.18, 1.3), m.raw, { all: W.mgDark }), 0, 0.24, 1.6);
+  for (let i = 0; i < 5; i++) place(g, WP(chamferBox(0.22, 0.02, 0.1, 0.005), m.bore), 0, 0.42, 1.12 + i * 0.22);
+  place(g, WP(prismZ(0.11, 0.12, 1.9), m.metal), 0, 0.24, 1.95);
+  for (let k = 0; k < 4; k++) {
+    const pt = new THREE.Group();
+    pt.position.set(0, 0.24, 2.75);
+    pt.rotation.z = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    g.add(pt);
+    place(pt, slab([[0.0, 0.1], [0.28, 0.2], [0.3, 0.16], [0.0, 0.06]], 0.09, m.metal));
+    glowLine(pt, amber, 0.03, 0.02, 0.18, 0, 0.1, 0.18);
+  }
+  // Igniter arm under the nozzle, with its pilot light
+  place(g, slab([[1.1, 0.06], [2.6, 0.02], [2.65, -0.04], [1.1, -0.02]], 0.06, m.metal));
+  const pilot = place(g, sprite(0x6fa8ff, 0.36, 0.9), 0, 0.0, 2.7);
   grip(g, m);
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.26, 2.95)], pilot };
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.24, 2.95)], pilot, foregrip: { y: 0.02, z: 1.25 } };
 }
 
 function buildBlade(m) {
   const g = new THREE.Group();
-  // Emitter housing like a vambrace: the blade grows out of the head
-  place(g, WP(chamferBox(0.38, 0.46, 1.3, 0.08), m.body, { x: W.bcWhite, all: W.bcWhite2 }), 0, 0.2, 0.35);
-  place(g, WP(chamferBox(0.3, 0.36, 0.5, 0.06), m.raw, { all: W.bcDark }), 0, 0.18, -0.5);
-  place(g, WP(cylZ(0.17, 0.24, 0.42, 14), m.metal), 0, 0.24, 1.2);
-  place(g, new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.03, 6, 16), lit(0xc8d6ff)), 0, 0.24, 1.42).userData.noOutline = true;
-  for (const sd of [-1, 1]) place(g, WP(chamferBox(0.06, 0.34, 0.6, 0.02), m.metal), sd * 0.24, 0.24, 1.05, 0, sd * 0.2, 0);
-  place(g, WP(chamferBox(0.39, 0.06, 0.4, 0.02), m.stripe), 0, 0.44, 0.5);
+  const blue = lit(0xb8c8ff);
+  // A long emitter housing like a vambrace, its head guarded by swept fins
+  place(g, slab([[-0.85, -0.05], [-0.85, 0.28], [-0.62, 0.44], [0.9, 0.42], [1.2, 0.32], [1.2, 0.06], [0.6, -0.08], [-0.3, -0.1]], 0.36, m.body, { x: W.bcWhite, all: W.bcWhite2 }));
+  for (const sd of [-1, 1]) {
+    place(g, slab([[-0.5, 0.08], [0.85, 0.1], [0.95, 0.32], [-0.45, 0.34]], 0.02, m.raw, { all: W.bcDark }), sd * 0.188, 0, 0);
+    glowLine(g, blue, 0.012, 0.025, 1.1, sd * 0.2, 0.21, 0.25);
+  }
+  place(g, slab([[1.15, 0.04], [1.15, 0.44], [1.42, 0.38], [1.5, 0.24], [1.42, 0.1]], 0.3, m.metal));
+  for (const sd of [-1, 1]) place(g, slab([[1.0, 0.24 + sd * 0.16], [1.38, 0.24 + sd * 0.44], [1.52, 0.24 + sd * 0.42], [1.4, 0.24 + sd * 0.14]], 0.05, m.metal), 0, 0, 0);
+  glowLine(g, blue, 0.2, 0.2, 0.02, 0, 0.24, 1.51);
+  place(g, slab([[-0.6, 0.44], [0.6, 0.42], [0.55, 0.5], [-0.55, 0.52]], 0.38, m.stripe));
   grip(g, m);
   // The blade: two ribbons along +Z, a white core inside a blue glow
   const core = new THREE.Mesh(BEAM_GEO, beamMaterial(0x9fb8ff, 1.4, 0.32));
   const halo = new THREE.Mesh(BEAM_GEO, beamMaterial(0x6f8cff, 0.0, 1.3));
   for (const b of [core, halo]) {
     b.rotation.x = Math.PI / 2;
-    b.position.set(0, 0.24, 1.44);
+    b.position.set(0, 0.24, 1.52);
     b.frustumCulled = false;
     b.renderOrder = 6;
     g.add(b);
   }
   const len = 6.4;
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.24, 1.44)], blade: { core, halo, len, tip: muzzleAt(g, 0, 0.24, 1.44 + len) } };
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.24, 1.52)], blade: { core, halo, len, tip: muzzleAt(g, 0, 0.24, 1.52 + len) } };
 }
 
 /** A saw disc lying in its XZ plane: toothed rim, slotted body, hub */
@@ -141,90 +216,110 @@ function sawDiscGeo() {
 }
 const SAW_MAT = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.2, metalness: 1.0 });
 const SAW_HUB = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.4, metalness: 0.8 });
+const SAW_GLOW = lit(0xffb050);
 function sawDisc() {
   const d = new THREE.Group();
   d.add(new THREE.Mesh(sawDiscGeo(), SAW_MAT));
-  d.add(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.09, 12), SAW_HUB));
+  d.add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.09, 6), SAW_HUB));
+  d.add(new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.018, 4, 24).rotateX(Math.PI / 2), SAW_GLOW));
   return d;
 }
 
 function buildSawLauncher(m) {
   const g = new THREE.Group();
-  // A flat, wide housing with a slot across the front
-  place(g, WP(chamferBox(0.9, 0.36, 1.5, 0.08), m.body, { x: W.sgWhite, all: W.sgWhite }), 0, 0.22, 0.6);
-  place(g, WP(chamferBox(0.96, 0.08, 0.3, 0.02), m.stripe), 0, 0.42, 0.95);
-  place(g, WP(chamferBox(0.84, 0.1, 0.06, 0.02), m.bore), 0, 0.22, 1.36);
-  // Drum magazine of discs on top
-  place(g, WP(new THREE.CylinderGeometry(0.44, 0.44, 0.26, 18), m.raw, { all: W.sgLabel }), 0, 0.52, 0.2);
-  for (let i = 0; i < 3; i++) place(g, new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.03, 18), SAW_MAT), 0, 0.68 + i * 0.05, 0.2);
-  place(g, WP(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 10), m.metal), 0, 0.82, 0.2);
-  // The next disc, spinning up in the chamber
+  const amber = lit(0xffb050);
+  // A low, wide body with two wings framing the launch slot
+  place(g, slab([[-0.75, -0.06], [-0.75, 0.3], [-0.5, 0.36], [1.05, 0.32], [1.3, 0.16], [1.05, 0.0], [0.3, -0.1]], 0.46, m.body, { x: W.sgWhite, all: W.sgWhite }));
+  for (const sd of [-1, 1]) {
+    place(g, slab([[0.3, 0.38], [1.45, 0.34], [1.6, 0.18], [1.45, 0.02], [0.3, 0.0]], 0.08, m.body, { all: W.sgLabel }), sd * 0.4, 0, 0);
+    place(g, slab([[0.4, 0.4], [1.5, 0.36], [1.5, 0.4], [0.4, 0.44]], 0.1, m.metal), sd * 0.4, 0, 0);
+    glowLine(g, amber, 0.02, 0.03, 0.9, sd * 0.445, 0.2, 0.9);
+  }
+  place(g, WP(chamferBox(0.72, 0.06, 0.6, 0.02), m.bore), 0, 0.17, 1.2);
+  // Hex magazine of discs on top, a disc spinning up in the chamber
+  place(g, WP(new THREE.CylinderGeometry(0.44, 0.44, 0.22, 6), m.raw, { all: W.sgLabel }), 0, 0.46, 0.15);
+  place(g, WP(new THREE.CylinderGeometry(0.3, 0.38, 0.08, 6), m.metal), 0, 0.6, 0.15);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; glowLine(g, amber, 0.05, 0.03, 0.05, Math.cos(a) * 0.4, 0.5, 0.15 + Math.sin(a) * 0.4); }
   const spin = sawDisc();
-  spin.scale.setScalar(0.8);
-  spin.position.set(0, 0.22, 1.12);
+  spin.scale.setScalar(0.72);
+  spin.position.set(0, 0.17, 1.12);
   g.add(spin);
-  place(g, WP(chamferBox(0.3, 0.3, 0.6, 0.06), m.raw, { all: W.mgDark }), 0, 0.18, -0.4);
+  place(g, slab([[-0.7, 0.36], [-0.2, 0.36], [-0.25, 0.48], [-0.65, 0.48]], 0.3, m.metal));
   grip(g, m);
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.22, 1.45)], saw: spin };
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.17, 1.55)], saw: spin, foregrip: { y: -0.08, z: 0.85 } };
 }
 
 function harpoonHead(m) {
   const h = new THREE.Group();
-  place(h, WP(cylZ(0.05, 0.05, 1.1, 8), m.metal), 0, 0, -0.1);
-  const tip = new THREE.ConeGeometry(0.11, 0.42, 8);
+  place(h, WP(prismZ(0.045, 0.045, 1.1), m.metal), 0, 0, -0.1);
+  const tip = new THREE.ConeGeometry(0.1, 0.5, 4);
   tip.rotateX(Math.PI / 2);
-  place(h, WP(tip, m.metal), 0, 0, 0.6);
+  place(h, WP(tip, m.metal), 0, 0, 0.66);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2;
-    place(h, WP(chamferBox(0.03, 0.2, 0.24, 0.01), m.stripe), Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0.34, 0.5, 0, a + Math.PI / 2);
+    const b = place(h, slab([[0.0, 0.0], [0.34, 0.02], [0.08, 0.14]], 0.025, m.stripe), 0, 0, 0.2);
+    b.rotation.z = a;
   }
+  place(h, new THREE.Mesh(prismZ(0.06, 0.06, 0.06), lit(0xffc070)), 0, 0, -0.62).userData.noOutline = true;
   return h;
 }
 
 function buildHarpoon(m) {
   const g = new THREE.Group();
-  place(g, WP(chamferBox(0.42, 0.5, 1.3, 0.08), m.body, { x: W.bazWhite2, all: W.bazWhite }), 0, 0.22, 0.25);
-  place(g, WP(cylZ(0.15, 0.15, 1.4, 14), m.metal), 0, 0.3, 1.5);
-  place(g, WP(cylZ(0.19, 0.15, 0.2, 14), m.metal), 0, 0.3, 2.2);
-  // Cable winch on the side
+  const amber = lit(0xffc070);
+  place(g, slab([[-0.9, -0.1], [-0.9, 0.3], [-0.62, 0.46], [0.62, 0.46], [0.82, 0.34], [0.82, 0.0], [0.22, -0.12], [-0.3, -0.12]], 0.36, m.body, { x: W.bazWhite2, all: W.bazWhite }));
+  for (const sd of [-1, 1]) place(g, slab([[-0.6, 0.06], [0.7, 0.06], [0.7, 0.32], [-0.6, 0.32]], 0.02, m.raw, { all: W.bazDark }), sd * 0.188, 0, 0);
+  // The launch rail: two side plates and a floor, the harpoon riding in the slot
+  for (const sd of [-1, 1]) {
+    place(g, slab([[0.6, 0.46], [2.25, 0.44], [2.45, 0.32], [2.25, 0.14], [0.6, 0.14]], 0.05, m.body, { all: W.bazWhite }, [rect(1.0, 0.24, 1.9, 0.36)]), sd * 0.12, 0, 0);
+    glowLine(g, amber, 0.012, 0.02, 1.4, sd * 0.15, 0.4, 1.4);
+  }
+  place(g, slab([[0.6, 0.16], [2.3, 0.16], [2.3, 0.12], [0.6, 0.12]], 0.26, m.metal));
+  // Cable winch in a frame on the side
   const winch = new THREE.Group();
-  winch.position.set(0.32, 0.14, 0.25);
+  winch.position.set(0.3, 0.12, 0.2);
   g.add(winch);
-  place(winch, WP(cylX(0.22, 0.2, 14), m.raw, { all: W.bazDark }));
-  for (let i = 0; i < 4; i++) place(winch, WP(chamferBox(0.22, 0.04, 0.44, 0.01), m.metal), 0, 0, 0, (i / 4) * Math.PI);
-  place(g, WP(chamferBox(0.43, 0.07, 0.4, 0.02), m.stripe), 0, 0.48, 0.5);
-  // The harpoon sits loaded in the barrel, its head out of the muzzle
+  place(winch, WP(cylX(0.2, 0.16, 6), m.raw, { all: W.bazDark }));
+  for (let i = 0; i < 3; i++) place(winch, WP(chamferBox(0.17, 0.035, 0.4, 0.01), m.metal), 0, 0, 0, (i / 3) * Math.PI);
+  place(g, slab([[-0.05, -0.1], [0.45, -0.1], [0.5, 0.36], [-0.1, 0.36]], 0.03, m.metal, null, [rect(0.05, 0.0, 0.35, 0.26)]), 0.42, 0, 0);
   const head = harpoonHead(m);
-  head.position.set(0, 0.3, 2.3);
+  head.position.set(0, 0.3, 1.9);
   g.add(head);
   grip(g, m);
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.3, 2.35)], head, winch, headOf: () => harpoonHead(m) };
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.3, 2.4)], head, winch, headOf: () => harpoonHead(m), foregrip: { y: 0.05, z: 1.2 } };
 }
 
 const DRONE_GLOW = lit(0x6dffd8);
 function droneModel(m) {
   const d = new THREE.Group();
-  // A dart: arrowhead body, raised spine, a lit core at the tail
-  place(d, WP(topPrism([[0, 0.55], [0.32, -0.32], [0.12, -0.2], [0, -0.36], [-0.12, -0.2], [-0.32, -0.32]], 0.1, 0.02), m.body, { all: W.podWhite }));
-  place(d, WP(chamferBox(0.1, 0.1, 0.5, 0.03), m.metal), 0, 0.08, -0.02);
-  place(d, new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.05), DRONE_GLOW), 0, 0.0, -0.34).userData.noOutline = true;
+  // A dart: an arrowhead body over a dark keel, swept winglets, a lit core and tail
+  place(d, WP(topPrism([[0, 0.58], [0.34, -0.3], [0.13, -0.18], [0, -0.36], [-0.13, -0.18], [-0.34, -0.3]], 0.08, 0.02), m.body, { all: W.podWhite }));
+  place(d, WP(topPrism([[0, 0.4], [0.1, -0.1], [0, -0.3], [-0.1, -0.1]], 0.14, 0.02), m.metal), 0, -0.03, 0);
+  for (const sd of [-1, 1]) place(d, WP(topPrism([[0, 0.0], [0.22, -0.2], [0.24, -0.28], [0, -0.16]], 0.03, 0.01), m.stripe), sd * 0.25, 0.02, -0.06, 0, 0, sd * 0.4);
+  place(d, new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.3), DRONE_GLOW), 0, 0.06, 0.08).userData.noOutline = true;
+  place(d, new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.04), DRONE_GLOW), 0, 0.0, -0.34).userData.noOutline = true;
   return d;
 }
 
 function buildDrones(m, def) {
   const g = new THREE.Group();
-  place(g, WP(chamferBox(0.96, 0.44, 1.2, 0.08), m.body, { pz: W.podFace, py: W.podWhite, all: W.podWhite2 }), 0, 0.22, 0);
-  place(g, WP(chamferBox(0.98, 0.07, 0.3, 0.02), m.stripe), 0, 0.36, -0.3);
-  // A rack on top with the drones docked nose forward
-  place(g, WP(chamferBox(0.86, 0.06, 1.1, 0.02), m.metal), 0, 0.47, 0);
+  const cyan = lit(0x6dffd8);
+  // A wedge housing with a recessed rack on top for the drones
+  place(g, slab([[-0.62, 0.0], [0.52, 0.0], [0.66, 0.22], [0.55, 0.44], [-0.62, 0.44]], 0.96, m.body, { pz: W.podFace, py: W.podWhite, all: W.podWhite2 }));
+  place(g, slab([[-0.62, 0.3], [0.6, 0.3], [0.62, 0.34], [-0.62, 0.34]], 0.98, m.stripe));
+  for (const sd of [-1, 1]) {
+    place(g, slab([[-0.55, 0.44], [0.5, 0.44], [0.6, 0.58], [-0.5, 0.6]], 0.06, m.metal), sd * 0.46, 0, 0);
+    glowLine(g, cyan, 0.02, 0.03, 0.9, sd * 0.49, 0.2, 0.0);
+  }
+  place(g, WP(chamferBox(0.84, 0.04, 1.1, 0.02), m.bore), 0, 0.45, 0);
   const docked = [], muzzles = [];
   for (let i = 0; i < def.count; i++) {
-    const x = (i % 2 ? 0.22 : -0.22), z = i < 2 ? 0.28 : -0.28;
+    const x = (i % 2 ? 0.2 : -0.2), z = i < 2 ? 0.26 : -0.3;
     const d = droneModel(m);
-    d.position.set(x, 0.56, z);
+    d.position.set(x, 0.54, z);
     g.add(d);
     docked.push(d);
-    muzzles.push(muzzleAt(g, x, 0.56, z));
+    muzzles.push(muzzleAt(g, x, 0.54, z));
   }
   return { group: g, muzzles, docked, droneOf: () => droneModel(m) };
 }
@@ -232,15 +327,20 @@ function buildDrones(m, def) {
 function buildHydra(m) {
   const g = new THREE.Group();
   const pitch = 0.46, w = 2 * pitch + 0.26, h = 2 * pitch + 0.22, d = 1.5;
-  place(g, WP(chamferBox(w, h, d, 0.1), m.body, { pz: W.podHeavyTubes, x: W.podWhite2, py: W.podWhite, ny: W.podDark, nz: W.podDark }), 0, h / 2, 0);
-  place(g, WP(chamferBox(w + 0.02, 0.08, 0.3, 0.02), m.stripe), 0, h * 0.8, -d * 0.2);
-  for (const sd of [-1, 1]) place(g, WP(chamferBox(0.06, h * 0.6, d * 0.7, 0.02), m.metal), sd * (w / 2 + 0.03), h / 2, -0.1);
+  const red = lit(0xff5040);
+  // Armored box, sloped back over the top, with side armor and a lit status strip
+  place(g, slab([[-d / 2, 0], [d / 2, 0], [d / 2, h], [d / 2 - 0.35, h + 0.12], [-d / 2, h + 0.12]], w, m.body, { pz: W.podHeavyTubes, x: W.podWhite2, py: W.podWhite, ny: W.podDark, nz: W.podDark }));
+  for (const sd of [-1, 1]) {
+    place(g, slab([[-0.65, 0.14], [0.5, 0.14], [0.62, 0.3], [0.62, h - 0.12], [0.5, h - 0.02], [-0.65, h - 0.02]], 0.06, m.metal), sd * (w / 2 + 0.03), 0, 0);
+    glowLine(g, red, 0.02, 0.03, 0.7, sd * (w / 2 + 0.065), h * 0.5, -0.1);
+  }
+  place(g, slab([[-d / 2, h * 0.78], [d / 2 - 0.2, h * 0.78], [d / 2 - 0.2, h * 0.78 + 0.06], [-d / 2, h * 0.78 + 0.06]], w + 0.02, m.stripe));
   const hinge = new THREE.Group();
   hinge.position.set(0, h - 0.02, d / 2 + 0.04);
   g.add(hinge);
   place(hinge, WP(chamferBox(w * 0.97, h * 0.94, 0.07, 0.06), m.body, { pz: W.podWhite2, all: W.podWhite }), 0, -h * 0.47, 0);
   const tubes = [];
-  const nose = new THREE.ConeGeometry(0.15, 0.34, 10);
+  const nose = new THREE.ConeGeometry(0.15, 0.34, 6);
   nose.rotateX(Math.PI / 2);
   for (let r = 0; r < 2; r++) {
     for (let c = 0; c < 2; c++) {
@@ -254,57 +354,58 @@ function buildHydra(m) {
 
 function buildSingularity(m) {
   const g = new THREE.Group();
-  place(g, WP(chamferBox(0.84, 0.3, 1.0, 0.08), m.body, { all: W.bcWhite2 }), 0, 0.15, 0);
-  place(g, WP(chamferBox(0.86, 0.06, 0.3, 0.02), m.stripe), 0, 0.3, -0.3);
-  // A dark sphere held in a cradle of rings, lit along its seams
-  const core = place(g, new THREE.Mesh(new THREE.SphereGeometry(0.4, 18, 12), new THREE.MeshStandardMaterial({ color: 0x0c0a12, roughness: 0.15, metalness: 0.9, emissive: 0x2a0a55, emissiveIntensity: 0.6 })), 0, 0.78, 0.05);
+  const violet = lit(0xc89aff);
+  place(g, slab([[-0.52, 0.0], [0.5, 0.0], [0.62, 0.18], [0.42, 0.32], [-0.52, 0.32]], 0.86, m.body, { all: W.bcWhite2 }));
+  place(g, slab([[-0.52, 0.22], [0.5, 0.22], [0.5, 0.27], [-0.52, 0.27]], 0.88, m.stripe));
+  // A dark sphere held between two angular cradle arms, lit along its seams
+  const core = place(g, new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 2), new THREE.MeshStandardMaterial({ color: 0x0c0a12, roughness: 0.15, metalness: 0.9, emissive: 0x2a0a55, emissiveIntensity: 0.6, flatShading: true })), 0, 0.82, 0.05);
   const ring = new THREE.Group();
   ring.position.copy(core.position);
   g.add(ring);
-  place(ring, new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.022, 6, 28), lit(0xc89aff)), 0, 0, 0).userData.noOutline = true;
-  place(ring, new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.018, 6, 28), lit(0x9a6cff)), 0, 0, 0, Math.PI / 2, 0, 0).userData.noOutline = true;
+  place(ring, new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.018, 4, 32), violet), 0, 0, 0).userData.noOutline = true;
+  place(ring, new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.014, 4, 32), lit(0x9a6cff)), 0, 0, 0, Math.PI / 2, 0, 0).userData.noOutline = true;
   for (const sd of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.06, 6, 16, Math.PI), m.metal);
-    arm.position.set(sd * 0.06, 0.78, 0.05);
-    arm.rotation.set(0, Math.PI / 2, 0);
-    g.add(arm);
-    place(g, WP(chamferBox(0.12, 0.4, 0.2, 0.03), m.metal), sd * 0.36, 0.42, 0.05);
+    place(g, slab([[-0.36, 0.3], [0.1, 0.3], [0.46, 0.66], [0.42, 1.1], [0.2, 1.3], [0.06, 1.24], [0.24, 1.0], [0.24, 0.72], [-0.12, 0.44]], 0.12, m.metal), sd * 0.5, 0, 0);
+    glowLine(g, violet, 0.02, 0.36, 0.03, sd * 0.565, 0.86, 0.3);
   }
-  place(g, WP(cylZ(0.17, 0.24, 0.6, 14), m.metal), 0, 0.78, 0.62);
-  place(g, new THREE.Mesh(cylZ(0.13, 0.13, 0.03, 14), lit(0xb070ff)), 0, 0.78, 0.93).userData.noOutline = true;
-  const halo = place(g, sprite(0xb070ff, 1.1, 0.5), 0, 0.78, 0.05);
-  return { group: g, muzzles: [muzzleAt(g, 0, 0.78, 1.0)], core, ring, halo };
+  place(g, WP(prismZ(0.17, 0.24, 0.6), m.metal), 0, 0.82, 0.62);
+  place(g, new THREE.Mesh(prismZ(0.13, 0.13, 0.03), lit(0xb070ff)), 0, 0.82, 0.93).userData.noOutline = true;
+  const halo = place(g, sprite(0xb070ff, 1.1, 0.5), 0, 0.82, 0.05);
+  return { group: g, muzzles: [muzzleAt(g, 0, 0.82, 1.0)], core, ring, halo };
 }
 
 function buildArtillery(m) {
   const g = new THREE.Group();
-  place(g, WP(new THREE.CylinderGeometry(0.52, 0.62, 0.3, 16), m.metal), 0, 0.15, 0);
-  for (const sd of [-1, 1]) place(g, WP(chamferBox(0.12, 0.6, 0.6, 0.03), m.body, { all: W.bazWhite2 }), sd * 0.36, 0.5, 0.05);
+  const amber = lit(0xffb040);
+  place(g, WP(new THREE.CylinderGeometry(0.56, 0.64, 0.3, 6), m.metal), 0, 0.15, 0);
+  for (const sd of [-1, 1]) place(g, slab([[-0.42, 0.1], [0.42, 0.1], [0.3, 0.78], [-0.3, 0.78]], 0.12, m.body, { all: W.bazWhite2 }), sd * 0.38, 0, 0.05);
   // The barrel rides on a trunnion so it can lift to range the target; it slides back in its cradle on firing
   const pivot = new THREE.Group();
   pivot.position.set(0, 0.62, 0.05);
   g.add(pivot);
-  place(pivot, WP(cylX(0.12, 0.78, 10), m.metal));
-  place(pivot, WP(chamferBox(0.56, 0.5, 1.5, 0.08), m.body, { x: W.bazWhite, all: W.bazWhite2 }), 0, 0, 0.2);
-  place(pivot, WP(chamferBox(0.58, 0.07, 0.4, 0.02), m.stripe), 0, 0.26, 0.6);
+  place(pivot, WP(cylX(0.12, 0.8, 6), m.metal));
+  place(pivot, slab([[-0.55, -0.24], [0.95, -0.24], [1.05, 0.12], [0.85, 0.28], [-0.55, 0.28]], 0.56, m.body, { x: W.bazWhite, all: W.bazWhite2 }));
+  place(pivot, slab([[-0.4, 0.2], [0.8, 0.2], [0.8, 0.26], [-0.4, 0.26]], 0.58, m.stripe));
+  for (const sd of [-1, 1]) glowLine(pivot, amber, 0.02, 0.04, 0.5, sd * 0.29, 0.0, 0.3);
   const slide = new THREE.Group();
   pivot.add(slide);
-  place(slide, WP(cylZ(0.15, 0.2, 4.4, 14), m.metal), 0, 0.02, 2.7);
-  place(slide, WP(cylZ(0.21, 0.21, 0.5, 14), m.body, { all: W.bazDark }), 0, 0.02, 1.3);
-  // Muzzle brake with ports either side
-  place(slide, WP(chamferBox(0.46, 0.34, 0.56, 0.05), m.metal), 0, 0.02, 5.0);
-  for (const sd of [-1, 1]) for (const z of [4.86, 5.08]) place(slide, WP(chamferBox(0.04, 0.2, 0.1, 0.01), m.bore), sd * 0.235, 0.02, z);
-  place(slide, WP(chamferBox(0.5, 0.52, 0.66, 0.08), m.raw, { all: W.bazDark }), 0, 0.0, -0.6);
-  for (const sd of [-1, 1]) place(slide, WP(cylZ(0.08, 0.08, 1.9, 10), m.metal), sd * 0.16, -0.24, 1.1);
-  return { group: g, muzzles: [muzzleAt(slide, 0, 0.02, 5.3)], pivot, slide };
+  place(slide, WP(prismZ(0.15, 0.19, 4.4, 8), m.metal), 0, 0.02, 2.75);
+  // Shrouded jacket with vent slots, then a slotted muzzle brake
+  place(slide, slab([[0.9, 0.26], [2.1, 0.26], [2.3, 0.12], [2.3, -0.08], [2.1, -0.22], [0.9, -0.22]], 0.4, m.body, { all: W.bazDark }));
+  vents(slide, m, 5, 0.205, 0.02, 1.05, 0.22, 0.14, 0.08);
+  place(slide, slab([[4.75, 0.26], [5.3, 0.26], [5.36, 0.1], [5.36, -0.06], [5.3, -0.22], [4.75, -0.22]], 0.48, m.metal, null, [rect(4.82, -0.12, 4.98, 0.16), rect(5.06, -0.12, 5.22, 0.16)]));
+  place(slide, slab([[-1.0, -0.28], [-0.2, -0.28], [-0.2, 0.3], [-0.85, 0.3], [-1.0, 0.18]], 0.52, m.raw, { all: W.bazDark }));
+  for (const sd of [-1, 1]) place(slide, WP(prismZ(0.08, 0.08, 1.9, 6), m.metal), sd * 0.16, -0.26, 1.15);
+  return { group: g, muzzles: [muzzleAt(slide, 0, 0.02, 5.4)], pivot, slide };
 }
 
 function mineModel(m) {
   const d = new THREE.Group();
-  place(d, WP(new THREE.CylinderGeometry(0.36, 0.42, 0.16, 14), m.body, { all: W.podDark }), 0, 0.08, 0);
-  place(d, WP(new THREE.CylinderGeometry(0.2, 0.28, 0.12, 12), m.metal), 0, 0.2, 0);
-  place(d, WP(new THREE.CylinderGeometry(0.43, 0.43, 0.04, 14), m.stripe), 0, 0.06, 0);
-  const lamp = place(d, new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), lit(0xff3030)), 0, 0.28, 0);
+  place(d, WP(new THREE.CylinderGeometry(0.36, 0.44, 0.16, 6), m.body, { all: W.podDark }), 0, 0.08, 0);
+  place(d, WP(new THREE.CylinderGeometry(0.18, 0.28, 0.12, 6), m.metal), 0, 0.2, 0);
+  for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2; place(d, WP(chamferBox(0.04, 0.16, 0.04, 0.01), m.metal), Math.cos(a) * 0.3, 0.2, Math.sin(a) * 0.3); }
+  place(d, WP(new THREE.CylinderGeometry(0.45, 0.45, 0.04, 6), m.stripe), 0, 0.06, 0);
+  const lamp = place(d, new THREE.Mesh(new THREE.OctahedronGeometry(0.06), lit(0xff3030)), 0, 0.3, 0);
   lamp.userData.noOutline = true;
   return d;
 }
@@ -312,10 +413,10 @@ function mineModel(m) {
 function buildMines(m, def) {
   const g = new THREE.Group();
   const w = 1.0, h = 0.72, d = 1.1;
-  place(g, WP(chamferBox(w, h, d, 0.08), m.body, { pz: W.podFace, py: W.podWhite, x: W.podWhite2, ny: W.podDark, nz: W.podDark }), 0, h / 2, 0);
-  place(g, WP(chamferBox(w + 0.02, 0.08, 0.3, 0.02), m.stripe), 0, h * 0.78, -d * 0.2);
-  // Mines stacked in the chute behind the door
-  for (let i = 0; i < 3; i++) place(g, WP(new THREE.CylinderGeometry(0.3, 0.3, 0.12, 12), m.raw, { all: W.podDark }), (i - 1) * 0.3, h / 2, d / 2 - 0.1, Math.PI / 2, 0, 0);
+  place(g, slab([[-d / 2, 0], [d / 2, 0], [d / 2 + 0.06, h * 0.8], [d / 2 - 0.12, h], [-d / 2, h]], w, m.body, { pz: W.podFace, py: W.podWhite, x: W.podWhite2, ny: W.podDark, nz: W.podDark }));
+  place(g, slab([[-d / 2, h * 0.74], [d / 2, h * 0.74], [d / 2, h * 0.8], [-d / 2, h * 0.8]], w + 0.02, m.stripe));
+  for (const sd of [-1, 1]) glowLine(g, lit(0xff4030), 0.02, 0.03, 0.6, sd * (w / 2 + 0.01), h * 0.45, -0.1);
+  for (let i = 0; i < 3; i++) place(g, WP(new THREE.CylinderGeometry(0.3, 0.3, 0.12, 6), m.raw, { all: W.podDark }), (i - 1) * 0.3, h / 2, d / 2 - 0.1, Math.PI / 2, 0, 0);
   const hinge = new THREE.Group();
   hinge.position.set(0, h - 0.02, d / 2 + 0.04);
   g.add(hinge);
@@ -329,37 +430,42 @@ function buildMines(m, def) {
 
 function buildOrbital(m) {
   const g = new THREE.Group();
-  place(g, WP(new THREE.CylinderGeometry(0.46, 0.56, 0.28, 16), m.metal), 0, 0.14, 0);
-  place(g, WP(chamferBox(0.76, 0.42, 0.86, 0.08), m.body, { x: W.bcWhite, all: W.bcWhite2 }), 0, 0.42, -0.05);
-  place(g, WP(chamferBox(0.78, 0.07, 0.3, 0.02), m.stripe), 0, 0.6, -0.25);
+  const gold = lit(0xffd890);
+  place(g, WP(new THREE.CylinderGeometry(0.46, 0.56, 0.28, 6), m.metal), 0, 0.14, 0);
+  place(g, slab([[-0.5, 0.26], [0.42, 0.26], [0.55, 0.42], [0.42, 0.62], [-0.5, 0.62]], 0.76, m.body, { x: W.bcWhite, all: W.bcWhite2 }));
+  place(g, slab([[-0.5, 0.5], [0.45, 0.5], [0.45, 0.55], [-0.5, 0.55]], 0.78, m.stripe));
   // Designator: a lens on the front of the base
-  place(g, WP(chamferBox(0.22, 0.2, 0.3, 0.04), m.raw, { all: W.bcDark }), 0.24, 0.42, 0.44);
-  place(g, new THREE.Mesh(cylZ(0.07, 0.07, 0.04, 12), lit(0xff4040)), 0.24, 0.42, 0.6).userData.noOutline = true;
-  // Mast and a folding parabolic dish with a feed horn at its focus
-  place(g, WP(new THREE.CylinderGeometry(0.08, 0.1, 0.9, 10), m.metal), 0, 1.0, -0.1);
+  place(g, slab([[0.3, 0.3], [0.62, 0.32], [0.62, 0.54], [0.3, 0.56]], 0.22, m.raw, { all: W.bcDark }), 0.24, 0, 0);
+  place(g, new THREE.Mesh(cylZ(0.07, 0.07, 0.04, 6), lit(0xff4040)), 0.24, 0.44, 0.64).userData.noOutline = true;
+  // An arm up to a phased-array panel; the panel's wings unfold and it turns to the sky to fire
+  place(g, WP(prismZ(0.08, 0.1, 0.9, 6).rotateX(Math.PI / 2), m.metal), 0, 1.0, -0.1);
   const dish = new THREE.Group();
-  dish.position.set(0, 1.42, -0.1);
-  dish.rotation.x = -1.3;
+  dish.position.set(0, 1.46, -0.1);
+  dish.rotation.x = -0.5;
   g.add(dish);
-  const prof = [];
-  for (let i = 0; i <= 8; i++) { const r = (i / 8) * 0.95; prof.push(new THREE.Vector2(r, r * r * 0.32)); }
-  const bowl = new THREE.LatheGeometry(prof, 20);
-  bowl.rotateX(Math.PI / 2);
-  const dishMat = new THREE.MeshStandardMaterial({ color: 0xdedfe2, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide });
-  place(dish, new THREE.Mesh(bowl, dishMat)).userData.noOutline = true;
-  place(dish, WP(cylX(0.08, 0.3, 10), m.metal), 0, 0, -0.04);
-  const focus = new V3(0, 0, 0.74);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + Math.PI / 2;
-    const rim = new V3(Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.13);
-    const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, rim.distanceTo(focus), 6), m.metal);
-    strut.position.lerpVectors(rim, focus, 0.5);
-    strut.quaternion.setFromUnitVectors(UP, _a.subVectors(focus, rim).normalize());
-    dish.add(strut);
+  const hexPanel = (r) => { const p = []; for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + Math.PI / 6; p.push([Math.cos(a) * r, Math.sin(a) * r]); } return p; };
+  const panelGeo = (pts, depth) => {
+    const s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]); for (const q of pts.slice(1)) s.lineTo(q[0], q[1]); s.closePath();
+    return new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelOffset: -0.015, bevelSegments: 1 });
+  };
+  place(dish, WP(panelGeo(hexPanel(0.62), 0.06), m.body, { all: W.bcWhite2 }), 0, 0, 0);
+  place(dish, WP(panelGeo(hexPanel(0.5), 0.04), m.raw, { all: W.bcDark }), 0, 0, 0.06);
+  for (let i = -2; i <= 2; i++) {
+    glowLine(dish, gold, 0.9, 0.012, 0.01, 0, i * 0.17, 0.11);
+    glowLine(dish, gold, 0.012, 0.9, 0.01, i * 0.17, 0, 0.11);
   }
-  place(dish, WP(cylZ(0.06, 0.09, 0.2, 10), m.metal), 0, 0, 0.72);
-  const feed = place(dish, sprite(0xffe2a0, 0.5, 0.0), 0, 0, 0.84);
-  return { group: g, muzzles: [muzzleAt(g, 0.24, 0.42, 0.64)], dish, feed };
+  const leaves = [];
+  for (const sd of [-1, 1]) {
+    const hinge = new THREE.Group();
+    hinge.position.set(sd * 0.58, 0, 0.03);
+    dish.add(hinge);
+    place(hinge, WP(panelGeo([[0, -0.42], [0.55 * sd, -0.3], [0.55 * sd, 0.3], [0, 0.42]].map(([x, y]) => [x, y]), 0.05), m.body, { all: W.bcWhite2 }), 0, 0, 0);
+    for (const y of [-0.15, 0.0, 0.15]) glowLine(hinge, gold, 0.4, 0.012, 0.01, sd * 0.28, y, 0.07);
+    leaves.push({ hinge, sd });
+  }
+  place(dish, WP(prismZ(0.07, 0.1, 0.24, 6), m.metal), 0, 0, 0.2);
+  const feed = place(dish, sprite(0xffe2a0, 0.5, 0.0), 0, 0, 0.36);
+  return { group: g, muzzles: [muzzleAt(g, 0.24, 0.44, 0.66)], dish, feed, leaves };
 }
 
 /** The model for one of the arsenal's weapons, or null if id isn't one of them */
@@ -1520,6 +1626,7 @@ export class Arsenal {
     const open = s.charge > 0 || s.strike ? 1 : 0;
     s.dish = (s.dish || 0) + (open - (s.dish || 0)) * (1 - Math.exp(-dt * 4));
     M.dish.rotation.x = -0.5 - 1.05 * s.dish;
+    for (const L of M.leaves || []) L.hinge.rotation.y = -L.sd * 1.45 * (1 - s.dish);
     M.feed.material.opacity = s.dish * (0.6 + 0.4 * Math.random());
     if (s.strike) return;
     if (s.charge > 0) {
