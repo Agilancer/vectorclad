@@ -1,12 +1,12 @@
 import * as THREE from '../three.js';
-import { OUT, AIR, GONE, SOLID, STEEL, MATS, lineIndexClamped } from './grid.js';
+import { OUT, AIR, GONE, SOLID, CONCRETE, STEEL, GLASS, LEAF, LIGHT, MATS, lineIndexClamped } from './grid.js';
 import { voxelizeOwner, volBox } from './voxelize.js';
 import { CHUNK, meshChunk } from './mesher.js';
 import { faceMaterial } from './textures.js';
 import { houseStyle, floorTable, makePower, outage, flicker, cutPower, ceilingUniforms, setCeilingScale, CEIL_SHARED } from './ceilings.js';
 import { extractSkin, partGeometry, skinMaterial, skinDepthMaterial, makeLut, makeMask, uploadMask, clipSkin } from './skin.js';
 import { Body, Physics, makeProbes } from './physics.js';
-import { Debris } from './debris.js';
+import { Debris, Slabs } from './debris.js';
 
 // ---------------------------------------------------------------------------
 // Destruction: everything the city is built of can be shot apart.
@@ -51,9 +51,13 @@ const ANALYZE_EVERY = 0.07;    // seconds between structural checks of one struc
 const ISLAND_BUDGET = 60000;   // cells one island search may visit before calling for a full pass
 const ISLAND_ORDER = [5, 0, 1, 2, 3, 4]; // face neighbours pushed up first, so the search goes down first
 const MESH_BUDGET_MS = 5;      // chunk meshing per frame
+const OUTER = 1.14;            // a building's outer wall feels every hit as if a little farther off: its holes come out an eighth smaller
+const TOUGH_KINDS = new Set(['building', 'tower', 'gate', 'twins', 'needle']); // (not the El, the highway or props)
+const SLAB_M2 = 3.5;           // square meters of wall or floor blown away for each slab thrown
+const MATA = new Float32Array(16); // wall and floor area blown away by material, for the slabs
 let MAX_BODIES = 70;
 const rand = (a, b) => a + Math.random() * (b - a);
-const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _m4 = new THREE.Matrix4();
+const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _e = new V3(), _f = new V3(), _g = new V3(), _m4 = new THREE.Matrix4();
 
 // Shared scratch arrays, grown as needed
 let VIS = new Uint32Array(1 << 16), QUEUE = new Int32Array(1 << 16), STAMP = 1;
@@ -160,6 +164,12 @@ export class Destruction {
     const env = { gravity: this.G, ground: (x, z) => this.ground(x, z), statics: (mn, mx, fn) => this.statics(mn, mx, fn) };
     this.physics = new Physics(env);
     this.debris = new Debris(scene, { gravity: this.G, ground: env.ground, solid: (x, y, z) => this.solidAt(x, y, z) }, mobile ? 900 : 2400);
+    // Slabs over 2 m that come down faster than 6 m/s crush what they land on
+    this.slabs = new Slabs(scene, {
+      gravity: this.G, ground: env.ground, solid: (x, y, z) => this.solidAt(x, y, z), heavy: 2 * M, hard: 6 * M,
+      land: (x, y, z, size) => this.slabLanded(x, y, z, size),
+    }, mobile ? 160 : 420);
+    this.bigBudget = mobile ? 18 : 48; // slabs one frame may throw
     this.warmup();
     this.spiders = null;
     this.player = null;
@@ -407,15 +417,6 @@ export class Destruction {
     s.hp = new Uint8Array(g.N);
     const HP = MATS.map((m) => (m ? m.hp : 0)), gm = g.mat, hp = s.hp;
     for (let i = 0; i < g.N; i++) { const m = gm[i]; if (m >= SOLID) hp[i] = HP[m]; }
-    // Outer walls are built a little tougher than the rest: a quarter more hit points for every
-    // cell facing the outside
-    const { nx, ny, nz, nxz } = g;
-    for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
-      const i = x + nx * (z + nz * y);
-      if (gm[i] < SOLID) continue;
-      if ((x > 0 && gm[i - 1] === OUT) || (x < nx - 1 && gm[i + 1] === OUT) || (z > 0 && gm[i - nx] === OUT) || (z < nz - 1 && gm[i + nx] === OUT)
-        || x === 0 || z === 0 || x === nx - 1 || z === nz - 1) hp[i] = Math.min(255, Math.round(hp[i] * 1.25));
-    }
     s.skin = extractSkin(owner, g);
     this.buildSkin(s);
     this.lightUp(s, null);
@@ -671,20 +672,24 @@ export class Destruction {
     const y0 = lineIndexClamped(g.ys, cy - r), y1 = lineIndexClamped(g.ys, cy + r);
     const z0 = lineIndexClamped(g.zs, cz - r), z1 = lineIndexClamped(g.zs, cz + r);
     const md = s.mask.image.data, r2 = r * r * 1.69;
-    let removed = 0, spawned = 0, sx = 0, sy = 0, sz = 0, glass = 0, steel = 0, other = 0, lastMat = 0;
-    const want = o.chunks ?? 10;
+    let removed = 0, spawned = 0, sx = 0, sy = 0, sz = 0, glass = 0, steel = 0, other = 0;
+    const want = o.chunks ?? 10, big = o.big && !s.owner.small;
+    const gm = g.mat, gnx = g.nx, gnz = g.nz, tough = !s.body && TOUGH_KINDS.has(s.owner.kind);
+    if (big) MATA.fill(0);
     for (let y = y0; y <= y1; y++) {
       const dy = g.cy(y) - cy;
       for (let z = z0; z <= z1; z++) {
         const dz = g.cz(z) - cz;
         if (dy * dy + dz * dz > r2) continue;
         for (let x = x0; x <= x1; x++) {
-          const i = x + g.nx * (z + g.nz * y), m = g.mat[i];
+          const i = x + gnx * (z + gnz * y), m = gm[i];
           if (m < SOLID) continue;
           const dx = g.cx(x) - cx, d2 = dx * dx + dy * dy + dz * dz;
           if (d2 > r2) continue;
-          // Ragged: each cell sees the blast a little nearer or farther
-          const f = d2 / (r * r) * (0.8 + Math.random() * 0.4);
+          // Ragged: each cell sees the blast a little nearer or farther. A building's outer walls
+          // are built a little tougher than the rest: a cell facing the street, farther still
+          let f = d2 / (r * r) * (0.8 + Math.random() * 0.4);
+          if (tough && (x === 0 || z === 0 || x === gnx - 1 || z === gnz - 1 || gm[i - 1] === OUT || gm[i + 1] === OUT || gm[i - gnx] === OUT || gm[i + gnx] === OUT)) f *= OUTER;
           if (f >= 1) { md[i * 2 + 1] = Math.min(255, md[i * 2 + 1] + 90 * (1.69 - f)); continue; }
           const dmg = power * (1 - f) * (o.enemy ? 0.6 : 1);
           const hp = s.hp[i] - dmg;
@@ -696,8 +701,7 @@ export class Destruction {
           sx += wx; sy += wy; sz += wz;
           const name = MATS[m].name;
           if (name === 'glass' || name === 'light') glass++; else if (name === 'steel') steel++; else other++;
-          // The big chunks are of what the wall and slab are built of: glass only if there was nothing else
-          if (name !== 'light' && name !== 'leaf' && (name !== 'glass' || !lastMat)) lastMat = m;
+          if (big) MATA[m] += this.faceArea(g, i, x, y, z);
           if (spawned < want && this.frame.chunks < 140 && (spawned < 3 || Math.random() < 0.5)) {
             spawned++;
             this.frame.chunks++;
@@ -713,9 +717,9 @@ export class Destruction {
       this.jolted(s, sx / removed, sy / removed, sz / removed, removed, r);
       const p = this.toWorld(s, sx / removed, sy / removed, sz / removed, _a);
       this.burstFx(p, removed, glass, steel, other, o);
-      // Explosions tear big chunks of wall and slab and twisted steel off with them, as many as
-      // the volume they blew away
-      if (o.big && lastMat) this.bigChunks(s, p, cx, cy, cz, removed, lastMat, steel, o);
+      // Explosions tear slabs of wall and floor and lengths of steel off with them, as many as the
+      // area they blew away
+      if (big) this.bigChunks(s, p, cx, cy, cz, r, o);
       if (this.onCarve && !s.body) this.onCarve(s, cx, cy, cz, r, removed);
     }
     if (s.body) { s.body.wake(); } else if (removed) this.wakeNear(s, cx, cy, cz, r);
@@ -723,25 +727,82 @@ export class Destruction {
   }
 
   /**
-   * Big debris: slabs of wall and floor a meter or more across and lengths of bent steel, thrown hard
-   * out of a blast crater at p (world) from the blast's middle (local cx, cy, cz). One for about
-   * every twelve cubic meters blown away.
+   * The wall or floor area a cell at (x, y, z) stands for: its biggest face toward the street or a
+   * room (cells already blown away don't count, so a solid block counts its surface)
    */
-  bigChunks(s, p, cx, cy, cz, removed, mat, steel, o) {
-    const M = this.M, cs = s.cellSize, vol = removed * (cs / M) ** 3;
-    const n = Math.min(Math.max(0, 40 - this.frame.big), Math.round(vol / 12 + Math.random()));
-    this.frame.big += n;
-    const c = this.toWorld(s, cx, cy, cz, _c);
-    for (let k = 0; k < n; k++) {
-      // Out from the blast through the crater, fast
-      _b.set(p.x - c.x + rand(-1, 1) * cs * 3, p.y - c.y + rand(-0.5, 1.5) * cs * 3, p.z - c.z + rand(-1, 1) * cs * 3);
-      if (_b.lengthSq() < 1e-6) _b.set(rand(-1, 1), 0.5, rand(-1, 1));
-      _b.normalize();
-      const sp = (12 + Math.random() * 18) * M * (o.speedK || 1);
-      const m = steel && Math.random() < steel / removed + 0.1 ? 8 : mat;
-      this.debris.spawn(p.x + rand(-1, 1) * cs, p.y + rand(-1, 1) * cs, p.z + rand(-1, 1) * cs,
-        _b.x * sp, _b.y * sp + rand(2, 8) * M, _b.z * sp, M * rand(1.1, 2.8), m, rand(25, 45));
+  faceArea(g, i, x, y, z) {
+    const m = g.mat, { nx, ny, nz, nxz } = g;
+    let a = 0;
+    if (x === 0 || x === nx - 1 || m[i - 1] < GONE || m[i + 1] < GONE) a = g.dy(y) * g.dz(z);
+    if (z === 0 || z === nz - 1 || m[i - nx] < GONE || m[i + nx] < GONE) a = Math.max(a, g.dx(x) * g.dy(y));
+    if (y === 0 || y === ny - 1 || m[i - nxz] < GONE || m[i + nxz] < GONE) a = Math.max(a, g.dx(x) * g.dz(z));
+    return a;
+  }
+
+  /**
+   * Slabs: pieces of wall and floor a meter to a few meters across and lengths of steel, torn out
+   * of a blast crater at p (world; the blast's middle local cx, cy, cz, r across) and thrown out
+   * along the face it hit (o.normal) to rain on the street. One for about every SLAB_M2 of wall and
+   * floor blown away (MATA), glass counting a third: it mostly shatters.
+   */
+  bigChunks(s, p, cx, cy, cz, r, o) {
+    const M = this.M, cs = s.cellSize;
+    let solid = 0, clear = 0;
+    for (let k = SOLID; k < MATA.length; k++) {
+      if (k === GLASS || k === LIGHT) clear += MATA[k];
+      else if (k !== LEAF) solid += MATA[k];
     }
+    const want = Math.floor((solid + clear / 3) / (M * M * SLAB_M2) + Math.random());
+    const n = Math.min(Math.max(0, this.bigBudget - this.frame.big), want);
+    if (n <= 0) return;
+    this.frame.big += n;
+    // Past the frame's budget, fewer and bigger slabs: about the same area of them
+    const grow = Math.min(1.4, Math.sqrt(want / n));
+    // Out along the face it hit, or from the blast's middle through the crater; across the face
+    // for where in the hole each comes from
+    if (o.normal) _d.copy(o.normal);
+    else {
+      this.toWorld(s, cx, cy, cz, _c);
+      _d.subVectors(p, _c);
+      if (_d.lengthSq() < 1e-6) _d.copy(UP);
+      _d.normalize();
+    }
+    _e.crossVectors(_d, Math.abs(_d.y) > 0.9 ? X_AXIS : UP).normalize();
+    _f.crossVectors(_d, _e);
+    _c.copy(p); // (solidAt scratches _a)
+    const hole = Math.min(r * 0.5, 4 * M);
+    for (let k = 0; k < n; k++) {
+      // Glass only if that was all of it
+      const mat = this.slabMat(solid === 0);
+      const size = M * grow * (mat === STEEL ? rand(1.2, 2.4) : rand(1.2, 3.4));
+      const u = rand(-1, 1) * hole, v = rand(-1, 1) * hole, out = cs + size * 0.3;
+      _b.copy(_c).addScaledVector(_e, u).addScaledVector(_f, v).addScaledVector(_d, out);
+      if (this.solidAt(_b.x, _b.y, _b.z)) _b.copy(_c).addScaledVector(_d, out);
+      // Mostly outward, fanned out and a little up
+      const a = rand(-0.55, 0.55), c = rand(-0.55, 0.55), up = rand(0.1, 0.55);
+      const sp = rand(6, 15) * M;
+      const vx = _d.x + _e.x * a + _f.x * c, vy = _d.y + _e.y * a + _f.y * c + up, vz = _d.z + _e.z * a + _f.z * c;
+      const L = Math.hypot(vx, vy, vz) || 1;
+      this.slabs.spawn(_b.x, _b.y, _b.z, (vx / L) * sp, (vy / L) * sp, (vz / L) * sp, size, mat, rand(28, 45));
+    }
+  }
+
+  /** A slab's material, by the area of each blown away: of the glass, or of everything else */
+  slabMat(glass) {
+    let total = 0;
+    for (let k = SOLID; k < MATA.length; k++) if (k !== LEAF && (k === GLASS || k === LIGHT) === glass) total += MATA[k];
+    let t = Math.random() * total;
+    for (let k = SOLID; k < MATA.length; k++) {
+      if (k === LEAF || (k === GLASS || k === LIGHT) !== glass || !MATA[k]) continue;
+      if ((t -= MATA[k]) <= 0) return k;
+    }
+    return glass ? GLASS : CONCRETE;
+  }
+
+  /** A heavy slab came down hard at (x, y, z), size across: people, cars and furniture under it are crushed */
+  slabLanded(x, y, z, size) {
+    if (!this.world.crushAt) return;
+    this.world.crushAt(_g.set(x, y, z), size * 0.55, 10 * (size / this.M - 1.5));
   }
 
   toWorld(s, x, y, z, out) { return s.body ? s.body.toWorld(x, y, z, out) : out.set(x, y, z); }
@@ -824,12 +885,15 @@ export class Destruction {
 
   /**
    * An explosion at p: radius in meters, power at its middle. Activates whatever it reaches,
-   * carves craters into structures and pieces and throws pieces about.
+   * carves craters into structures and pieces and throws pieces about. o.normal: the face it went
+   * off against, which the slabs it tears off are thrown out along.
    */
   blast(p, radiusM, power, o = {}) {
     const R = radiusM * this.M;
     let total = 0;
     const opts = Object.assign({ speed: 10 + power * 0.04, chunks: Math.round(8 + radiusM * 6), big: true }, o);
+    // (kept: blasts on structures not yet activated are carved a frame or two later)
+    if (opts.normal) opts.normal = opts.normal.clone();
     // What it reaches is turned into voxels, nearest first; past the frame's budget the rest are
     // carved a frame or two later
     const reach = [];
@@ -2117,6 +2181,7 @@ export class Destruction {
     this.jolts();
     const T2 = performance.now();
     this.debris.update(dt);
+    this.slabs.update(dt);
     this.roofTrees(dt);
     this.render(dt);
     const T3 = performance.now();
@@ -2343,12 +2408,12 @@ export class Destruction {
   info() {
     return {
       ...this.stats, structs: this.structs.length, bodies: this.physics.bodies.length,
-      awake: this.physics.bodies.filter((b) => !b.sleeping).length, contacts: this.physics.contacts.length, debris: this.debris.n,
+      awake: this.physics.bodies.filter((b) => !b.sleeping).length, contacts: this.physics.contacts.length, debris: this.debris.n, slabs: this.slabs.n,
     };
   }
 }
 
-const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0);
+const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0), X_AXIS = new V3(1, 0, 0);
 const _hit = {};
 const _st = {};
 
