@@ -104,19 +104,19 @@ export class HeavyMech extends Mech {
     box(helmet,.52,.018,.42,0,.12,-.25,'recess');box(helmet,.52,.018,.3,0,-.04,-.3,'recess');
     wedge(helmet,[[-.4,.42],[-.36,.57],[.02,.57],[.1,.44]],.22,'black');
     {let lamp=box(helmet,.08,.1,.03,0,.5,.08,'headEye');lamp.rotation.x=-.55;}
-    wedge(helmet,[[-.2,.3],[.1,.36],[.62,.24],[.64,.18],[.58,.16],[.05,.2],[-.2,.18]],.5,'headGold',0,.72);
+    wedge(helmet,[[-.2,.3],[.1,.36],[.62,.24],[.64,.18],[.58,.16],[.05,.2],[-.2,.18]],.5,'gold',0,.72);
     for(const x of [-.085,.085]){let v=box(helmet,.045,.02,.3,x,.322,.3,'recess');v.rotation.x=.227;}
     box(helmet,.18,.025,.02,0,.2,.636,'recess');
     box(helmet,.4,.24,.16,0,.07,.42,'black');
     wedge(helmet,[[.05,-.02],[.46,.02],[.48,-.06],[.36,-.24],[0,-.3],[-.1,-.16]],.36,'black',0,.8);
-    wedge(helmet,[[.2,-.2],[.45,-.06],[.48,-.1],[.36,-.27],[.18,-.3]],.4,'headGold',0,.8);
+    wedge(helmet,[[.2,-.2],[.45,-.06],[.48,-.1],[.36,-.27],[.18,-.3]],.4,'gold',0,.8);
     for(const s of [-1,1]){
       mesh(helmet,new THREE.CylinderGeometry(.085,.085,.05,20).rotateX(Math.PI/2),'recess',s*.14,.1,.47);
       const eye=mesh(helmet,new THREE.SphereGeometry(.066,16,10),'headEye',s*.14,.1,.5);eye.scale.z=.6;
-      wedge(helmet,[[-.12,.2],[.45,.17],[.42,-.04],[.1,-.14],[-.12,-.1]],.05,'headGold',s*.265);
+      wedge(helmet,[[-.12,.2],[.45,.17],[.42,-.04],[.1,-.14],[-.12,-.1]],.05,'gold',s*.265);
       box(helmet,.025,.3,.11,s*.29,.1,.12,'recess');
       box(helmet,.02,.12,.07,s*.3,.17,.12,'headEye');box(helmet,.02,.11,.07,s*.3,.025,.12,'headEye');
-      const horn=wedge(helmet,[[-.26,.42],[-.6,.66],[-.92,.9],[-.5,.58],[-.1,.46]],.05,'headGold',s*.15);horn.rotation.z=-s*.12;
+      const horn=wedge(helmet,[[-.26,.42],[-.6,.66],[-.92,.9],[-.5,.58],[-.1,.46]],.05,'gold',s*.15);horn.rotation.z=-s*.12;
       rod(helmet,[s*.14,-.29,.07],[s*.2,-.01,.23],.025,'gold');
       tube(helmet,[[s*.13,-.44,-.02],[s*.24,-.2,-.05],[s*.24,.02,.02]],.023,'frame');
     }
