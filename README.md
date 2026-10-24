@@ -790,16 +790,24 @@ gone.
 Every deploy starts with the frame slung under a **Kestrel H heavy lifter**: a gunmetal
 variant of the Kestrel dropship, half again its size, with ducted lift fans in place of the
 rocket pods and a cradle under the belly whose clamp arms hold the mech by the shoulders.
-There is no control during the flight, about five and a half seconds behind letterbox bars
-with a release countdown:
+There is no control during the flight, about twenty-three seconds behind letterbox bars with a
+release countdown:
 
-- It comes in low over the harbor south of the city, the skyline ahead, then climbs over
-  the towers and dives into the starting plaza, braking to a hover with its nose up.
-- Its path is worked out each time from the city under it: the lowest line that clears every
-  roof under its wings and the hanging mech, climbing at most 0.6 toward what is ahead and
-  diving at most 1.6 past what it has cleared.
-- The camera chases it off the right flank, rises behind it over the towers, and eases into
-  the usual over-the-shoulder view by the release.
+- It starts some 250 meters up over the harbor south of the city, the skyline ahead, and
+  swoops down onto the line of an avenue, pulling out just over the traffic at the seawall.
+- From there it threads the streets between the towers with the mech's feet some twenty
+  meters over the road: up the avenue, a left onto a cross street through the tallest
+  canyon, a right, a left past the twisting supertall, and a wide right over the starting
+  plaza that brings it to a hover with its nose north. It banks into every turn, dips its
+  nose as it speeds up and lifts it as it brakes, and bobs gently as it goes.
+- Its line and pace are worked out each time from the city: the route is counted in blocks
+  from the plaza and runs down the middle of the gap the buildings leave in each street, its
+  corners are arcs tight enough that the wings clear the towers, it never drops below what
+  clears every roof under its wings, and it slows for each turn and speeds up out of it,
+  every change of pace eased so none is sudden.
+- The camera starts off its right flank over the water, swings in behind it as it reaches
+  the city and rides its line through the streets, hanging back further the faster it goes,
+  and eases into the usual over-the-shoulder view by the release.
 - The clamps open about seven meters up and the frame drops onto the plaza; it is the
   player's from the moment it lets go. The lifter climbs straight out of the towers and
   flies off north. The swarm can't touch it.
