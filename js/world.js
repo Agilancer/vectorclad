@@ -514,20 +514,25 @@ export class World {
   }
 
   /**
-   * A structure was carved at (x, y, z), r across: the first time round there, a building's floors
-   * fill with people and furniture, offices or homes by its kind, some buildings far fuller than others
+   * A structure was carved at (x, y, z), r across, `removed` cells destroyed: the first time round
+   * there, a building's floors fill with people and furniture, offices or homes by its kind, some
+   * buildings far fuller than others; and the hole spills them, more the more it blew away
    */
-  carved(s, x, y, z, r) {
+  carved(s, x, y, z, r, removed = 0) {
     const o = s.owner, P = this.people;
     if (!P || !BUILDINGS.has(o.kind)) return;
     if (o.crowd === undefined) {
       const h = Math.sin((o.id + 1) * 12.9898) * 43758.5453, f = h - Math.floor(h);
       o.crowd = (o.style === 'house' ? 0.35 : o.style === 'walkup' ? 0.7 : 1) * (0.2 + f * f * 2.4);
     }
-    const spots = P.occupy(s, x, y, z, r, o.crowd);
+    // What it blew away, in cubic meters
+    const vol = removed * (s.cellSize / this.city.M) ** 3;
+    const spots = P.occupy(s, x, y, z, r, o.crowd, vol);
     if (!spots || !this.furniture) return;
     const home = o.style === 'house' || o.style === 'walkup';
-    this.furniture.furnish(s, P.floorSpots(s, x, y, z, this.city.m(15), Math.round(8 + 12 * Math.min(1.6, o.crowd))), x, y, z, r, home);
+    // And right by the hole, to be thrown out of it, a piece for about every eight cubic meters it blew away
+    const by = P.floorSpots(s, x, y, z, r * 1.6, Math.floor(vol / 8 + Math.random()), 0.45);
+    this.furniture.furnish(s, P.floorSpots(s, x, y, z, this.city.m(15), Math.round(8 + 12 * Math.min(1.6, o.crowd))), x, y, z, r, home, by);
   }
 
   /** A blast that only trees feel (spider mortar shells, burning ground): knocks them loose and sets them burning */

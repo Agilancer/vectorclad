@@ -273,7 +273,7 @@ async function init() {
   world.people = new People({ scene, world, fx, sound, mobile: isTouch });
   world.furniture = new Furniture({ scene, world, mobile: isTouch });
   world.train = new Train({ scene, world, fx, sound });
-  D.onCarve = (s, x, y, z, r) => world.carved(s, x, y, z, r);
+  D.onCarve = (s, x, y, z, r, removed) => world.carved(s, x, y, z, r, removed);
   P.pos.copy(world.spawn);
   mech.root.position.copy(P.pos);
   mech.resetFeet();

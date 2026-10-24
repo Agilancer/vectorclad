@@ -19,10 +19,12 @@ import * as THREE from './three.js';
 //     running. Blasts throw them, and the mech treads on them.
 //   - Buildings are full of them. When a building is first broken open, the
 //     floors round the hole fill with people (and furniture, js/furniture.js),
-//     some buildings far more than others. The ones nearest the hole are
-//     thrown out or slide backward off the broken floor, arms flailing;
-//     the rest stay inside until the next blast or until the floor under
-//     them goes, and then they fall.
+//     some buildings far more than others. Every hole spills them, the more
+//     the bigger it is: on the floors it broke into, about half of those near
+//     it slide backward into it as the floor sags, arms flailing, and go over
+//     the edge; the newcomers nearest it are thrown out through it, skidding
+//     across the floor; the rest scramble away. Later blasts throw them out
+//     through the hole too, and when the floor under them goes, they fall.
 //   - A fall from more than a storey or so ends in a little red splat.
 // ---------------------------------------------------------------------------
 
@@ -421,23 +423,59 @@ export class People {
     return true;
   }
 
-  /** An explosion: thrown and killed near it, sent running further out */
+  /** An explosion: thrown and killed near it (indoors, out through the hole it tears), sent running further out */
   blast(p, radius, amount) {
     const R = Math.max(radius * 1.25, this.m(5));
     for (const q of this.list) {
       if (q.state === 'dead' && q.mode !== 'dead') continue;
       const d = q.pos.distanceTo(p);
       if (d < R) {
+        const k = (1 - d / R) * Math.min(1.6, 0.6 + amount / 80), s = this.indoors(q);
+        if (s && q.state !== 'dead' && d > R * 0.45 && Math.abs(q.pos.y - p.y) < radius * 0.5 && Math.random() < 0.5) {
+          // On the floor it tears open, clear of the worst: about half are left for the hole, to
+          // slide backward into it once their floor has gone (see spill)
+          q.rock = this.time;
+          this.scare(q, p, 1);
+          continue;
+        }
         if (q.state === 'dead') { q.mode = 'air'; q.maxY = q.pos.y; }
-        _v.subVectors(q.pos, p).setY(0);
-        if (_v.lengthSq() < 1e-6) _v.set(Math.random() - 0.5, 0, Math.random() - 0.5);
-        _v.normalize();
-        const k = (1 - d / R) * Math.min(1.6, 0.6 + amount / 80);
-        this.thrown(q, _v.x * this.m(9 + 22 * k), this.m(4 + 12 * k), _v.z * this.m(9 + 22 * k));
+        if (s) {
+          // Indoors: out through the hole, not deeper into the building
+          this.outward(s, q.pos, p, _v);
+          this.thrown(q, _v.x * this.m(9 + 22 * k), this.m(2 + 6 * k), _v.z * this.m(9 + 22 * k));
+        } else {
+          _v.subVectors(q.pos, p).setY(0);
+          if (_v.lengthSq() < 1e-6) _v.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+          _v.normalize();
+          this.thrown(q, _v.x * this.m(9 + 22 * k), this.m(4 + 12 * k), _v.z * this.m(9 + 22 * k));
+        }
         // Close in, it's over before they land
         if (d < R * 0.45) q.doomed = true;
       } else if (d < R * 5) this.scare(q, p, 1);
     }
+  }
+
+  /** The standing building someone is in (over its footprint, not out in the street), or null */
+  indoors(q) {
+    const s = q.s, p = q.pos;
+    if (!s || s.dead || q.mode === 'path' || q.mode === 'free') return null;
+    const B = s.box;
+    return p.x > B.min.x && p.x < B.max.x && p.z > B.min.z && p.z < B.max.z ? s : null;
+  }
+
+  /**
+   * The way out of s through a hole at h from p inside it (into out): from the building's middle
+   * toward the hole, give or take 30°, and drawn in toward the hole from off to its side
+   */
+  outward(s, p, h, out) {
+    const B = s.box;
+    out.set(h.x - (B.min.x + B.max.x) / 2, 0, h.z - (B.min.z + B.max.z) / 2);
+    if (out.lengthSq() < 1e-6) out.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+    out.normalize();
+    // Aimed past the hole: the part of the way to it across the way out
+    const dx = h.x - p.x, dz = h.z - p.z, t = dx * out.x + dz * out.z, D = this.m(10);
+    const a = Math.atan2(out.x * D + dx - out.x * t, out.z * D + dz - out.z * t) + rand(-Math.PI / 6, Math.PI / 6);
+    return out.set(Math.sin(a), 0, Math.cos(a));
   }
 
   /** Something hit near p (a round, a bolt): those right there fall, those near flinch and run */
@@ -468,47 +506,90 @@ export class People {
   // ---- people in buildings -----------------------------------------------------------
 
   /**
-   * A building was broken open at (x, y, z), r across: fill its floors round there with people,
-   * once per stretch of it. Those nearest the hole spill out of it. Returns the places taken, for
-   * the furniture.
+   * A building was broken open at (x, y, z), r across, vol m³ of it blown away: the first time
+   * round there, its floors round the hole fill with people, and a crowd right by the hole, the
+   * bigger it is. Then the hole spills them (see spill). Returns the places taken the first time,
+   * for the furniture.
    */
-  occupy(s, x, y, z, r, crowd) {
+  occupy(s, x, y, z, r, crowd, vol = 0) {
     if (s.body || s.dead) return;
     let list = this.populated.get(s);
     if (!list) this.populated.set(s, (list = []));
-    const near = this.m(22);
-    for (const c of list) if ((c.x - x) ** 2 + (c.y - y) ** 2 + (c.z - z) ** 2 < near * near) return;
-    list.push(new V3(x, y, z));
-    const g = s.g, B = s.box, spots = this.floorSpots(s, x, y, z, this.m(16), Math.round(10 + 22 * crowd));
-    // Out from the building's middle through the hole
-    _w.set(x - (B.min.x + B.max.x) / 2, 0, z - (B.min.z + B.max.z) / 2);
-    if (_w.lengthSq() < 1e-6) _w.set(1, 0, 0);
-    _w.normalize();
-    for (const sp of spots) {
-      if (Math.random() > 0.55 + crowd * 0.15) continue;
-      const q = this.add(Math.floor(Math.random() * MODELS.length), sp);
-      if (!q) break;
-      q.mode = 'inside'; q.s = s; q.state = Math.random() < 0.6 ? 'idle' : 'walk'; q.walkT = rand(1, 4);
-      q.pace = this.m(rand(0.6, 1.1));
-      q.yaw = Math.random() * TAU;
-      const d = Math.hypot(sp.x - x, sp.y - y, sp.z - z);
-      // By the hole: thrown out, or sliding backward off the edge of the floor
-      if (d < r * 1.9) {
-        if (Math.random() < 0.45) {
-          q.state = 'slide'; q.mode = 'slide';
-          q.vel.set(_w.x, 0, _w.z).multiplyScalar(this.m(rand(2.5, 5)));
-          q.yaw = Math.atan2(-_w.x, -_w.z); // facing back into the building as they go
-        } else this.thrown(q, _w.x * this.m(rand(4, 11)) + this.m(rand(-2, 2)), this.m(rand(1, 5)), _w.z * this.m(rand(4, 11)) + this.m(rand(-2, 2)));
-      } else if (d < r * 4) this.scare(q, _a.set(x, y, z), 0.6);
+    const near = this.m(22), id0 = this.ids || 0;
+    // One for about every six cubic meters blown away in a busy office, fewer in a quiet home:
+    // a bullet hole lets out none or one, a crater a crowd
+    const n = Math.floor((vol * (0.25 + crowd)) / 8 + Math.random());
+    let fresh = true, spots = null;
+    for (const c of list) if ((c.x - x) ** 2 + (c.y - y) ** 2 + (c.z - z) ** 2 < near * near) { fresh = false; break; }
+    if (fresh) {
+      list.push(new V3(x, y, z));
+      spots = this.floorSpots(s, x, y, z, this.m(16), Math.round(10 + 22 * crowd));
+      const by = this.floorSpots(s, x, y, z, r * 1.6, n, 0.45);
+      for (let k = 0; k < by.length + spots.length; k++) {
+        if (k >= by.length && Math.random() > 0.55 + crowd * 0.15) continue;
+        const q = this.add(Math.floor(Math.random() * MODELS.length), k < by.length ? by[k] : spots[k - by.length]);
+        if (!q) break;
+        q.mode = 'inside'; q.s = s; q.state = Math.random() < 0.6 ? 'idle' : 'walk'; q.walkT = rand(1, 4);
+        q.pace = this.m(rand(0.6, 1.1));
+        q.yaw = Math.random() * TAU;
+      }
     }
+    this.spill(s, x, y, z, r, n, id0);
     return spots;
   }
 
-  /** Up to n places on the floors of s within R of (x, y, z): standing room over a solid floor */
-  floorSpots(s, x, y, z, R, n) {
+  /**
+   * A fresh hole in s at (x, y, z), r across. Within three times r of it, on a floor it broke
+   * into, about half the people there slide backward toward it and off the broken edge; those
+   * who have only just come (newer than id0: they never felt the blast) are thrown out through it,
+   * nearest first. n of them in all, besides those the blast left for the hole (see blast). The
+   * rest round it scramble away.
+   */
+  spill(s, x, y, z, r, n, id0) {
+    const m = (v) => this.m(v), R = r * 3, R4 = r * 4, near = this.near || (this.near = []);
+    near.length = 0;
+    for (const q of this.list) {
+      if (q.s !== s || q.mode !== 'inside' || q.state === 'dead') continue;
+      const dx = q.pos.x - x, dy = q.pos.y - y, dz = q.pos.z - z;
+      if (dx * dx + dz * dz > R4 * R4 || Math.abs(dy) > R) continue;
+      q.hd = dx * dx + dy * dy + dz * dz;
+      near.push(q);
+    }
+    if (!near.length) return;
+    near.sort((a, b) => a.hd - b.hd);
+    _a.set(x, y, z);
+    for (const q of near) {
+      const dx = q.pos.x - x, dz = q.pos.z - z, d = Math.hypot(dx, dz), dy = q.pos.y - m(0.25) - y, rock = q.rock === this.time;
+      if (d < R) {
+        // Whether their floor has a hole in it: just inside its edge, on their side
+        const rh = Math.sqrt(Math.max(0, r * r - dy * dy)) * 0.6, f = d > 1e-3 ? Math.min(1, rh / d) : 0;
+        const cut = rh > m(0.5) && !this.solid(x + dx * f, q.pos.y - m(0.25), z + dz * f);
+        if (cut && (rock || (n > 0 && Math.random() < 0.5))) {
+          if (!rock) n--;
+          this.slideTo(q, x, z);
+          continue;
+        }
+        if (rock || (q.id > id0 && n > 0 && Math.abs(dy) < r * 0.75)) {
+          if (!rock) n--;
+          // Thrown low across the floor, skidding (see flying), to go out of the hole slowly enough
+          // to come down in the street below rather than over it
+          this.outward(s, q.pos, _a, _v);
+          const v = Math.sqrt(m(rand(3, 6)) ** 2 + 2 * m(4.5) * (d + m(2)));
+          this.thrown(q, _v.x * v, m(rand(1, 2.5)), _v.z * v);
+          continue;
+        }
+      }
+      this.scare(q, _a, 0.6);
+      q.edgeT = this.time;
+    }
+    near.length = 0;
+  }
+
+  /** Up to n places on the floors of s within R of (x, y, z) (up and down, v of that): standing room over a solid floor */
+  floorSpots(s, x, y, z, R, n, v = 0.7) {
     const g = s.g, out = [], step = this.m(0.6);
     for (let k = 0; k < n * 5 && out.length < n; k++) {
-      const px = x + rand(-R, R), pz = z + rand(-R, R), py = y + rand(-R, R) * 0.7;
+      const px = x + rand(-R, R), pz = z + rand(-R, R), py = y + rand(-R, R) * v;
       let i = g.cellAt(px, py, pz);
       if (i < 0) continue;
       // Down the column to the floor under this point
@@ -740,7 +821,10 @@ export class People {
     // Keep to the room: no walking into walls (turning off along them a while), nor (mostly) off the edge of the floor
     if (this.solid(nx, q.pos.y + m(0.9), nz)) { q.yaw += rand(1.5, 3); q.dodge = rand(0.6, 1.4); return; }
     if (!this.solid(nx, q.pos.y - m(0.25), nz)) {
-      if (q.state === 'run' && Math.random() < 0.25) { this.edge(q, nx, nz); return; }
+      // At a broken edge: some running slide backward off it, and by a fresh hole many do,
+      // scrambling or not
+      const fresh = q.edgeT !== undefined && this.time - q.edgeT < 15;
+      if (Math.random() < (q.state === 'run' ? (fresh ? 0.6 : 0.25) : fresh ? 0.35 : 0)) { this.edge(q, nx, nz); return; }
       q.yaw += rand(2, 3.5); return;
     }
     q.pos.x = nx; q.pos.z = nz;
@@ -748,26 +832,43 @@ export class People {
 
   /** Over the edge of a broken floor: some slide backward off it, flailing */
   edge(q, nx, nz) {
-    q.mode = 'slide'; q.state = 'slide';
+    q.mode = 'slide'; q.state = 'slide'; q.slip = 0; q.t2 = 0;
     q.vel.set(Math.sin(q.yaw), 0, Math.cos(q.yaw)).multiplyScalar(this.m(2));
     q.yaw += Math.PI; // turned back toward the floor they're losing
+  }
+
+  /** Slide backward toward a hole at (x, z) in their floor, faster and faster as it sags into it, and off its edge */
+  slideTo(q, x, z) {
+    const dx = x - q.pos.x, dz = z - q.pos.z, L = Math.hypot(dx, dz) || 1;
+    q.mode = 'slide'; q.state = 'slide'; q.t2 = 0;
+    q.hole = (q.hole || new V3()).set(x, q.pos.y, z);
+    q.slip = this.m(rand(2.2, 3.6));
+    q.vel.set(dx / L, 0, dz / L).multiplyScalar(this.m(rand(1, 2.5)));
+    q.yaw = Math.atan2(-dx, -dz); // facing back into the building as they go
   }
 
   /** Sliding backward across a floor toward its broken edge, then off it */
   sliding(q, dt) {
     const m = (x) => this.m(x);
+    if (q.slip) {
+      // Down the sagging floor into the hole, faster and faster
+      const dx = q.hole.x - q.pos.x, dz = q.hole.z - q.pos.z, L = Math.hypot(dx, dz);
+      if (L > m(0.2)) { q.vel.x += (dx / L) * q.slip * dt; q.vel.z += (dz / L) * q.slip * dt; }
+      const sp = q.vel.length();
+      if (sp > m(7)) q.vel.multiplyScalar(m(7) / sp);
+    } else if (q.vel.length() > m(1.2)) q.vel.multiplyScalar(Math.exp(-dt * 0.6));
     q.pos.addScaledVector(q.vel, dt);
-    const sp = q.vel.length();
-    if (sp > m(1.2)) q.vel.multiplyScalar(Math.exp(-dt * 0.6));
-    if (this.solid(q.pos.x, q.pos.y + m(0.9), q.pos.z)) { q.vel.multiplyScalar(-0.3); }
+    // Into a wall or a column: back off it
+    if (this.solid(q.pos.x, q.pos.y + m(0.9), q.pos.z)) { q.pos.addScaledVector(q.vel, -dt); q.vel.multiplyScalar(-0.3); }
     // Off the edge
     if (!this.solid(q.pos.x, q.pos.y - m(0.25), q.pos.z)) {
+      q.slip = 0;
       this.thrown(q, q.vel.x, m(0.5), q.vel.z);
       q.spin.set(rand(-1.5, -0.5) * Math.sign(Math.random() - 0.5), 0, 0);
       return;
     }
     q.t2 = (q.t2 || 0) + dt;
-    if (q.t2 > 3.5) { q.t2 = 0; q.mode = q.s ? 'inside' : 'free'; q.state = 'run'; q.fear = 4; }
+    if (q.t2 > (q.slip ? 6 : 3.5)) { q.t2 = 0; q.slip = 0; q.mode = q.s ? 'inside' : 'free'; q.state = 'run'; q.fear = 4; }
   }
 
   /** In the air: falling, tumbling, until something solid stops them */
@@ -800,6 +901,15 @@ export class People {
         this.fx.smoke.emit(q.pos.x, g + m(0.2), q.pos.z, 0, m(3), 0, 0.6, m(0.3), m(1.4), 0.85, 0.9, 0.95, 0.7, 0.85, 0.9, 0.95, 0, 0.5, -6);
         return;
       }
+      // Thrown across a floor in a building: skidding and tumbling along it, slowing, till they
+      // stop or go over the edge of the hole they were blown at
+      const h = Math.hypot(q.vel.x, q.vel.z);
+      if (!hard && h > m(2.5) && q.s && !q.s.dead && g > this.city.L.curb + m(1)) {
+        const k = Math.max(0, h - m(4.5) * dt) / h;
+        q.vel.x *= k; q.vel.z *= k; q.vel.y = 0;
+        q.spin.multiplyScalar(Math.exp(-dt * 4));
+        return;
+      }
       if (q.state === 'dead') {
         q.mode = 'dead'; q.vel.set(0, 0, 0);
         if (q.dieT === undefined || q.dieT < 9) { q.tilt.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2); q.dieT = 9; }
@@ -816,7 +926,7 @@ export class People {
         // Got up again: run, out in the street or still in the building
         q.tilt.identity();
         q.vel.set(0, 0, 0);
-        q.mode = q.s && !q.s.dead && g > this.city.L.curb + m(1) ? 'inside' : 'free';
+        q.mode = this.indoors(q) && g > this.city.L.curb + m(1) ? 'inside' : 'free';
         q.state = 'run';
         q.fear = rand(6, 12);
         q.from = q.from || q.pos.clone().add(_v.set(rand(-1, 1), 0, rand(-1, 1)));
