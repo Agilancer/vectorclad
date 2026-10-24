@@ -2,7 +2,7 @@
 // held up against the reference art. URL params:
 //   view=ref|front|side|back|three   camera preset (ref matches the reference art's angle)
 //   az, el                           camera azimuth/elevation in degrees, overriding the preset
-//   pose=idle|aim                    armed=1 puts a rifle in the right hand
+//   pose=idle|aim                    armed=1 puts the sidearm in the left hand
 //   outline=1                        ink outlines as in the game
 //   spin=1                           turntable
 //   ref=<url>                        reference image shown in the corner (compare)
@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { glowTexture } from '../js/atlas.js';
-import { Sovereign, buildSovereignRifle, loadSovereignTextures, makeSovereignMaterials } from '../js/sovereign.js';
+import { Sovereign, buildSovereignSidearm, loadSovereignTextures, makeSovereignMaterials } from '../js/sovereign.js';
 
 const Q = new URLSearchParams(location.search);
 const canvas = document.getElementById('c');
@@ -56,7 +56,7 @@ controls.target.set(0, 4.1, 0);
 controls.enableDamping = true;
 
 // Camera presets: azimuth from the mech's front (+Z) toward its left side (+X), elevation
-const VIEWS = { ref: [58, 4], front: [0, 6], three: [35, 10], side: [90, 4], back: [180, 8], rear: [-140, 12], top: [30, 45] };
+const VIEWS = { ref: [-18, -7], front: [0, 6], three: [35, 10], side: [90, 4], back: [180, 8], rear: [-140, 12], top: [30, 45] };
 function setView(az, el, dist = 21, ty = 4.1) {
   controls.target.set(0, ty, 0);
   const a = THREE.MathUtils.degToRad(az), e = THREE.MathUtils.degToRad(el);
@@ -87,10 +87,10 @@ const mats = makeSovereignMaterials(tex);
 const mech = new Sovereign(mats, glowTexture());
 scene.add(mech.root);
 
-const rifle = buildSovereignRifle(mats);
+const sidearm = buildSovereignSidearm(mats);
 function applyState() {
   for (const o of mech.outlines) o.visible = state.outline;
-  mech.attach('rightHand', state.armed ? rifle : null);
+  mech.attach('leftHand', state.armed ? sidearm : null);
 }
 
 const st = {
@@ -100,9 +100,9 @@ const st = {
 };
 function step(dt) {
   st.time += dt;
-  st.armed = [state.armed, false];
-  st.support = state.armed;
-  st.aim = [state.pose === 'aim' ? 1 : 0, 0];
+  st.armed = [false, state.armed];
+  st.support = false;
+  st.aim = [0, state.pose === 'aim' ? 1 : 0];
   mech.animate(dt, st);
 }
 // Settle the damped pose before the first frame

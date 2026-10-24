@@ -3,10 +3,11 @@ import { frontPrism, sidePrism, chamferBox, cylX, cylZ, loft, place } from './at
 import { Mech, Thruster, Piston, LEG, warp, blade, loftZ } from './mech.js';
 
 // ---------------------------------------------------------------------------
-// BK-09 Sovereign: a black and gold lancer on the Vanguard's rig. Two great
-// binders stand off its back in a V, long blade skirts hang to its shins, its
-// legs end in spikes with champagne heel fins, and its shoulders and outer arms
-// are plated in champagne gold over brass machinery.
+// BK-09 Sovereign: a black and gold heavy on the Vanguard's rig, after the
+// Blueflow art with its palette swapped (blue plate to matte black, light-blue
+// lines to gold, white to champagne, gray frame to gunmetal). Hunched under two
+// great crescent pauldrons, its small beaked head sunk between them, it stands
+// wide on thick rounded legs with curved greaves and heavy feet.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -48,6 +49,8 @@ export function makeSovereignMaterials(tex) {
     brass: std({ map: tex.gold, roughness: 0.42, metalness: 0.85, color: 0x8a6a42 }),
     joint: std({ color: 0x1b1c1f, roughness: 0.42, metalness: 0.75 }),
     frame: std({ color: 0x2c2d31, roughness: 0.4, metalness: 0.7 }),
+    // Gunmetal for the frame showing between the plates
+    gun: std({ color: 0x4d5056, roughness: 0.38, metalness: 0.8 }),
     eye: new THREE.MeshBasicMaterial({ color: 0xffc35a, toneMapped: false }),
     sensor: new THREE.MeshBasicMaterial({ color: 0xffd27a, toneMapped: false }),
   };
@@ -98,13 +101,94 @@ function S(geo, mat, k = 0.6, ou = 0, ov = 0) {
 /** A thin plate cut to a side profile ([z, y] points), w thick across X */
 function sideplate(pts, w, bevel = 0.015) { return sidePrism(pts, w, bevel); }
 
+/**
+ * Smooth loft along Y through superellipse sections { y, w, d, x?, z?, p? }:
+ * w wide, d deep, centered on x/z; p is the squareness (2 an ellipse, 4 a soft box).
+ * Smooth-shaded sides with flat caps, for the rounded armor.
+ */
+function sloft(secs, n = 24) {
+  const pos = [], idx = [];
+  const ring = (s) => {
+    const p = s.p || 2.6, e = 2 / p, start = pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Math.PI * 2, c = Math.cos(t), sn = Math.sin(t);
+      pos.push((s.x || 0) + Math.sign(c) * Math.pow(Math.abs(c), e) * s.w / 2, s.y, (s.z || 0) + Math.sign(sn) * Math.pow(Math.abs(sn), e) * s.d / 2);
+    }
+    return start;
+  };
+  const rings = secs.map(ring);
+  // Wind each band so its faces point away from the axis
+  const flip = secs[0].y > secs[secs.length - 1].y;
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let i = 0; i < n; i++) {
+      const a = rings[r] + i, b = rings[r] + (i + 1) % n, c = rings[r + 1] + (i + 1) % n, d = rings[r + 1] + i;
+      if (flip) idx.push(a, c, b, a, d, c); else idx.push(a, b, c, a, c, d);
+    }
+  }
+  const sides = new THREE.BufferGeometry();
+  sides.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  sides.setIndex(idx);
+  sides.computeVertexNormals();
+  // Flat caps on their own vertices
+  const cap = (s, up) => {
+    const g = new THREE.BufferGeometry(), cp = [(s.x || 0), s.y, (s.z || 0)], ci = [];
+    const p = s.p || 2.6, e = 2 / p;
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Math.PI * 2, c = Math.cos(t), sn = Math.sin(t);
+      cp.push((s.x || 0) + Math.sign(c) * Math.pow(Math.abs(c), e) * s.w / 2, s.y, (s.z || 0) + Math.sign(sn) * Math.pow(Math.abs(sn), e) * s.d / 2);
+      const a = 1 + i, b = 1 + (i + 1) % n;
+      if (up) ci.push(0, b, a); else ci.push(0, a, b);
+    }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3));
+    g.setIndex(ci);
+    g.computeVertexNormals();
+    return g.toNonIndexed();
+  };
+  const hi = secs[0].y > secs[secs.length - 1].y ? 0 : secs.length - 1;
+  const lo = secs.length - 1 - hi;
+  return mergeGeos([sides.toNonIndexed(), cap(secs[hi], true), cap(secs[lo], false)]);
+}
+
+/** Join non-indexed geometries with position and normal attributes */
+function mergeGeos(list) {
+  let count = 0;
+  for (const g of list) count += g.attributes.position.count;
+  const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3);
+  let o = 0;
+  for (const g of list) {
+    pos.set(g.attributes.position.array, o * 3);
+    nor.set(g.attributes.normal.array, o * 3);
+    o += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return out;
+}
+
+/** n+1 points along fn(t), t from 0 to 1 */
+const arc = (fn, n = 10) => Array.from({ length: n + 1 }, (_, i) => fn(i / n));
+
+/** A smooth dome: a sphere squashed to w×h×d, its lower part cut flat at y = cut (fraction of h/2) */
+function dome(w, h, d, cut = -0.2, seg = 20) {
+  const g = new THREE.SphereGeometry(1, seg, Math.round(seg * 0.6));
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let y = p.getY(i);
+    if (y < cut) y = cut;
+    p.setXYZ(i, p.getX(i) * w / 2, y * h / 2, p.getZ(i) * d / 2);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 // ---------------------------------------------------------------------------
 
 export class Sovereign extends Mech {
   constructor(mats, glowTex) {
     super(mats, glowTex);
-    // Standing: right foot forward, as on the reference
-    this.idleFeet = [new V3(-1.02, 0, 0.78), new V3(1.12, 0, -0.62)];
+    // A wide, planted stance
+    this.idleFeet = [new V3(-1.62, 0, 0.42), new V3(1.68, 0, -0.3)];
     for (const A of this.arms) {
       A.upper = A.elbow.position.length();
       A.fore = new V3().copy(A.hand.position).add(A.mount.position).length();
@@ -115,127 +199,117 @@ export class Sovereign extends Mech {
 
   buildPelvis() {
     const M = this.mats, p = this.pelvis;
-    // Machinery core on a hip axle
-    place(p, S(loft([
-      { y: 0.3, w: 0.86, d: 0.7, c: 0.16 },
-      { y: 0.0, w: 1.0, d: 0.78, c: 0.2 },
-      { y: -0.34, w: 0.52, d: 0.56, c: 0.14 },
-    ]), M.joints, 1.4));
-    place(p, S(cylX(0.18, 1.5), M.joint), 0, -0.18, 0);
-    // Pointed black codpiece, rear plate
-    place(p, S(frontPrism([[-0.26, 0.2], [0.26, 0.2], [0.17, -0.24], [0, -0.46], [-0.17, -0.24]], 0.18, 0.03), M.armor), 0, 0, 0.4);
-    place(p, S(chamferBox(0.2, 0.05, 0.04, 0.015), M.gold), 0, 0.1, 0.5);
-    place(p, S(frontPrism([[-0.42, 0.22], [0.42, 0.22], [0.3, -0.4], [-0.3, -0.4]], 0.12, 0.03), M.armor), 0, 0, -0.42);
-
-    // Big exposed hip discs: a black rim around dark spokes and a gold hub
-    for (const s of [-1, 1]) {
-      const d = new THREE.Group();
-      d.position.set(s * 0.98, -0.1, -0.04);
-      p.add(d);
-      place(d, S(cylX(0.56, 0.14, 28), M.armor));
-      place(d, S(cylX(0.47, 0.16, 28), M.joint));
-      const ring = place(d, S(new THREE.TorusGeometry(0.4, 0.024, 6, 32), M.gold), s * 0.085, 0, 0, 0, Math.PI / 2, 0);
-      ring.userData.noOutline = true;
-      for (let k = 0; k < 6; k++) {
-        const sp = new THREE.Group();
-        sp.rotation.x = (k / 6) * Math.PI * 2;
-        d.add(sp);
-        place(sp, S(chamferBox(0.05, 0.38, 0.07, 0.015), M.frame), s * 0.08, 0.25, 0);
-      }
-      place(d, S(cylX(0.15, 0.22, 16), M.gold));
-      place(d, S(cylX(0.06, 0.26, 12), M.joint));
-    }
-
-    // Long blade skirts hanging to the shins at the front. The outer group
-    // (hipPads) follows the thigh; the inner one sets the plate's flare.
+    // Gunmetal frame on a hip axle, a black belt and a champagne tag on the codpiece
+    place(p, S(sloft([
+      { y: 0.32, w: 1.1, d: 0.76, p: 3 },
+      { y: 0.0, w: 1.4, d: 0.86, p: 3 },
+      { y: -0.36, w: 0.58, d: 0.6, p: 3 },
+    ]), M.gun));
+    place(p, S(cylX(0.2, 2.1), M.gun), 0, -0.18, 0);
+    place(p, S(frontPrism([[-0.36, 0.22], [0.36, 0.22], [0.26, -0.2], [0.1, -0.44], [-0.1, -0.44], [-0.26, -0.2]], 0.2, 0.04), M.armor), 0, 0, 0.42);
+    place(p, S(chamferBox(0.24, 0.13, 0.04, 0.02), M.champ), 0.04, -0.06, 0.53, 0, 0, -0.08);
+    place(p, S(frontPrism([[-0.05, 0.04], [0.05, 0.04], [0, -0.05]], 0.03, 0.005), M.gold), -0.12, 0.12, 0.53).userData.noOutline = true;
+    place(p, S(frontPrism([[-0.46, 0.24], [0.46, 0.24], [0.34, -0.36], [-0.34, -0.36]], 0.14, 0.03), M.armor), 0, 0, -0.44);
+    // Short front flaps that follow the thighs
     this.hipPads = [-1, 1].map((s) => {
       const g = new THREE.Group();
-      g.position.set(s * 0.34, 0.14, 0.44);
+      g.position.set(s * 0.42, 0.06, 0.4);
       p.add(g);
       const k = new THREE.Group();
-      k.rotation.set(-0.06, s * 0.3, s * 0.07);
+      k.rotation.set(-0.1, s * 0.35, 0);
       g.add(k);
-      place(k, S(frontPrism(mirror([[-0.34, 0.1], [0.44, 0.1], [0.54, -0.3], [0.44, -2.2], [0.2, -3.05], [-0.04, -2.6], [-0.34, -0.5]], s), 0.12, 0.03), M.armor, 0.5));
-      // Gold slot down the outer edge and a few gold marks
-      place(k, S(chamferBox(0.03, 1.9, 0.02, 0.01), M.gold), s * 0.36, -1.25, 0.065, 0, 0, -s * 0.05).userData.noOutline = true;
-      place(k, S(chamferBox(0.12, 0.025, 0.02, 0.008), M.gold), -s * 0.06, -0.55, 0.065).userData.noOutline = true;
-      place(k, S(chamferBox(0.06, 0.025, 0.02, 0.008), M.gold), -s * 0.1, -0.62, 0.065).userData.noOutline = true;
+      place(k, S(frontPrism(mirror([[-0.18, 0.08], [0.24, 0.08], [0.26, -0.4], [0.08, -0.62], [-0.16, -0.36]], s), 0.08, 0.025), M.armor));
+      place(k, S(frontPrism(mirror([[0.16, 0.0], [0.2, 0.0], [0.2, -0.36], [0.07, -0.54], [0.06, -0.48], [0.16, -0.34]], s), 0.02, 0.004), M.gold), 0, 0, 0.05).userData.noOutline = true;
       return g;
     });
-    // Side skirts sweeping back over the hip discs, and a rear skirt
-    for (const s of [-1, 1]) {
-      const g = new THREE.Group();
-      g.position.set(s * 1.12, 0.26, -0.1);
-      g.rotation.set(0.1, 0, s * 0.14);
-      p.add(g);
-      place(g, S(sideplate([[0.42, 0.1], [0.4, -0.6], [0.18, -2.3], [0.02, -2.6], [-0.2, -1.6], [-0.5, -0.3], [-0.42, 0.1]], 0.1), M.armor, 0.5));
-      place(g, S(sideplate([[0.2, -0.3], [0.16, -0.6], [-0.1, -1.0], [-0.14, -0.7], [0.0, -0.3]], 0.02), M.gold), s * 0.06, 0, 0).userData.noOutline = true;
-    }
-    const rear = new THREE.Group();
-    rear.position.set(0, 0.1, -0.48);
-    rear.rotation.x = 0.22;
-    p.add(rear);
-    place(rear, S(frontPrism([[-0.5, 0.1], [0.5, 0.1], [0.42, -0.9], [0, -1.3], [-0.42, -0.9]], 0.1, 0.03), M.armor, 0.5));
   }
 
   buildLeg(s) {
     const M = this.mats;
     const hip = new THREE.Group();
-    hip.position.set(s * 0.62, -LEG.hipDrop, 0);
+    hip.position.set(s * 0.88, -LEG.hipDrop, 0);
     this.pelvis.add(hip);
-    place(hip, S(new THREE.SphereGeometry(0.26, 16, 10), M.joint));
-    // Thigh: a frame strut in brass-trimmed machinery, mostly hidden by the skirts
+    place(hip, S(new THREE.SphereGeometry(0.3, 16, 10), M.gun));
+    // Thigh: a bulbous black drum over the hip, with a champagne crescent band
+    // round its inner face, swelling into a thick thigh
     const TH = LEG.thigh;
-    place(hip, S(new THREE.CylinderGeometry(0.15, 0.17, TH - 0.2, 10), M.joint), 0, -TH / 2, -0.02);
-    place(hip, S(loft([
-      { y: -0.1, w: 0.6, d: 0.72, c: 0.16 },
-      { y: -0.9, w: 0.56, d: 0.7, c: 0.16, z: 0.04 },
-      { y: -TH + 0.32, w: 0.42, d: 0.5, c: 0.12, z: 0.03 },
-    ]), M.joints, 1.6));
-    place(hip, S(frontPrism([[-0.24, -0.2], [0.24, -0.2], [0.22, -1.0], [0, -1.2], [-0.22, -1.0]], 0.1, 0.03), M.armor), 0, 0, 0.38);
-    place(hip, S(sideplate([[0.36, -0.1], [0.32, -1.1], [-0.2, -1.3], [-0.42, -0.3]], 0.08), M.armor), s * 0.32, 0, 0);
+    place(hip, S(dome(1.4, 0.8, 1.42, -0.2), M.armor), s * 0.12, -0.02, 0.02);
+    place(hip, S(new THREE.TorusGeometry(0.6, 0.075, 8, 28, Math.PI * 1.1), M.champ), -s * 0.1, -0.12, 0.08, 0, Math.PI / 2, -Math.PI * 0.3);
+    place(hip, S(sloft([
+      { y: 0.08, w: 1.36, d: 1.4, x: s * 0.12, p: 2.4 },
+      { y: -0.65, w: 1.3, d: 1.36, x: s * 0.12, z: 0.04, p: 2.4 },
+      { y: -1.25, w: 1.04, d: 1.1, x: s * 0.08, z: 0.06, p: 2.6 },
+      { y: -TH + 0.18, w: 0.7, d: 0.78, z: 0.02, p: 2.8 },
+    ]), M.armor, 0.5));
+    // Gold seam lines on the thigh front, and a gunmetal strut behind
+    place(hip, S(chamferBox(0.03, 0.9, 0.03, 0.01), M.gold), s * 0.3, -0.75, 0.7, -0.06, 0, 0).userData.noOutline = true;
+    place(hip, S(sidePrism(arc((t) => [0.5 - 0.9 * t, -0.25 - 0.6 * Math.sin(Math.PI * t)], 10).concat(arc((t) => [-0.4 + 0.9 * t, -0.2 - 0.52 * Math.sin(Math.PI * (1 - t))], 10)), 0.02, 0.004), M.gold), s * 0.78, 0, 0).userData.noOutline = true;
+    place(hip, S(new THREE.CylinderGeometry(0.16, 0.18, TH - 0.4, 12), M.gun), 0, -TH / 2 - 0.1, -0.3);
 
     const knee = new THREE.Group();
     knee.position.y = -TH;
     hip.add(knee);
-    place(knee, S(cylX(0.23, 0.58), M.joint));
-    for (const x of [-0.3, 0.3]) place(knee, S(cylX(0.12, 0.05, 12), M.gold), x, 0, 0);
-    // Angular knee block with a small champagne crest
-    place(knee, S(blade([[0.52, 0.32], [0.64, -0.12], [0.44, -0.6], [0.06, -0.66], [-0.12, -0.1], [0.12, 0.36]], 0.62, [1, 1], [0.85, 1]), M.armor));
-    place(knee, S(chamferBox(0.2, 0.12, 0.03, 0.03), M.champ), 0, -0.2, 0.6, -0.25, 0, 0);
-    this.pistons.push(new Piston(hip, new V3(s * 0.24, -0.5, -0.3), knee, new V3(s * 0.24, -0.5, -0.34), 0.06, M, M.brass));
+    place(knee, S(cylX(0.3, 0.86, 18), M.gun));
+    for (const x of [-0.45, 0.45]) place(knee, S(cylX(0.16, 0.05, 14), M.gold), x, 0, 0);
+    // Knee cap with a champagne panel and a spur raking out the side
+    place(knee, S(sloft([
+      { y: 0.4, w: 0.76, d: 0.34, z: 0.48, p: 3 },
+      { y: -0.1, w: 0.9, d: 0.44, z: 0.56, p: 3 },
+      { y: -0.55, w: 0.64, d: 0.34, z: 0.46, p: 3 },
+    ]), M.armor));
+    place(knee, S(frontPrism([[-0.2, 0.2], [0.2, 0.2], [0.15, -0.12], [0, -0.26], [-0.15, -0.12]], 0.05, 0.012), M.champ), 0, 0, 0.8, -0.12, 0, 0);
+    place(knee, S(blade([[0.3, 0.1], [0.0, 0.3], [-0.5, 0.62], [-0.38, 0.3], [0.1, -0.12]], 0.06, [0.4, 1], [1, 1], 0.008), M.armor), s * 0.5, -0.05, 0.1, 0, 0, -s * 0.3);
 
-    // Shin: one long wedge, deep at the knee and tapering toward the spike
+    // Shin: thick and rounded, swelling at the calf, with a gold-lit channel down the
+    // front and a long curved greave bowing out along the outside
     const SH = LEG.shin;
-    place(knee, S(blade([[0.42, -0.2], [0.48, -0.95], [0.32, -1.9], [0.16, -SH + 0.05], [-0.14, -SH + 0.05], [-0.32, -1.6], [-0.44, -0.6], [-0.3, -0.15]],
-      0.58, [1, 1], [0.6, 1]), M.armor, 0.5));
-    place(knee, S(chamferBox(0.02, 0.5, 0.04, 0.006), M.gold), s * 0.24, -0.9, 0.36, 0.08, 0, 0).userData.noOutline = true;
-    // Champagne heel fins with saw-toothed lower edges, swept back off the calf
-    const fin = [[-0.12, -1.25], [-0.6, -1.42], [-1.15, -1.82], [-1.2, -2.75], [-1.04, -2.56], [-0.94, -2.86], [-0.76, -2.64], [-0.64, -2.92], [-0.46, -2.66], [-0.16, -2.6]];
-    for (const [x, y, z, sc] of [[0.15, 0, 0, 1], [-0.15, 0.04, 0.04, 0.94], [0, 0.18, 0.1, 0.8]]) {
-      const f = place(knee, S(sideplate(fin, 0.05), M.champ, 0.8), x, y, z);
-      f.scale.set(1, 1, sc);
-    }
-    place(knee, S(chamferBox(0.36, 0.3, 0.1, 0.04), M.joint), 0, -1.45, -0.36);
-    for (const x of [-0.07, 0.07]) {
-      this.thrusters.calf.push(new Thruster(knee, new V3(x, -1.42, -0.4), new V3(0, -0.85, -0.6), 0.09, this.glowTex));
+    place(knee, S(sloft([
+      { y: -0.05, w: 0.96, d: 1.08, z: -0.02, p: 2.5 },
+      { y: -0.75, w: 1.1, d: 1.26, z: -0.06, p: 2.5 },
+      { y: -1.7, w: 0.9, d: 1.06, z: -0.02, p: 2.6 },
+      { y: -SH + 0.18, w: 0.64, d: 0.76, z: 0.04, p: 2.8 },
+    ]), M.armor, 0.5));
+    place(knee, S(chamferBox(0.28, SH - 0.7, 0.08, 0.06), M.gun), 0, -SH / 2 - 0.15, 0.6, 0.08, 0, 0);
+    place(knee, S(chamferBox(0.07, SH - 0.9, 0.04, 0.02), M.gold), 0, -SH / 2 - 0.15, 0.65, 0.08, 0, 0).userData.noOutline = true;
+    const greave = arc((t) => [0.5 - 0.3 * t + 0.08 * Math.sin(Math.PI * t), 0.3 - (SH + 0.1) * t], 12);
+    const greaveBack = arc((t) => [-0.62 + 0.3 * t - 0.22 * Math.sin(Math.PI * t), -SH + 0.2 + (SH + 0.1) * t], 12);
+    const gv = new THREE.Group();
+    gv.position.set(s * 0.56, 0, 0);
+    gv.rotation.z = s * 0.06;
+    knee.add(gv);
+    place(gv, S(sidePrism([...greave, ...greaveBack], 0.16, 0.05), M.armor, 0.5));
+    place(gv, S(sidePrism([...arc((t) => [0.26 - 0.2 * t - 0.12 * Math.sin(Math.PI * t), -0.1 - 2.2 * t], 10), ...arc((t) => [0.18 - 0.2 * (1 - t) - 0.12 * Math.sin(Math.PI * (1 - t)), -2.3 + 2.2 * t], 10)], 0.02, 0.004), M.gold), s * 0.085, 0, 0).userData.noOutline = true;
+    this.pistons.push(new Piston(hip, new V3(s * 0.2, -0.6, -0.4), knee, new V3(s * 0.2, -0.45, -0.42), 0.07, M, M.gun));
+    place(knee, S(chamferBox(0.36, 0.3, 0.1, 0.04), M.gun), 0, -0.9, -0.5);
+    for (const x of [-0.08, 0.08]) {
+      this.thrusters.calf.push(new Thruster(knee, new V3(x, -0.88, -0.56), new V3(0, -0.85, -0.6), 0.09, this.glowTex));
     }
 
     const mount = new THREE.Group();
-    mount.position.set(s * 0.32, -1.05, -0.06);
+    mount.position.set(s * 0.5, -1.05, -0.06);
     mount.rotation.z = -s * Math.PI / 2;
     knee.add(mount);
 
-    // Spike foot under a small ankle guard
+    // Heavy foot: gunmetal sole and raised heel, black toe cap edged in gold,
+    // a round ankle disc and spurs sweeping up off it
     const ankle = new THREE.Group();
     ankle.position.y = -SH;
     knee.add(ankle);
-    place(ankle, S(new THREE.SphereGeometry(0.17, 14, 10), M.joint));
-    place(ankle, S(loft([
-      { y: 0.26, w: 0.3, d: 0.46, c: 0.08, z: 0.02 },
-      { y: -0.08, w: 0.28, d: 0.4, c: 0.08, z: 0.05 },
-      { y: -LEG.foot, w: 0.05, d: 0.08, c: 0.02, z: 0.1 },
+    place(ankle, S(new THREE.SphereGeometry(0.22, 14, 10), M.gun));
+    place(ankle, S(sloft([{ y: 0.4, w: 0.66, d: 0.74, z: 0.02, p: 2.8 }, { y: 0.08, w: 0.74, d: 0.8, z: 0.06, p: 2.8 }, { y: -0.12, w: 0.7, d: 0.7, z: 0.1, p: 3 }]), M.armor));
+    for (const sd of [-1, 1]) {
+      place(ankle, S(cylX(0.24, 0.08, 18), M.gun), sd * 0.38, 0, 0);
+      place(ankle, S(cylX(0.14, 0.1, 14), M.champ), sd * 0.4, 0, 0);
+      place(ankle, S(blade([[0.1, 0.0], [-0.08, 0.1], [-0.5, 0.7], [-0.42, 0.72], [-0.16, -0.1]], 0.06, [0.4, 1], [1, 1], 0.008), M.armor), sd * 0.44, 0.05, -0.05);
+    }
+    place(ankle, S(sidePrism([[1.2, -0.42], [1.2, -0.55], [-0.72, -0.55], [-0.72, -0.3], [-0.36, -0.22], [0.5, -0.3]], 0.96, 0.05), M.gun));
+    place(ankle, S(sloft([
+      { y: -0.1, w: 0.78, d: 0.86, z: 0.2, p: 3.2 },
+      { y: -0.42, w: 0.94, d: 1.4, z: 0.4, p: 3.6 },
     ]), M.armor));
+    place(ankle, S(sidePrism([[1.22, -0.42], [1.1, -0.26], [0.7, -0.16], [0.62, -0.42]], 0.9, 0.03), M.armor), 0, 0, 0);
+    for (const sd of [-1, 1]) place(ankle, S(chamferBox(0.02, 0.025, 0.5, 0.006), M.gold), sd * 0.475, -0.32, 0.6, 0.2, 0, 0).userData.noOutline = true;
+    place(ankle, S(chamferBox(0.76, 0.2, 0.36, 0.06), M.armor), 0, -0.34, -0.6);
     return { s, hip, knee, ankle, mount };
   }
 
@@ -245,48 +319,49 @@ export class Sovereign extends Mech {
     waist.position.y = 0.3;
     waist.rotation.order = 'YXZ';
     this.body.add(waist);
-    // Exposed spine with brass struts
-    place(waist, S(new THREE.CylinderGeometry(0.3, 0.36, 0.72, 14), M.joints, 1.8), 0, 0.2, -0.04);
-    for (const sd of [-1, 1]) place(waist, S(new THREE.CylinderGeometry(0.04, 0.04, 0.64, 8), M.gold), sd * 0.25, 0.24, 0.22, 0, 0, sd * 0.12);
-    place(waist, S(loft([{ y: 0.44, w: 0.5, d: 0.24, c: 0.07, z: 0.3 }, { y: 0.04, w: 0.32, d: 0.2, c: 0.06, z: 0.27 }]), M.armor));
+    // Gunmetal spine with black belly plates
+    place(waist, S(new THREE.CylinderGeometry(0.32, 0.4, 0.74, 16), M.gun), 0, 0.2, -0.04);
+    place(waist, S(sloft([{ y: 0.46, w: 0.62, d: 0.3, z: 0.26, p: 3 }, { y: 0.04, w: 0.4, d: 0.24, z: 0.24, p: 3 }]), M.armor));
 
     const chest = (this.chest = new THREE.Group());
     chest.position.y = 0.5;
     waist.add(chest);
-    // Core
-    place(chest, S(loft([
-      { y: 0.0, w: 0.9, d: 0.76, c: 0.18, z: -0.08 },
-      { y: 0.55, w: 1.7, d: 1.14, c: 0.3, z: -0.1 },
-      { y: 1.1, w: 1.96, d: 1.2, c: 0.32, z: -0.14 },
-      { y: 1.36, w: 1.4, d: 0.92, c: 0.26, z: -0.2 },
+    // Rounded core under a hooded collar
+    place(chest, S(sloft([
+      { y: 0.0, w: 1.0, d: 0.8, z: -0.06, p: 2.6 },
+      { y: 0.6, w: 2.0, d: 1.36, z: -0.08, p: 2.8 },
+      { y: 1.15, w: 2.4, d: 1.44, z: -0.14, p: 3 },
+      { y: 1.52, w: 1.8, d: 1.06, z: -0.24, p: 3 },
     ]), M.armor, 0.5));
-    // Side machinery showing under the plates
-    for (const sd of [-1, 1]) place(chest, S(chamferBox(0.5, 0.6, 0.12, 0.08), M.vents, 1.6), sd * 0.95, 0.65, -0.12, 0, sd * Math.PI / 2, 0);
-    // Faceted chest plates sweeping back to the shoulders, edged in gold
+    // Gunmetal sternum frame between two rounded champagne chest plates, each edged in gold
+    place(chest, S(sloft([{ y: 1.25, w: 0.32, d: 0.3, z: 0.62, p: 3 }, { y: 0.1, w: 0.22, d: 0.26, z: 0.5, p: 3 }]), M.gun));
     for (const sd of [-1, 1]) {
-      const g = new THREE.Group();
-      g.position.set(0, 0, 0.64);
-      g.rotation.y = sd * 0.36;
-      chest.add(g);
-      place(g, S(frontPrism(mirror([[0.03, 0.3], [0.7, 0.46], [1.0, 0.92], [0.92, 1.3], [0.3, 1.38], [0.03, 1.16]], sd), 0.18, 0.035), M.armor, 0.5));
-      place(g, S(frontPrism(mirror([[0.62, 0.6], [0.94, 0.94], [0.9, 0.99], [0.58, 0.66]], sd), 0.04, 0.005), M.gold), 0, 0, 0.1).userData.noOutline = true;
-      // Champagne collar block at the base of the neck, capped with a round knob
-      const col = new THREE.Group();
-      col.position.set(sd * 0.56, 1.22, 0.12);
-      col.rotation.set(0.15, -sd * 0.3, -sd * 0.25);
-      chest.add(col);
-      place(col, S(blade([[0.36, -0.08], [0.3, 0.16], [-0.04, 0.3], [-0.34, 0.22], [-0.3, -0.1]], 0.3, [1, 1], [1, 0.7]), M.champ, 0.8));
-      place(col, S(cylX(0.08, 0.36, 14), M.champ), 0, 0.12, 0.2);
+      const pg = new THREE.Group();
+      pg.position.set(0, 0, 0.64);
+      pg.rotation.set(0.14, sd * 0.32, 0);
+      chest.add(pg);
+      place(pg, S(frontPrism(mirror([[0.06, 0.4], [0.62, 0.52], [0.8, 0.86], [0.66, 1.24], [0.2, 1.3], [0.06, 1.1]], sd), 0.2, 0.06), M.armor, 0.5));
+      place(pg, S(frontPrism(mirror([[0.12, 0.5], [0.56, 0.6], [0.68, 0.86], [0.58, 1.12], [0.22, 1.16], [0.12, 1.0]], sd), 0.12, 0.05), M.champ, 0.8), 0, 0, 0.1);
+      place(pg, S(frontPrism(mirror([[0.6, 0.56], [0.64, 0.56], [0.75, 0.86], [0.63, 1.18], [0.6, 1.16], [0.7, 0.86]], sd), 0.02, 0.004), M.gold), 0, 0, 0.17).userData.noOutline = true;
+      // Black plates wrapping round the ribs, and side vents
+      place(chest, S(sidePrism([[0.62, 0.2], [0.5, 0.9], [0.1, 1.3], [-0.5, 1.2], [-0.62, 0.4], [-0.1, 0.0]], 0.1, 0.03), M.armor, 0.5), sd * 1.08, 0, -0.1);
+      place(chest, S(chamferBox(0.5, 0.42, 0.1, 0.06), M.vents, 1.6), sd * 1.02, 0.5, -0.12, 0, sd * Math.PI / 2, 0);
     }
-    // Keel and a V plate pointing down to the waist
-    place(chest, S(blade([[0.0, 0.32], [0.16, 0.52], [0.12, 1.0], [0.0, 1.1]], 0.14, [1, 0.5]), M.armor), 0, 0, 0.72);
-    place(chest, S(frontPrism([[-0.46, 0.42], [0.46, 0.42], [0.25, 0.02], [0, -0.3], [-0.25, 0.02]], 0.14, 0.03), M.armor), 0, 0, 0.6);
-    place(chest, S(chamferBox(0.1, 0.05, 0.04, 0.012), M.eye), 0, 0.22, 0.68).userData.noOutline = true;
+    // Collar: black hood plates rising behind the head, champagne inner faces
+    for (const sd of [-1, 1]) {
+      const c = new THREE.Group();
+      c.position.set(sd * 0.6, 1.3, -0.1);
+      c.rotation.set(-0.2, 0, -sd * 0.45);
+      c.scale.setScalar(0.8);
+      chest.add(c);
+      place(c, S(blade([[0.5, -0.05], [0.36, 0.3], [-0.1, 0.5], [-0.5, 0.36], [-0.46, -0.1]], 0.3, [1, 1], [1, 0.6]), M.armor));
+      place(c, S(blade([[0.36, 0.05], [0.26, 0.26], [-0.04, 0.38], [-0.3, 0.3], [-0.3, 0.05]], 0.05), M.champ), -sd * 0.16, 0.02, 0.02);
+    }
+    place(chest, S(chamferBox(0.12, 0.05, 0.04, 0.012), M.eye), 0, 0.28, 0.6).userData.noOutline = true;
 
-    // Back weapon mounts sit over the binder pack
     for (const [key, s] of [['shoulderR', -1], ['shoulderL', 1]]) {
       const m = new THREE.Group();
-      m.position.set(s * 0.5, 1.5, -0.95);
+      m.position.set(s * 0.62, 1.52, -0.95);
       m.rotation.x = -0.12;
       chest.add(m);
       this.mounts[key] = m;
@@ -296,84 +371,94 @@ export class Sovereign extends Mech {
   buildHead() {
     const M = this.mats;
     const head = (this.head = new THREE.Group());
-    head.position.set(0, 1.42, 0.5);
-    head.scale.setScalar(1.3);
+    // Sunk low and forward between the shoulders
+    head.position.set(0, 1.72, 0.6);
+    head.scale.setScalar(1.45);
     head.rotation.order = 'YXZ';
     this.chest.add(head);
-    place(head, S(new THREE.CylinderGeometry(0.13, 0.16, 0.34, 10), M.joint), 0, 0.0, -0.12);
-    // Small skull under a long crest that juts forward like a beak
-    place(head, S(loftZ([
-      { z: -0.22, w: 0.34, h: 0.34, y: 0.12, c: 0.1 },
-      { z: 0.14, w: 0.32, h: 0.3, y: 0.1, c: 0.1 },
-      { z: 0.34, w: 0.14, h: 0.14, y: 0.06, c: 0.04 },
-    ]), M.joint));
-    place(head, S(blade([[0.95, 0.16], [0.5, 0.32], [-0.1, 0.4], [-0.5, 0.3], [-0.2, 0.18], [0.3, 0.1]], 0.24, [1, 0.25], [1, 1], 0.01), M.armor));
-    place(head, S(chamferBox(0.06, 0.03, 0.2, 0.01), M.gold), 0, 0.33, 0.1, -0.12, 0, 0).userData.noOutline = true;
-    // Visor slit under the crest
-    place(head, new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.1), M.eye), 0, 0.08, 0.3).userData.noOutline = true;
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffb040, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.5 }));
-    glow.scale.setScalar(0.35);
-    place(head, glow, 0, 0.08, 0.34);
+    place(head, S(new THREE.CylinderGeometry(0.15, 0.18, 0.34, 12), M.gun), 0, 0, -0.12);
+    // Gunmetal face under a black helmet that comes to a beak, a champagne crest
+    place(head, S(sloft([
+      { y: 0.36, w: 0.34, d: 0.46, z: 0.0, p: 2.6 },
+      { y: 0.12, w: 0.44, d: 0.56, z: 0.04, p: 2.6 },
+      { y: -0.1, w: 0.36, d: 0.44, z: 0.06, p: 2.6 },
+    ]), M.gun));
+    place(head, S(blade([[0.48, 0.12], [0.3, 0.36], [0.0, 0.48], [-0.3, 0.42], [-0.3, 0.16], [0.0, 0.1], [0.3, 0.02]], 0.48, [1, 0.45], [1, 0.7], 0.02), M.armor));
+    place(head, S(blade([[0.46, 0.3], [0.3, 0.44], [0.0, 0.56], [-0.28, 0.56], [-0.1, 0.44], [0.2, 0.32]], 0.2, [1, 0.5], [1, 1], 0.012), M.champ));
     for (const sd of [-1, 1]) {
-      // Cheek plates closing over the jaw
-      place(head, S(blade([[0.38, 0.12], [0.2, 0.18], [-0.2, 0.2], [-0.28, -0.04], [0.0, -0.1], [0.3, -0.02]], 0.06, [1, 0.5]), M.armor), sd * 0.18, 0, 0, 0, -sd * 0.2, sd * 0.1);
-      // Horns swept up and back off the crown
-      place(head, S(blade([[0.14, 0.0], [0.02, 0.16], [-0.62, 0.8], [-0.56, 0.86], [-0.2, 0.3], [-0.16, 0.02]], 0.1, [0.5, 1], [1, 1], 0.006), M.armor), sd * 0.11, 0.3, 0.0, 0, 0, -sd * 0.22);
+      place(head, S(blade([[0.26, 0.1], [0.1, 0.24], [-0.2, 0.26], [-0.26, -0.04], [0.0, -0.12], [0.24, -0.06]], 0.06, [1, 0.5]), M.armor), sd * 0.22, 0, 0, 0, -sd * 0.2, sd * 0.08);
+      place(head, S(blade([[0.0, 0.0], [-0.1, 0.06], [-0.42, 0.3], [-0.36, 0.34], [-0.12, 0.1]], 0.04, [0.5, 1], [1, 1], 0.006), M.armor), sd * 0.18, 0.36, -0.08, 0, 0, -sd * 0.3);
     }
+    // Visor: a gold slit with a glow
+    place(head, new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.12), M.eye), 0, 0.12, 0.3).userData.noOutline = true;
+    place(head, S(frontPrism([[-0.12, 0.0], [0.12, 0.0], [0.08, -0.14], [0, -0.2], [-0.08, -0.14]], 0.06, 0.01), M.champ), 0, 0.04, 0.32);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffb040, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.5 }));
+    glow.scale.setScalar(0.4);
+    place(head, glow, 0, 0.12, 0.34);
     for (const sd of [-1, 1]) {
-      this.pistons.push(new Piston(this.chest, new V3(sd * 0.42, 1.3, 0.0), head, new V3(sd * 0.16, 0.08, -0.1), 0.04, this.mats, M.brass));
+      this.pistons.push(new Piston(this.chest, new V3(sd * 0.4, 1.25, 0.1), head, new V3(sd * 0.18, 0.04, -0.1), 0.045, this.mats, M.gun));
     }
   }
 
   buildArm(s) {
     const M = this.mats;
     const sh = new THREE.Group();
-    sh.position.set(s * 1.3, 1.0, -0.04);
+    sh.position.set(s * 1.52, 1.14, -0.04);
     sh.rotation.order = 'YXZ';
     this.chest.add(sh);
-    place(sh, S(new THREE.SphereGeometry(0.28, 14, 10), M.joint));
-    // Shoulder: black shell under layered champagne plates
+    place(sh, S(new THREE.SphereGeometry(0.32, 14, 10), M.gun));
+    // Pauldron: a great swept crescent of black plate rising above the head, banded
+    // in champagne along its crest and gunmetal inside, traced in gold
     const pauldron = new THREE.Group();
-    pauldron.position.set(s * 0.26, 0.12, 0);
+    pauldron.position.set(s * 0.12, 0.2, 0);
     sh.add(pauldron);
-    const dome = warp(new THREE.SphereGeometry(1, 9, 6), (v) => {
-      v.set(v.x * 0.6, v.y * 0.46, v.z * 0.76);
-      if (v.y < -0.1) v.y = -0.1 + (v.y + 0.1) * 0.35;
-      v.z += Math.max(0, v.y) * 0.25;
-    });
-    place(pauldron, S(dome, M.armor), s * 0.08, 0.02, 0);
-    place(pauldron, S(blade([[0.62, 0.26], [0.72, -0.14], [0.4, -0.46], [-0.52, -0.38], [-0.68, 0.06], [-0.26, 0.42]], 0.7, [0.8, 1], [0.7, 1]), M.champ, 0.8), s * 0.16, 0.22, 0);
-    place(pauldron, S(blade([[0.3, 0.0], [-0.1, 0.5], [-0.62, 0.62], [-0.5, 0.3], [-0.2, -0.06]], 0.1, [0.4, 1]), M.champ, 0.8), s * 0.44, 0.34, -0.04, 0, 0, -s * 0.35);
-    place(pauldron, S(sideplate([[0.7, 0.08], [0.3, 0.36], [-0.5, 0.26], [-0.64, -0.36], [0.1, -0.7], [0.62, -0.42]], 0.07), M.champ, 0.8), s * 0.54, -0.14, 0);
-    place(pauldron, S(sideplate([[0.36, -0.12], [0.0, 0.08], [-0.36, -0.04], [-0.3, -0.36], [0.24, -0.42]], 0.03), M.armor), s * 0.59, -0.16, 0);
-    place(pauldron, S(cylX(0.08, 0.2, 12), M.gold), s * 0.6, -0.17, 0.48);
+    // The crescent leans out over the shoulder
+    const lean = new THREE.Group();
+    lean.position.set(s * 0.3, 0.05, 0);
+    lean.rotation.z = -s * 0.42;
+    pauldron.add(lean);
+    place(pauldron, S(sloft([{ y: 0.42, w: 0.9, d: 1.0, x: s * 0.2, p: 3.4 }, { y: 0.1, w: 1.16, d: 1.24, x: s * 0.2, p: 3.4 }, { y: -0.4, w: 1.0, d: 1.1, x: s * 0.24, p: 3.4 }]), M.armor, 0.5));
+    place(pauldron, S(chamferBox(0.5, 0.05, 0.03, 0.01), M.gold), s * 0.24, -0.12, 0.62).userData.noOutline = true;
+    place(pauldron, S(chamferBox(0.4, 0.2, 0.04, 0.04), M.champ), s * 0.24, 0.12, 0.62);
+    // One taper by height for every layer, so the bands and trims stay on the plate's faces
+    const taper = (v) => { const t = clamp((v.y + 0.62) / 2.04, 0, 1); v.z *= 1 - 0.45 * t; v.z -= 0.2 * t; };
+    const cres = [[-0.1, -0.5], [0.5, -0.62], [0.95, -0.42], [1.2, 0.0], [1.24, 0.45], [1.08, 0.95], [0.8, 1.42], [0.64, 1.1], [0.5, 0.72], [0.3, 0.48], [0.0, 0.4], [-0.22, 0.2]];
+    place(lean, S(warp(frontPrism(mirror(cres, s), 1.25, 0.08), taper), M.armor, 0.5), 0, 0, -0.05);
+    // Champagne band along the outer crest, gunmetal along the inner edge, gold between
+    const band = [[0.6, -0.04], [0.98, 0.08], [1.08, 0.5], [0.95, 0.95], [0.76, 1.28], [0.66, 1.02], [0.7, 0.58]];
+    place(lean, S(warp(frontPrism(mirror(band, s), 1.3, 0.04), taper), M.champ, 0.8), -s * 0.3, -0.05, -0.05);
+    const inner = [[0.04, 0.34], [0.34, 0.42], [0.56, 0.66], [0.64, 1.0], [0.56, 0.96], [0.42, 0.66], [0.12, 0.48]];
+    place(lean, S(warp(frontPrism(mirror(inner, s), 1.28, 0.03), taper), M.gun), -s * 0.3, -0.05, -0.05);
+    const edge = arc((t) => [1.08 - 0.42 * t * t - 0.1 * t, -0.2 + 1.5 * t], 10);
+    place(lean, S(warp(frontPrism(mirror([...edge, ...edge.slice().reverse().map(([x, y]) => [x - 0.04, y])], s), 1.33, 0.004), taper), M.gold), -s * 0.3, -0.05, -0.05).userData.noOutline = true;
+    const trim = [[0.56, -0.06], [0.6, -0.06], [0.68, 0.58], [0.64, 1.04], [0.6, 1.02], [0.64, 0.58]];
+    place(lean, S(warp(frontPrism(mirror(trim, s), 1.33, 0.004), taper), M.gold), -s * 0.3, -0.05, -0.05).userData.noOutline = true;
+    // Gunmetal inner face and a shoulder block under the crescent
+    place(pauldron, S(sloft([{ y: 0.1, w: 0.8, d: 0.9, x: s * 0.24, p: 3 }, { y: -0.55, w: 0.72, d: 0.8, x: s * 0.26, p: 3 }]), M.armor));
+    place(pauldron, S(cylX(0.1, 0.24, 12), M.gold), s * 0.86, -0.3, 0.46);
 
-    // Upper arm: brass machinery with a long champagne plate on the outside
-    place(sh, S(new THREE.CylinderGeometry(0.14, 0.14, 0.9, 10), M.joint), 0, -0.5, 0);
-    place(sh, S(loft([{ y: -0.32, w: 0.36, d: 0.42, c: 0.1 }, { y: -0.84, w: 0.4, d: 0.46, c: 0.11 }]), M.frame), 0, 0, 0);
-    for (const y of [-0.45, -0.7]) place(sh, S(new THREE.TorusGeometry(0.2, 0.025, 6, 18), M.brass), 0, y, 0, Math.PI / 2, 0, 0);
-    place(sh, S(sideplate([[0.24, -0.26], [0.3, -0.62], [0.18, -1.02], [-0.12, -0.96], [-0.26, -0.5], [-0.12, -0.22]], 0.06), M.champ, 0.8), s * 0.24, 0, 0);
+    // Upper arm: gunmetal with a black outer plate
+    place(sh, S(new THREE.CylinderGeometry(0.17, 0.17, 0.9, 12), M.gun), 0, -0.5, 0);
+    place(sh, S(sloft([{ y: -0.3, w: 0.44, d: 0.5, p: 2.8 }, { y: -0.86, w: 0.48, d: 0.52, p: 2.8 }]), M.armor), s * 0.04, 0, 0);
+    place(sh, S(chamferBox(0.03, 0.4, 0.02, 0.01), M.gold), s * 0.29, -0.6, 0.12).userData.noOutline = true;
 
     const elbow = new THREE.Group();
     elbow.position.y = -1.0;
     sh.add(elbow);
-    place(elbow, S(cylX(0.18, 0.44), M.joint));
-    for (const x of [-0.24, 0.24]) place(elbow, S(cylX(0.1, 0.05, 10), M.gold), x, 0, 0);
-    // Forearm: dark frame wrapped in brass rings and rams
-    place(elbow, S(loft([
-      { y: -0.06, w: 0.38, d: 0.44, c: 0.1 },
-      { y: -0.55, w: 0.46, d: 0.54, c: 0.12 },
-      { y: -1.12, w: 0.36, d: 0.42, c: 0.1 },
-    ]), M.frame));
-    for (const y of [-0.3, -0.62, -0.94]) place(elbow, S(new THREE.TorusGeometry(0.22, 0.03, 6, 18), M.brass), 0, y, 0, Math.PI / 2, 0, 0);
-    for (const x of [-0.16, 0.16]) place(elbow, S(new THREE.CylinderGeometry(0.035, 0.035, 0.8, 8), M.gold), x, -0.6, 0.24);
-    place(elbow, S(blade([[0.3, -0.1], [0.32, -0.9], [0.18, -1.12], [0.06, -1.0], [0.08, -0.1]], 0.3, [1, 1]), M.armor), 0, 0, 0);
-    // Champagne blade along the outer forearm, rising past the elbow
-    place(elbow, S(sideplate([[0.26, -1.08], [0.3, -0.6], [0.18, 0.05], [0.04, 0.5], [-0.06, 0.18], [-0.2, -0.5], [-0.12, -1.12]], 0.07), M.champ, 0.8), s * 0.28, 0, 0);
-    this.pistons.push(new Piston(sh, new V3(0, -0.42, 0.22), elbow, new V3(0, -0.3, 0.28), 0.05, M, M.brass));
+    place(elbow, S(cylX(0.2, 0.5, 16), M.gun));
+    for (const x of [-0.27, 0.27]) place(elbow, S(cylX(0.11, 0.05, 12), M.gold), x, 0, 0);
+    // Forearm: a rounded black guard with a champagne panel and gold edge lines
+    place(elbow, S(sloft([
+      { y: -0.05, w: 0.46, d: 0.52, p: 2.6 },
+      { y: -0.6, w: 0.72, d: 0.8, z: 0.02, p: 2.6 },
+      { y: -1.12, w: 0.44, d: 0.5, p: 2.8 },
+    ]), M.armor, 0.5));
+    place(elbow, S(sidePrism([[0.3, -0.2], [0.36, -0.7], [0.2, -1.05], [-0.1, -1.0], [-0.2, -0.5], [-0.1, -0.15]], 0.04, 0.01), M.champ), s * 0.36, 0, 0);
+    place(elbow, S(sidePrism([[0.38, -0.12], [0.42, -0.72], [0.26, -1.1], [0.22, -1.06], [0.36, -0.72], [0.33, -0.15]], 0.02, 0.004), M.gold), s * 0.385, 0, 0).userData.noOutline = true;
+    this.pistons.push(new Piston(sh, new V3(0, -0.42, 0.26), elbow, new V3(0, -0.3, 0.32), 0.055, M, M.gun));
 
     const shieldMount = new THREE.Group();
-    shieldMount.position.set(s * 0.44, -0.55, 0.04);
+    shieldMount.position.set(s * 0.46, -0.55, 0.04);
     {
       const Z = new V3(s, 0, 0), Y = new V3(0, 0, 1), X = new V3().crossVectors(Y, Z);
       shieldMount.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
@@ -381,26 +466,26 @@ export class Sovereign extends Mech {
     shieldMount.scale.setScalar(0.8);
     elbow.add(shieldMount);
 
-    // Hand: dark palm, brass knuckles and articulated fingers, relaxed
+    // Hand: gunmetal palm and fingers, a gold knuckle bar
     const hand = new THREE.Group();
     hand.position.set(0, -1.22, 0.02);
     elbow.add(hand);
-    place(hand, S(chamferBox(0.3, 0.34, 0.36, 0.06), M.joint), 0, -0.14, 0);
-    place(hand, S(chamferBox(0.06, 0.26, 0.3, 0.02), M.armor), s * 0.16, -0.12, 0);
-    place(hand, S(chamferBox(0.32, 0.05, 0.08, 0.02), M.gold), 0, -0.3, 0.14);
+    place(hand, S(chamferBox(0.32, 0.34, 0.38, 0.06), M.gun), 0, -0.14, 0);
+    place(hand, S(chamferBox(0.06, 0.26, 0.32, 0.02), M.armor), s * 0.17, -0.12, 0);
+    place(hand, S(chamferBox(0.34, 0.05, 0.08, 0.02), M.gold), 0, -0.3, 0.15);
     for (let f = 0; f < 4; f++) {
       const fg = new THREE.Group();
-      fg.position.set(0, -0.32, 0.15 - f * 0.1);
+      fg.position.set(0, -0.32, 0.16 - f * 0.105);
       fg.rotation.set(0, 0, -s * 0.25);
       hand.add(fg);
-      place(fg, S(chamferBox(0.07, 0.15, 0.07, 0.02), M.brass), 0, -0.07, 0);
+      place(fg, S(chamferBox(0.075, 0.15, 0.075, 0.02), M.gun), 0, -0.07, 0);
       const tip = new THREE.Group();
       tip.position.y = -0.15;
       tip.rotation.z = -s * 0.45;
       fg.add(tip);
-      place(tip, S(chamferBox(0.06, 0.13, 0.06, 0.02), M.brass), 0, -0.06, 0);
+      place(tip, S(chamferBox(0.065, 0.13, 0.065, 0.02), M.armor), 0, -0.06, 0);
     }
-    place(hand, S(chamferBox(0.08, 0.18, 0.08, 0.02), M.brass), -s * 0.15, -0.26, 0.16, 0.3, 0, s * 0.3);
+    place(hand, S(chamferBox(0.085, 0.18, 0.085, 0.02), M.gun), -s * 0.16, -0.26, 0.17, 0.3, 0, s * 0.3);
     const mount = new THREE.Group();
     mount.position.set(0, -0.26, 0.02);
     mount.rotation.x = Math.PI / 2;
@@ -411,64 +496,26 @@ export class Sovereign extends Mech {
   buildBackpack() {
     const M = this.mats;
     const bp = new THREE.Group();
-    bp.position.set(0, 0.72, -0.66);
+    bp.position.set(0, 0.76, -0.7);
     this.chest.add(bp);
     this.backpack = bp;
-    place(bp, S(loft([
-      { y: 0.62, w: 1.1, d: 0.5, c: 0.14, z: -0.2 },
-      { y: 0.05, w: 1.26, d: 0.6, c: 0.18, z: -0.25 },
-      { y: -0.4, w: 1.0, d: 0.5, c: 0.16, z: -0.22 },
+    // Booster pack: a vented core between two rounded booster housings
+    place(bp, S(sloft([
+      { y: 0.66, w: 1.2, d: 0.5, z: -0.2, p: 3.2 },
+      { y: 0.05, w: 1.36, d: 0.62, z: -0.26, p: 3.2 },
+      { y: -0.42, w: 1.06, d: 0.52, z: -0.22, p: 3.2 },
     ]), M.vents, 1.4));
-    this.binders = [];
     for (const s of [-1, 1]) {
-      // Main thrusters under the pack
-      const hx = s * 0.34;
-      place(bp, S(loft([
-        { y: -0.2, w: 0.5, d: 0.6, c: 0.14, z: -0.34 },
-        { y: -0.66, w: 0.52, d: 0.64, c: 0.15, z: -0.4 },
-      ]), M.armor), hx, 0, 0);
+      const hx = s * 0.5;
+      place(bp, S(sloft([
+        { y: 0.5, w: 0.52, d: 0.62, x: hx, z: -0.4, p: 2.6 },
+        { y: -0.2, w: 0.6, d: 0.74, x: hx, z: -0.46, p: 2.6 },
+        { y: -0.66, w: 0.52, d: 0.64, x: hx, z: -0.44, p: 2.6 },
+      ]), M.armor, 0.5));
+      place(bp, S(chamferBox(0.03, 0.7, 0.02, 0.01), M.gold), hx + s * 0.29, 0.0, -0.46).userData.noOutline = true;
       const dir = new V3(0, -1, -0.45).normalize();
-      this.thrusters.main.push(new Thruster(bp, new V3(hx, -0.68, -0.52), dir, 0.36, this.glowTex));
-      this.thrusters.vern.push(new Thruster(bp, new V3(s * 0.56, 0.3, -0.5), new V3(s * 0.25, 0.05, -1), 0.13, this.glowTex));
-
-      // Binder: a great slab hinged off the pack's shoulder, its top swept up and
-      // forward over the shoulder, its lower leaf trailing down past the hip to a cannon port
-      const hinge = new THREE.Group();
-      hinge.position.set(s * 0.72, 0.52, -0.36);
-      bp.add(hinge);
-      place(hinge, S(chamferBox(0.4, 0.4, 0.5, 0.08), M.joint), 0, 0, -0.06);
-      place(hinge, S(cylX(0.15, 0.62, 14), M.gold), s * 0.12, 0, -0.06);
-      const bd = new THREE.Group();
-      bd.position.set(s * 0.62, 0, -0.12);
-      bd.rotation.order = 'YXZ';
-      bd.rotation.set(0.4, s * 0.1, -s * 0.1);
-      hinge.add(bd);
-      // Upper slab with a notched crown, a raised outer plate and a paneled inner face
-      place(bd, S(sideplate([[0.6, -0.3], [0.62, 2.3], [0.42, 2.72], [0.12, 2.62], [0.0, 2.96], [-0.5, 2.8], [-0.64, 2.2], [-0.62, -0.1], [-0.4, -0.36]], 0.4, 0.05), M.armor, 0.35));
-      place(bd, S(sideplate([[0.44, 0.3], [0.46, 2.1], [0.3, 2.4], [-0.38, 2.3], [-0.46, 1.9], [-0.44, 0.5], [-0.2, 0.3]], 0.06, 0.02), M.armor, 0.35, 0.3, 0.1), s * 0.22, 0, 0);
-      place(bd, S(sideplate([[0.4, 0.1], [0.42, 2.0], [-0.4, 2.2], [-0.44, 0.2]], 0.03, 0.01), M.siege, 0.7), -s * 0.205, 0, 0);
-      for (const [y, z, l] of [[2.0, 0.22, 0.34], [1.92, 0.32, 0.12], [0.9, -0.24, 0.26], [0.82, -0.3, 0.1]]) {
-        place(bd, S(chamferBox(0.02, 0.025, l, 0.006), M.gold), s * 0.255, y, z).userData.noOutline = true;
-      }
-      place(bd, S(cylX(0.13, 0.46, 14), M.joint), 0, 2.4, -0.26);
-      place(bd, S(cylX(0.07, 0.5, 10), M.gold), 0, 2.4, -0.26);
-      // Lower leaf on a round knuckle, kinked a little further back
-      const leaf = new THREE.Group();
-      leaf.position.set(0, -0.2, 0);
-      leaf.rotation.x = -0.1;
-      bd.add(leaf);
-      place(leaf, S(cylX(0.3, 0.5, 18), M.joint));
-      place(leaf, S(cylX(0.18, 0.56, 16), M.armor));
-      place(leaf, S(cylX(0.08, 0.6, 12), M.gold));
-      place(leaf, S(sideplate([[0.56, -0.1], [0.6, -2.5], [0.44, -2.8], [-0.4, -2.8], [-0.56, -2.5], [-0.58, -0.3], [-0.3, 0.1]], 0.46, 0.05), M.armor, 0.35));
-      place(leaf, S(sideplate([[0.4, -0.5], [0.42, -2.4], [-0.36, -2.5], [-0.4, -0.6]], 0.06, 0.02), M.armor, 0.35, 0.2, 0.2), s * 0.25, 0, 0);
-      place(leaf, S(chamferBox(0.26, 0.14, 0.6, 0.03), M.joint), 0, -2.79, 0, Math.PI / 2, 0, 0);
-      place(leaf, S(chamferBox(0.16, 0.06, 0.5, 0.02), M.gold), 0, -2.82, 0, Math.PI / 2, 0, 0);
-      place(leaf, S(chamferBox(0.02, 0.025, 0.4, 0.006), M.gold), s * 0.285, -1.7, 0.12).userData.noOutline = true;
-      const muzzle = new THREE.Object3D();
-      muzzle.position.set(0, -2.84, 0);
-      leaf.add(muzzle);
-      this.binders.push({ s, hinge, bd, leaf, muzzle });
+      this.thrusters.main.push(new Thruster(bp, new V3(hx, -0.68, -0.54), dir, 0.38, this.glowTex));
+      this.thrusters.vern.push(new Thruster(bp, new V3(s * 0.84, 0.25, -0.5), new V3(s * 0.25, 0.05, -1), 0.13, this.glowTex));
     }
     this.thrustLight = new THREE.PointLight(0xffc27a, 0, 22, 1.8);
     this.thrustLight.position.set(0, -1.6, -0.9);
@@ -479,6 +526,9 @@ export class Sovereign extends Mech {
 
   animate(dt, st) {
     const r = super.animate(dt, st);
+    // Hunched further over the hips than the Vanguard, head held up to look ahead
+    this.waist.rotation.x += 0.16;
+    this.head.rotation.x -= 0.14;
     this.poseArms(dt, st);
     this.root.updateMatrixWorld(true);
     for (const p of this.pistons) p.update();
@@ -511,8 +561,10 @@ export class Sovereign extends Mech {
       q.setFromEuler(eu.set(shx, shy, shz, 'YXZ'));
       if (armed[i]) {
         const a = w.aim[i];
-        const hy = (st.bodyYaw || 0) + w.twist, cx = -s * 0.36, cz = 0.8;
-        const hold = new V3(cx * Math.cos(hy) + cz * Math.sin(hy), -0.42 + breath * 0.01, -cx * Math.sin(hy) + cz * Math.cos(hy)).applyQuaternion(qc).normalize();
+        // Low ready: a two-handed gun angled down across the body, a sidearm held down at the side
+        const side = !st.support;
+        const hy = (st.bodyYaw || 0) + w.twist, cx = side ? s * 0.12 : -s * 0.36, cz = side ? 0.42 : 0.8;
+        const hold = new V3(cx * Math.cos(hy) + cz * Math.sin(hy), (side ? -0.9 : -0.42) + breath * 0.01, -cx * Math.sin(hy) + cz * Math.cos(hy)).applyQuaternion(qc).normalize();
         hold.lerp(aimDir, a).normalize();
         this.armAim(A, hold, q2);
         const k = Math.max(a, 1 - w.dash * 0.75 - w.air * 0.25);
@@ -585,44 +637,37 @@ export class Sovereign extends Mech {
 }
 
 // ---------------------------------------------------------------------------
-// SR-9 Regalia rifle: the Sovereign's hand weapon, built like the second-wave
-// arsenal from angular slabs cut to a side profile, with a faceted barrel, vent
-// slots, a lens and lit accent lines. Built along +Z with the grip at the origin;
-// userData.foregrip is where the free hand takes hold.
+// HG-4 Warden sidearm: a heavy one-handed gun, built like the second-wave arsenal
+// from angular slabs cut to a side profile, with a faceted barrel, vent slots, a
+// lens and lit accent lines. Built along +Z with the grip at the origin.
 // ---------------------------------------------------------------------------
 
-export function buildSovereignRifle(M) {
+export function buildSovereignSidearm(M) {
   const g = new THREE.Group();
-  const amber = M.eye;
   const slab = (pts, w, mat, k = 0.6, bevel = 0.02) => S(sidePrism(pts, w, bevel), mat, k);
-  const line = (sx, sy, sz, x, y, z) => { const m = place(g, new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), amber), x, y, z); m.userData.noOutline = true; return m; };
-  // Receiver with a long stock, champagne cheek plates and a gold spine
-  place(g, slab([[-1.3, -0.24], [-1.3, 0.2], [-1.08, 0.38], [0.6, 0.42], [1.25, 0.32], [1.35, 0.04], [0.45, -0.1], [-0.25, -0.1], [-0.42, -0.28]], 0.3, M.armor));
+  const line = (sx, sy, sz, x, y, z) => { const m = place(g, new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), M.eye), x, y, z); m.userData.noOutline = true; return m; };
+  // Slide over a gunmetal frame, champagne side plates traced in gold light
+  place(g, slab([[-0.42, 0.06], [-0.42, 0.34], [-0.3, 0.46], [1.25, 0.46], [1.42, 0.36], [1.42, 0.12], [1.1, 0.06]], 0.3, M.armor));
+  place(g, slab([[-0.3, -0.06], [-0.3, 0.08], [1.2, 0.08], [1.3, -0.04], [0.5, -0.1]], 0.26, M.gun));
   for (const sd of [-1, 1]) {
-    place(g, slab([[-0.9, 0.04], [0.5, 0.08], [0.62, 0.3], [-0.8, 0.32]], 0.02, M.champ, 0.8), sd * 0.16, 0, 0);
-    line(0.012, 0.022, 1.0, sd * 0.172, 0.2, -0.15);
+    place(g, slab([[-0.2, 0.14], [0.9, 0.14], [1.05, 0.38], [-0.1, 0.4]], 0.02, M.champ, 0.8), sd * 0.16, 0, 0);
+    line(0.012, 0.02, 0.8, sd * 0.172, 0.26, 0.4);
+    for (let i = 0; i < 4; i++) place(g, S(chamferBox(0.02, 0.12, 0.05, 0.005), M.gun), sd * 0.152, 0.3, 1.0 + i * 0.09);
   }
-  place(g, slab([[-1.0, 0.38], [0.8, 0.42], [0.8, 0.46], [-1.0, 0.43]], 0.2, M.gold));
-  // Barrel in a vented shroud, ending in a slotted brake
-  place(g, S(cylZ(0.085, 0.085, 2.4, 6).rotateZ(Math.PI / 6), M.frame), 0, 0.2, 2.4);
-  place(g, slab([[1.2, 0.42], [2.5, 0.38], [2.62, 0.22], [2.5, 0.02], [1.2, -0.02]], 0.26, M.armor));
-  for (let i = 0; i < 5; i++) for (const sd of [-1, 1]) place(g, S(chamferBox(0.02, 0.07, 0.12, 0.005), M.joint), sd * 0.132, 0.22, 1.45 + i * 0.22);
-  place(g, slab([[3.45, 0.32], [3.75, 0.3], [3.78, 0.1], [3.45, 0.08]], 0.24, M.armor, 0.6));
-  place(g, S(new THREE.TorusGeometry(0.11, 0.025, 6, 16), M.gold), 0, 0.2, 3.42);
-  for (const sd of [-1, 1]) place(g, S(chamferBox(0.02, 0.05, 0.16, 0.005), M.joint), sd * 0.122, 0.2, 3.62);
-  // Long sight with an amber lens, champagne magazine, grip and foregrip
-  place(g, slab([[-0.4, 0.44], [0.7, 0.46], [0.82, 0.56], [0.76, 0.66], [-0.3, 0.66], [-0.42, 0.56]], 0.14, M.armor));
-  place(g, new THREE.Mesh(cylZ(0.045, 0.045, 0.03, 10), amber), 0, 0.56, 0.83).userData.noOutline = true;
-  place(g, slab([[0.2, -0.08], [0.55, -0.08], [0.5, -0.62], [0.22, -0.6]], 0.2, M.champ, 0.8));
-  place(g, slab([[-0.12, 0.04], [0.12, 0.04], [0.04, -0.46], [-0.2, -0.46], [-0.18, -0.36]], 0.17, M.frame));
-  place(g, slab([[1.3, 0.0], [1.5, 0.0], [1.46, -0.42], [1.3, -0.42]], 0.14, M.frame));
+  // Faceted barrel in a gold-ringed brake, a lens under the muzzle
+  place(g, S(cylZ(0.08, 0.08, 0.5, 6).rotateZ(Math.PI / 6), M.gun), 0, 0.26, 1.6);
+  place(g, slab([[1.6, 0.4], [1.9, 0.38], [1.92, 0.14], [1.6, 0.12]], 0.24, M.armor));
+  place(g, S(new THREE.TorusGeometry(0.1, 0.022, 6, 16), M.gold), 0, 0.26, 1.58);
+  place(g, slab([[1.0, -0.04], [1.5, -0.04], [1.46, -0.16], [1.0, -0.14]], 0.16, M.gun));
+  place(g, new THREE.Mesh(cylZ(0.04, 0.04, 0.03, 10), M.eye), 0, -0.1, 1.51).userData.noOutline = true;
+  // Grip with a champagne magazine base, trigger guard and a rear sight
+  place(g, slab([[-0.14, 0.04], [0.14, 0.04], [0.06, -0.5], [-0.22, -0.5], [-0.2, -0.38]], 0.2, M.gun));
+  place(g, slab([[0.06, -0.48], [-0.22, -0.48], [-0.24, -0.58], [0.08, -0.58]], 0.22, M.champ, 0.8));
+  place(g, slab([[0.14, 0.0], [0.44, 0.0], [0.44, -0.2], [0.38, -0.2], [0.38, -0.05], [0.16, -0.05]], 0.06, M.gun));
+  place(g, slab([[-0.36, 0.46], [-0.18, 0.46], [-0.2, 0.54], [-0.34, 0.54]], 0.16, M.gold));
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(0, 0.2, 3.8);
+  muzzle.position.set(0, 0.26, 1.95);
   g.add(muzzle);
-  const foregrip = new THREE.Object3D();
-  foregrip.position.set(0, -0.26, 1.4);
-  g.add(foregrip);
-  g.userData.foregrip = foregrip;
   g.userData.muzzles = [muzzle];
   return g;
 }
