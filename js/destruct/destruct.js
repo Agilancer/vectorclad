@@ -2,7 +2,8 @@ import * as THREE from '../three.js';
 import { OUT, AIR, GONE, SOLID, STEEL, MATS, lineIndexClamped } from './grid.js';
 import { voxelizeOwner, volBox } from './voxelize.js';
 import { CHUNK, meshChunk } from './mesher.js';
-import { interiorMaterials } from './textures.js';
+import { faceMaterial } from './textures.js';
+import { houseStyle, floorTable, makePower, outage, flicker, cutPower, ceilingUniforms, setCeilingScale, CEIL_SHARED } from './ceilings.js';
 import { extractSkin, partGeometry, skinMaterial, skinDepthMaterial, makeLut, makeMask, uploadMask, clipSkin } from './skin.js';
 import { Body, Physics, makeProbes } from './physics.js';
 import { Debris } from './debris.js';
@@ -35,6 +36,11 @@ import { Debris } from './debris.js';
 // no support from the walls it was flush against. Hard landings shatter bodies
 // into pieces along jagged Voronoi cracks, with rubble (debris.js) and dust,
 // and what a collapse leaves standing free and unbraced topples after it.
+//
+// Ceilings and their lights are drawn by the faces shader (ceilings.js); here
+// the lights' power: big hits flicker a building and knock out the fixtures
+// round them with a crackle of sparks, a level giving way browns out what
+// stands, and every piece that breaks away loses its supply and goes dark.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -114,6 +120,10 @@ class Structure {
     this.group = new THREE.Group();
     this.group.matrixAutoUpdate = false;
     this.mask = makeMask(g, cut);
+    this.floors = null;          // ceiling layouts by layer, the power, the faces' material: see lightUp
+    this.power = null;
+    this.faceMat = null;
+    this.jolt = 0;               // cells destroyed this frame, for the lights (jolts)
     this.U = {
       uMask: { value: this.mask }, uLut: { value: lut.tex }, uLutMin: { value: lut.min }, uLutScale: { value: lut.scale },
       uLutW: { value: lut.W }, uOff: { value: new V3(off[0], off[1], off[2]) }, uDim: { value: new V3(g.nx, g.ny, g.nz) },
@@ -146,7 +156,7 @@ export class Destruction {
     this.G = 9.81 * M * 1.3;
     this.groundY = city.L.curb + 0.01 * M;
     this.structs = [];
-    this.faceMat = interiorMaterials().faces;
+    setCeilingScale(M);
     const env = { gravity: this.G, ground: (x, z) => this.ground(x, z), statics: (mn, mx, fn) => this.statics(mn, mx, fn) };
     this.physics = new Physics(env);
     this.debris = new Debris(scene, { gravity: this.G, ground: env.ground, solid: (x, y, z) => this.solidAt(x, y, z) }, mobile ? 900 : 2400);
@@ -208,8 +218,10 @@ export class Destruction {
       g.add(m);
     }
     const fg = new THREE.BufferGeometry();
-    for (const [k, n] of [['position', 3], ['normal', 3], ['uv', 2], ['aCell', 4], ['color', 3]]) fg.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n * 3), n));
-    const fm = new THREE.Mesh(fg, this.faceMat);
+    for (const [k, n] of [['position', 3], ['normal', 3], ['uv', 2], ['aCell', 4], ['color', 3], ['aInfo', 3]]) fg.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n * 3), n));
+    const floors = new THREE.DataTexture(new Float32Array(16), 1, 4, THREE.RGBAFormat, THREE.FloatType);
+    floors.needsUpdate = true;
+    const fm = new THREE.Mesh(fg, faceMaterial(ceilingUniforms({ U, power: makePower(), floors, origin: new THREE.Vector2() })));
     fm.castShadow = true; fm.frustumCulled = false;
     g.add(fm);
     g.position.y = -500;
@@ -397,6 +409,7 @@ export class Destruction {
     for (let i = 0; i < g.N; i++) { const m = gm[i]; if (m >= SOLID) hp[i] = HP[m]; }
     s.skin = extractSkin(owner, g);
     this.buildSkin(s);
+    this.lightUp(s, null);
     this.scene.add(s.group);
     s.group.updateMatrixWorld(true);
     s.anchor = 1;
@@ -413,6 +426,70 @@ export class Destruction {
     this.stats.activateMs += ms;
     this.frame.act += ms;
     return s;
+  }
+
+  /**
+   * A structure's ceilings and their power. A building gets its theme and floor layouts; a piece
+   * breaking away (from parent p) takes its parent's, and its supply is cut.
+   */
+  lightUp(s, p) {
+    if (p) {
+      s.floors = p.floors; s.origin = p.origin;
+      s.power = makePower(p.power);
+      cutPower(s.power, this.time);
+    } else {
+      s.floors = floorTable(s.g, houseStyle(s.owner));
+      s.origin = new THREE.Vector2(s.owner.box ? s.owner.box[0] : s.g.xs[0], s.owner.box ? s.owner.box[2] : s.g.zs[0]);
+      s.power = makePower();
+    }
+    s.faceMat = faceMaterial(ceilingUniforms(s));
+  }
+
+  /**
+   * What this frame's damage did to a structure's lights: the whole of it flickers, harder the
+   * more was destroyed; a big hit knocks out the fixtures round it, with sparks from the ceiling
+   */
+  jolts() {
+    const all = this.structs.concat(this.physics.bodies.map((b) => b.s));
+    for (const s of all) {
+      const cut = s.power.U.uPow.value.x;
+      // (a piece whose lights are long dead has nothing left to short)
+      if (!s.jolt || s.dead || (cut >= 0 && this.time - cut > 2)) { s.jolt = 0; continue; }
+      const n = s.jolt, J = s.joltAt, M = this.M;
+      s.jolt = 0;
+      if (n < 18) continue;
+      flicker(s.power, this.time, Math.min(1, n / 160));
+      if (n < 40) continue;
+      _a.set(J[0] / J[3], J[1] / J[3], J[2] / J[3]);
+      const r = Math.min(18 * M, Math.max(J[4] * 1.7, (2.5 + Math.sqrt(n) * 0.45) * M));
+      if (outage(s.power, _a, r, this.time)) this.sparkle(s, _a, r, Math.min(4, 1 + n / 120));
+    }
+  }
+
+  /** Cells destroyed at local (x, y, z) by something of radius r: counted toward this frame's jolt */
+  jolted(s, x, y, z, n, r) {
+    if (!s.jolt) s.joltAt = [0, 0, 0, 0, 0];
+    const J = s.joltAt;
+    s.jolt += n;
+    J[0] += x * n; J[1] += y * n; J[2] += z * n; J[3] += n; J[4] = Math.max(J[4], r);
+  }
+
+  /** Shorted fixtures: sparks raining from the ceiling over a few spots within r of local p */
+  sparkle(s, p, r, k) {
+    const g = s.g, { nxz, mat } = g;
+    for (let t = 0; t < Math.round(k * 1.5); t++) {
+      const a = Math.random() * Math.PI * 2, d = r * Math.sqrt(Math.random()) * 0.8;
+      let i = g.cellAt(p.x + Math.cos(a) * d, p.y, p.z + Math.sin(a) * d);
+      if (i < 0) continue;
+      // Up through the room to its ceiling
+      let n = 0;
+      while (i < g.N && mat[i] === AIR && n++ < 16) i += nxz;
+      if (i >= g.N || mat[i] < SOLID || n === 0) continue;
+      const y = (i / nxz) | 0;
+      this.toWorld(s, p.x + Math.cos(a) * d, g.ys[y] - 0.05 * this.M, p.z + Math.sin(a) * d, _b);
+      this.fx.sparksBurst(_b, DOWN, 8 + Math.round(k * 4), 0xbfe2ff, 12);
+      if (t === 0) { this.fx.light(_b, 0x9fd4ff, 22, 0.12, 22); this.sound.zap(_b); }
+    }
   }
 
   buildSkin(s) {
@@ -622,6 +699,7 @@ export class Destruction {
     if (s.maskBox == null) s.maskBox = [x0, y0, z0, x1 + 1, y1 + 1, z1 + 1];
     else { const B = s.maskBox; B[0] = Math.min(B[0], x0); B[1] = Math.min(B[1], y0); B[2] = Math.min(B[2], z0); B[3] = Math.max(B[3], x1 + 1); B[4] = Math.max(B[4], y1 + 1); B[5] = Math.max(B[5], z1 + 1); }
     if (removed) {
+      this.jolted(s, sx / removed, sy / removed, sz / removed, removed, r);
       const p = this.toWorld(s, sx / removed, sy / removed, sz / removed, _a);
       this.burstFx(p, removed, glass, steel, other, o);
     }
@@ -1117,6 +1195,10 @@ export class Destruction {
     for (let yy = y0; yy < ny; yy++) for (let c = 0; c < nxz; c++) if (near[c] === id && mat[c + nxz * yy] >= SOLID) seeds.push(c + nxz * yy);
     if (!seeds.length) return;
     const cells = this.hanging(s, seeds), G = this.groundStamp;
+    // What stands browns out, and the lights round the failing level die
+    flicker(s.power, this.time, 1.4);
+    s.power.U.uPow.value.w *= 0.7;
+    if (outage(s.power, p, Math.min(30 * this.M, Math.sqrt(info.M / Math.max(1e-6, this.M ** 3)) * 0.06 + 8 * this.M), this.time)) this.sparkle(s, p, 10 * this.M, 4);
     // Dust bursting out of the failing floor all round
     this.dustRing(p, Math.sqrt(info.M / Math.max(1e-6, this.M ** 3)) * 0.02 + 2, mode === 'crush' ? 1.6 : 1);
     const size = Math.min(4, Math.cbrt(cells.length) / 12);
@@ -1527,6 +1609,13 @@ export class Destruction {
     }
     const off = [s.off[0] + x0, s.off[1] + y0, s.off[2] + z0];
     const bs = new Structure(this, bg, s.owner, s.lut, off, cut);
+    this.lightUp(bs, s);
+    // The parent's lights at the break short out
+    if (!s.body && cells.length > 60) {
+      const cx = (g.xs[x0] + g.xs[x1 + 1]) / 2, cz = (g.zs[z0] + g.zs[z1 + 1]) / 2, w = Math.max(g.xs[x1 + 1] - g.xs[x0], g.zs[z1 + 1] - g.zs[z0]);
+      flicker(s.power, this.time, Math.min(1.2, cells.length / 2500));
+      if (outage(s.power, _c.set(cx, g.ys[y0], cz), Math.min(16 * this.M, w * 0.5 + 3 * this.M), this.time)) this.sparkle(s, _c, w * 0.4 + this.M, 2);
+    }
     bs.hp = bg.hp;
     bs.cellSize = s.cellSize;
     bs.sigma = s.sigma;
@@ -1585,6 +1674,7 @@ export class Destruction {
     this.scene.remove(s.group);
     for (const mesh of s.skinMeshes) { mesh.geometry.dispose(); mesh.material.dispose(); mesh.customDepthMaterial.dispose(); }
     if (s.faceMesh) s.faceMesh.geometry.dispose();
+    if (s.faceMat) s.faceMat.dispose();
     s.mask.dispose();
     if (!s.body) { const i = this.structs.indexOf(s); if (i >= 0) this.structs.splice(i, 1); }
   }
@@ -1936,6 +2026,7 @@ export class Destruction {
   update(dt, ctx = {}) {
     const T0 = performance.now(), act0 = this.stats.activateMs;
     this.time += dt;
+    CEIL_SHARED.uTime.value = this.time;
     if (this.warm && (this.warm.t -= dt) <= 0) { this.scene.remove(this.warm.g); this.warm = null; }
     this.frame.chunks = 0; this.frame.dust = 0;
     // Physics in steps of at most 1/90 s
@@ -1986,6 +2077,7 @@ export class Destruction {
       }
     }
     this.capBodies();
+    this.jolts();
     const T2 = performance.now();
     this.debris.update(dt);
     this.roofTrees(dt);
@@ -2161,7 +2253,7 @@ export class Destruction {
         s.dirty.delete(key);
         const cx = key % 1024, t = (key - cx) / 1024, cz = t % 1024, cy = (t - cz) / 1024;
         const g = s.g;
-        const d = meshChunk(g, cx * CHUNK, cy * CHUNK, cz * CHUNK, Math.min(g.nx, cx * CHUNK + CHUNK), Math.min(g.ny, cy * CHUNK + CHUNK), Math.min(g.nz, cz * CHUNK + CHUNK), this.M);
+        const d = meshChunk(g, cx * CHUNK, cy * CHUNK, cz * CHUNK, Math.min(g.nx, cx * CHUNK + CHUNK), Math.min(g.ny, cy * CHUNK + CHUNK), Math.min(g.nz, cz * CHUNK + CHUNK), this.M, s.off[1]);
         s.chunks.set(key, d.n ? d : null);
         changed = true;
       }
@@ -2178,12 +2270,12 @@ export class Destruction {
       if (s.faceMesh) { s.group.remove(s.faceMesh); s.faceMesh.geometry.dispose(); s.faceMesh = null; }
       return;
     }
-    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), cell = new Float32Array(nv * 4), col = new Float32Array(nv * 3);
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), cell = new Float32Array(nv * 4), col = new Float32Array(nv * 3), info = new Float32Array(nv * 3);
     const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
     let v = 0, k = 0;
     for (const d of s.chunks.values()) {
       if (!d) continue;
-      pos.set(d.pos, v * 3); nor.set(d.nor, v * 3); uv.set(d.uv, v * 2); cell.set(d.cell, v * 4); col.set(d.col, v * 3);
+      pos.set(d.pos, v * 3); nor.set(d.nor, v * 3); uv.set(d.uv, v * 2); cell.set(d.cell, v * 4); col.set(d.col, v * 3); info.set(d.info, v * 3);
       for (let i = 0; i < d.idx.length; i++) idx[k++] = d.idx[i] + v;
       v += d.n;
     }
@@ -2193,10 +2285,11 @@ export class Destruction {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setAttribute('aCell', new THREE.BufferAttribute(cell, 4));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('aInfo', new THREE.BufferAttribute(info, 3));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeBoundingSphere();
     if (!s.faceMesh) {
-      s.faceMesh = new THREE.Mesh(geo, this.faceMat);
+      s.faceMesh = new THREE.Mesh(geo, s.faceMat);
       s.faceMesh.castShadow = s.faceMesh.receiveShadow = true;
       s.faceMesh.matrixAutoUpdate = false;
       s.group.add(s.faceMesh);

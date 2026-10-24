@@ -6,7 +6,8 @@ import { CELL, cellRect } from './textures.js';
 // solid cells next to destroyed cells (raw broken material) and next to rooms
 // (floors, ceilings, plaster, bare concrete). Faces toward the outside are
 // left to the original facade skin. Works one chunk of cells at a time so a
-// hit only re-meshes the chunks it touched.
+// hit only re-meshes the chunks it touched. Ceilings and the faces of rooms
+// carry which ceiling they are under (aInfo), for the lights (ceilings.js).
 // ---------------------------------------------------------------------------
 
 export const CHUNK = 16;
@@ -33,17 +34,25 @@ function style(m, nb, d) {
 
 const SHADE = [1, 0.84, 1.06, 0.62, 0.92, 0.78]; // per direction: sides, top, bottom
 
+/** The layer of the ceiling over room cell i (the first cell up that isn't a room), or -1 */
+function ceilingOver(g, i) {
+  const { nxz, mat, N } = g;
+  for (let j = i; j < N; j += nxz) if (mat[j] !== AIR) return (j / nxz) | 0;
+  return -1;
+}
+
 /**
- * Mesh the faces of cells in [x0, x1) x [y0, y1) x [z0, z1) of grid g. M: game units per meter.
- * Returns { pos, nor, uv, cell, col, idx } as plain arrays (empty when there is nothing).
+ * Mesh the faces of cells in [x0, x1) x [y0, y1) x [z0, z1) of grid g. M: game units per meter;
+ * yOff: the grid's first layer in the layers of the structure it was cut from.
+ * Returns { pos, nor, uv, cell, col, info, idx } as plain arrays (empty when there is nothing).
  */
-export function meshChunk(g, x0, y0, z0, x1, y1, z1, M) {
-  const out = { pos: [], nor: [], uv: [], cell: [], col: [], idx: [], n: 0 };
+export function meshChunk(g, x0, y0, z0, x1, y1, z1, M, yOff = 0) {
+  const out = { pos: [], nor: [], uv: [], cell: [], col: [], info: [], idx: [], n: 0 };
   const { nx, ny, nz, mat } = g;
   const L = [g.xs, g.ys, g.zs];
   const lo = [x0, y0, z0], hi = [x1, y1, z1], dim = [nx, ny, nz];
   const stride = [1, nx * nz, nx];
-  const mask = new Int16Array(CHUNK * CHUNK), matOf = new Uint8Array(CHUNK * CHUNK);
+  const mask = new Int16Array(CHUNK * CHUNK), matOf = new Uint8Array(CHUNK * CHUNK), lay = new Int32Array(CHUNK * CHUNK);
   for (let a = 0; a < 3; a++) {
     // u, v: the two other axes (u then v), chosen so u x v points along +a
     const u = (a + 1) % 3, v = (a + 2) % 3;
@@ -58,12 +67,15 @@ export function meshChunk(g, x0, y0, z0, x1, y1, z1, M) {
           for (let i = 0; i < nu; i++) {
             const ci = row + i * stride[u];
             const m = mat[ci];
-            let f = 0;
+            let f = 0, ly = -1;
             if (m >= SOLID) {
               const nb = edge ? OUT : mat[ci + s * stride[a]];
               f = style(m, nb, d);
+              // A ceiling is its own layer; a room's floor, walls and columns are under the next one up
+              if (f && nb === AIR && !(f >> 5)) ly = d === 3 ? k : ceilingOver(g, ci + s * stride[a]);
             }
             mask[i + j * nu] = f;
+            lay[i + j * nu] = ly;
             matOf[i + j * nu] = m;
             if (f) any = true;
           }
@@ -73,17 +85,19 @@ export function meshChunk(g, x0, y0, z0, x1, y1, z1, M) {
         const plane = L[a][s > 0 ? k + 1 : k];
         for (let j = 0; j < nv; j++) {
           for (let i = 0; i < nu;) {
-            const f = mask[i + j * nu];
+            const f = mask[i + j * nu], ly = lay[i + j * nu];
             if (!f) { i++; continue; }
             let w = 1;
-            while (i + w < nu && mask[i + w + j * nu] === f) w++;
+            while (i + w < nu && mask[i + w + j * nu] === f && lay[i + w + j * nu] === ly) w++;
             let h = 1;
             grow: while (j + h < nv) {
-              for (let t = 0; t < w; t++) if (mask[i + t + (j + h) * nu] !== f) break grow;
+              for (let t = 0; t < w; t++) if (mask[i + t + (j + h) * nu] !== f || lay[i + t + (j + h) * nu] !== ly) break grow;
               h++;
             }
             for (let jj = 0; jj < h; jj++) for (let t = 0; t < w; t++) mask[i + t + (j + jj) * nu] = 0;
-            emit(out, a, u, v, s, plane, L[u][lo[u] + i], L[u][lo[u] + i + w], L[v][lo[v] + j], L[v][lo[v] + j + h], f, matOf[i + j * nu], d, M);
+            // aInfo: 1 a ceiling, 2 a room face under one, 0 anything else; the ceiling's layer and height
+            const info = ly < 0 ? [0, -1, 0] : [d === 3 ? 1 : 2, ly + yOff, g.ys[ly]];
+            emit(out, a, u, v, s, plane, L[u][lo[u] + i], L[u][lo[u] + i + w], L[v][lo[v] + j], L[v][lo[v] + j + h], f, matOf[i + j * nu], d, M, info);
             i += w;
           }
         }
@@ -94,7 +108,7 @@ export function meshChunk(g, x0, y0, z0, x1, y1, z1, M) {
 }
 
 const _P = [0, 0, 0];
-function emit(out, a, u, v, s, plane, u0, u1, v0, v1, f, m, d, M) {
+function emit(out, a, u, v, s, plane, u0, u1, v0, v1, f, m, d, M, info) {
   const cellId = (f & 31) - 1, cls = f >> 5;
   const R = RECT[cellId];
   // Repeat size: rooms by kind, broken faces finer
@@ -119,6 +133,7 @@ function emit(out, a, u, v, s, plane, u0, u1, v0, v1, f, m, d, M) {
     out.uv.push(tu, tv);
     out.cell.push(R[0], R[1], R[2], R[3]);
     out.col.push(r, g, b);
+    out.info.push(info[0], info[1], info[2]);
   }
   out.idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
   out.n += 4;

@@ -1,11 +1,12 @@
 import * as THREE from '../three.js';
+import { ceilingPatch } from './ceilings.js';
 
 // ---------------------------------------------------------------------------
 // The inside of the city: a 4 x 4 atlas painted at startup for broken faces
 // (concrete with rebar, stone, brick, shattered curtain wall, torn panel,
-// steel, timber, foliage), the rooms a hole opens onto (office floor, lit
-// ceiling, plaster, bare concrete) and rubble. A second atlas carries the
-// ceiling lights, so blown-open floors glow.
+// steel, timber, foliage), the rooms a hole opens onto (office floor, ceiling
+// tile, plaster, bare concrete) and rubble. Ceilings proper, with their lights,
+// are drawn by ceilings.js.
 // ---------------------------------------------------------------------------
 
 export const CELL = {
@@ -46,7 +47,7 @@ function cracks(g, r, n, color, width) {
   }
 }
 
-function paint(cellId, g, r, emis) {
+function paint(cellId, g, r) {
   const fill = (c) => { g.fillStyle = c; g.fillRect(0, 0, S, S); };
   switch (cellId) {
     case CELL.concrete: case CELL.rubble:
@@ -148,11 +149,6 @@ function paint(cellId, g, r, emis) {
       for (let x = 0; x <= S; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, S); g.stroke(); }
       for (let y = 0; y <= S; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(S, y); g.stroke(); }
       speckle(g, r, 600, 1.2, [170, 168, 160], 0.3);
-      // Light panels in two of the tiles
-      for (const [x, y] of [[64, 64], [192, 192]]) {
-        g.fillStyle = '#fff8e6'; g.fillRect(x + 6, y + 6, 52, 52);
-        emis.fillStyle = '#ffe9c2'; emis.fillRect(x + 6, y + 6, 52, 52);
-      }
       break;
     }
     case CELL.wall:
@@ -174,20 +170,19 @@ function paint(cellId, g, r, emis) {
 }
 
 let ATLAS = null;
-/** The shared atlas textures: { map, emissive } */
+/** The shared atlas texture: { map } */
 export function interiorAtlas() {
   if (ATLAS) return ATLAS;
-  const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N * S; return c; };
-  const cm = mk(), ce = mk(), g = cm.getContext('2d'), ge = ce.getContext('2d');
-  ge.fillStyle = '#000'; ge.fillRect(0, 0, N * S, N * S);
+  const cm = document.createElement('canvas');
+  cm.width = cm.height = N * S;
+  const g = cm.getContext('2d');
   for (let id = 0; id < N * N; id++) {
     const x = (id % N) * S, y = Math.floor(id / N) * S;
-    g.save(); ge.save();
-    g.translate(x, y); ge.translate(x, y);
+    g.save();
+    g.translate(x, y);
     g.beginPath(); g.rect(0, 0, S, S); g.clip();
-    ge.beginPath(); ge.rect(0, 0, S, S); ge.clip();
-    paint(id, g, rng(1000 + id * 77), ge);
-    g.restore(); ge.restore();
+    paint(id, g, rng(1000 + id * 77));
+    g.restore();
   }
   const tex = (c, srgb) => {
     const t = new THREE.CanvasTexture(c);
@@ -197,7 +192,7 @@ export function interiorAtlas() {
     t.minFilter = THREE.LinearMipmapLinearFilter;
     return t;
   };
-  ATLAS = { map: tex(cm, true), emissive: tex(ce, true) };
+  ATLAS = { map: tex(cm, true) };
   return ATLAS;
 }
 
@@ -208,8 +203,11 @@ export function cellRect(id) {
   return [u + pad, v + pad, 1 / N - 2 * pad, 1 / N - 2 * pad];
 }
 
-/** Sample the atlas inside the cell carried by each vertex (aCell), repeating with fract() */
-function atlasPatch(sh, emissive) {
+/**
+ * Sample the atlas inside the cell carried by each vertex (aCell), repeating with fract(). U: a
+ * structure's uniforms; with them, ceilings and the light their fixtures give (ceilings.js)
+ */
+function atlasPatch(sh, U) {
   sh.vertexShader = sh.vertexShader
     .replace('#include <common>', '#include <common>\nattribute vec4 aCell;\nvarying vec4 vCell;\nvarying vec2 vTUv;')
     .replace('#include <uv_vertex>', '#include <uv_vertex>\nvCell = aCell; vTUv = uv;');
@@ -220,22 +218,25 @@ function atlasPatch(sh, emissive) {
       vec2 cuv = vCell.xy + tuv * vCell.zw;
       vec2 gx = dFdx(vTUv) * vCell.zw, gy = dFdy(vTUv) * vCell.zw;
       diffuseColor *= textureGrad(map, cuv, gx, gy);`);
-  if (emissive) {
-    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', /* glsl */`
-      totalEmissiveRadiance *= textureGrad(emissiveMap, cuv, gx, gy).rgb;`);
-  }
+  if (!U) return;
+  const shade = ceilingPatch(sh, U);
+  sh.fragmentShader = sh.fragmentShader
+    .replace('vec2 tuv = fract(vTUv);', `${shade}\n      vec2 tuv = fract(vTUv);`)
+    .replace('diffuseColor *= textureGrad(map, cuv, gx, gy);', /* glsl */`
+      if (kind > 0.5 && kind < 1.5) diffuseColor.rgb *= cAlb;
+      else { vec4 tx = textureGrad(map, cuv, gx, gy); diffuseColor *= tx; cEm *= tx.rgb; }`)
+    .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance = cEm;')
+    // Rooms are deep in the building: little of the sky reaches them, their own lights do
+    .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n      if (kind > 0.5) { reflectedLight.indirectDiffuse *= 0.3; reflectedLight.indirectSpecular *= 0.2; }');
 }
 
-let MATS = null;
-/** Materials for the voxel faces of structures (lit ceilings) and for flying rubble */
-export function interiorMaterials() {
-  if (MATS) return MATS;
-  const A = interiorAtlas();
-  const faces = new THREE.MeshStandardMaterial({
-    map: A.map, emissiveMap: A.emissive, emissive: new THREE.Color(1.35, 1.25, 1.05), vertexColors: true, roughness: 0.92, metalness: 0.02,
-  });
-  faces.onBeforeCompile = (sh) => atlasPatch(sh, true);
+/**
+ * The material for a structure's broken faces and rooms, its ceilings lit; U: the structure's
+ * uniforms (ceilings.js ceilingUniforms). One shader program for all of them.
+ */
+export function faceMaterial(U) {
+  const faces = new THREE.MeshStandardMaterial({ map: interiorAtlas().map, vertexColors: true, roughness: 0.92, metalness: 0.02 });
+  faces.onBeforeCompile = (sh) => atlasPatch(sh, U);
   faces.customProgramCacheKey = () => 'destruct-faces';
-  MATS = { faces };
-  return MATS;
+  return faces;
 }

@@ -6,8 +6,9 @@ that climb the towers and swarm in growing waves, and scorpion-frames that dig u
 out of the streets to claw and sting at it. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
-`textures/`, the city from fifty-two more in `textures/city-src/`, and the spiders
-and scorpions from ten in `textures/spider-src/`. There is no build step.
+`textures/`, the city from fifty-two more in `textures/city-src/`, the ceilings inside
+its buildings from five in `textures/ceiling-src/`, and the spiders and scorpions from
+ten in `textures/spider-src/`. There is no build step.
 
 ## Run it
 
@@ -249,7 +250,7 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
   panel), floor slabs, a grid of columns about 7 m apart, a core in tall towers, and rooms
   between them.
   - A hole shows broken concrete with rebar, brick or shattered curtain wall, and the
-    office floors behind it with their ceiling lights on.
+    rooms behind it, lit by their ceilings (see **Ceilings and lights** below).
   - Faces are greedy-meshed one 16-cell chunk at a time, so a hit only re-meshes what it
     touched.
 - **Load paths are built in.** Where one volume stands on another (a setback tier, the
@@ -331,11 +332,48 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
   several unbroken buildings turns them into voxels nearest first, within a per-frame budget
   (12 ms, 7 ms on touch devices), and carves the rest a frame or two later.
 
+### Ceilings and lights
+
+Blow a building open and its floors are lit, each its own way. `js/destruct/ceilings.js`
+draws the ceilings per pixel in the broken faces' shader, so they cost no geometry.
+
+- **A theme per building.** What a building is clad in picks its theme, and the theme
+  picks a house set of fixtures, tiles and diffusers:
+  - glass towers get modern flat LED panels and linear lights in fine tiles, cool white,
+    or tech floors of perforated metal pans with slots of light run end to end;
+  - concrete and panel blocks get offices of louvered and basket troffers in speckled
+    tile, or institutional prismatic lenses with grilles and returns;
+  - prewar brick and stone get old troffers and warm tubes, water-stained tiles, more dead
+    tubes and the odd failing ballast.
+- **A layout per floor.** Fixtures sit on the 0.6 m ceiling grid, square ones in one
+  module and long ones in three or four. Runs of one to four floors share a tenant's layout:
+  the fixture, its spacing, whether rows run end to end or stagger, and which way they
+  run. Every floor then shifts, turns or respaces it and mixes its own tiles and vents.
+  The lowest floor is a lobby of bright, widely spaced panels, and now and then a vacant
+  floor is left dark. The layouts are a float texture with one texel per grid layer, which
+  the shader decodes.
+- **The fixtures light the rooms.** Floors, walls and columns add the light of the four
+  fixtures of the ceiling over them, with the fixtures' tint, and the tiles round a fixture
+  glow. Little of the sky reaches that deep into a building, so a room with its power off
+  is dark.
+- **Power.** A big hit makes the whole building flicker: fixtures cut in and out and the
+  supply dips, then it settles. Round the hit, fixtures crackle out with a shower of blue
+  sparks from the ceiling and stay dead. A fixture whose piece of ceiling is shot away goes
+  out. A level giving way browns out what is left standing. A piece that breaks away loses
+  its supply: its lights sputter and die one by one as it falls.
+
+`tools/build_ceiling_atlas.py` cuts the fixtures, tiles and vents out of the sheets in
+`textures/ceiling-src/` (a light is trimmed to its opening in the T-bar, which the shader
+draws itself) and packs them into `textures/ceiling.jpg`. It writes a glow map of only the
+lit diffusers to `textures/ceiling-glow.jpg` and the slots and theme tags to
+`js/ceilingTiles.js`.
+
 The test script `tools/tests/destruction.js` (headless Chromium through Playwright) runs
 these scenarios: bullet holes, a tower cut past halfway, a pancake collapse, props, the
 needle felled by missiles into one side of its base, a building dropped between its flush
 neighbors, a building corner blown out, the El, walking into a breach, activation cost of
-the biggest structures, real weapons, and a soak with the swarm. It prints timings and
+the biggest structures, real weapons, ceilings of each theme with a blast and a slice
+through them, and a soak with the swarm. It prints timings and
 writes screenshots to `tools/tests/out/`. On a machine without a GPU or without access to
 the CDN, `SIM=1` runs game time without rendering between screenshots, and `THREE_DIR`
 serves a local copy of the three.js package.
@@ -540,7 +578,9 @@ in the hangar settings.
 | `js/destruct/mesher.js` | Greedy mesher for broken faces and the rooms behind them, chunk by chunk |
 | `js/destruct/physics.js` | Rigid voxel bodies: probes, contacts, sequential-impulse solver, hinges, sleep |
 | `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
-| `js/destruct/textures.js` | Painted atlas for broken materials, office floors, lit ceilings and plaster |
+| `js/destruct/textures.js` | Painted atlas for broken materials, office floors, ceiling tile and plaster; the broken faces' material |
+| `js/destruct/ceilings.js` | Ceiling themes, per-floor layouts, the ceiling and room-lighting shader, and the lights' power: flicker, outages, pieces going dark |
+| `js/ceilingTiles.js` | Generated: slots of the ceiling atlas and the theme tags of its fixtures, tiles and vents |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders and scorpions |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
@@ -558,6 +598,7 @@ in the hangar settings.
 | `tools/build_city_atlas.py` | Packs the city texture sheets into atlases and cuts the facade, ground and structure kits |
 | `tools/city-panels.json` | Each facade, ground and structure panel's rectangle on its sheet and its hand-picked role |
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
+| `tools/build_ceiling_atlas.py` | Cuts the light fixtures, ceiling tiles and vents out of their sheets and packs them into the ceiling atlas and glow map |
 | `tools/build_music.py` | Encodes the soundtrack WAVs to the MP3s in `audio/music/` |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
