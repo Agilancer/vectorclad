@@ -103,7 +103,7 @@ export class Train {
     this.el = this.city.el;
     this.trains = [];
     this.wrecks = [];   // cars off the rails, moving or settled
-    this.timer = 6;     // the first train comes soon after the start
+    this.timer = 30;    // the next one in from the north end (the first starts on the line, see update)
     this.next = 0;
     this.player = null;
     // Every wreck, and the line full of trains queued nose to tail
@@ -483,6 +483,13 @@ export class Train {
     if (!this.el) return;
     const m = (x) => this.m(x), P = ctx.player, el = this.el;
     this.player = P;
+    // From the start one is already on its way down the line, just short of where the mech stands
+    if (!this.started) {
+      this.started = true;
+      this.depart();
+      const t = this.trains[this.trains.length - 1];
+      t.s = Math.max(el.z0, Math.min(el.z1 - m(400), (P ? P.z : el.z0) - m(250)));
+    }
     this.timer -= dt;
     // Every minute or so, unless the last one is still standing where the next would come in
     if (this.timer <= 0) {
