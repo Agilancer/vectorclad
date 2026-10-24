@@ -168,7 +168,7 @@ const weaponList = want.includes('weapons') || !want.length ? ARSENAL : want.fil
       return { before, kills0 };
     }, { wid, fid, slot });
     // The moment to look: well into the effect
-    const look = { railgun: 650, arcCaster: 420, flamer: 1500, blade: 700, sawLauncher: 900, harpoon: 700, drones: 2500, hydra: 1300, singularity: 1600, artillery: 2600, mines: 1500, orbital: 2800 }[wid];
+    const look = { railgun: 650, arcCaster: 700, flamer: 1500, blade: 700, sawLauncher: 900, harpoon: 700, drones: 2500, hydra: 1300, singularity: 1600, artillery: 2600, mines: 1500, orbital: 2800 }[wid];
     await wait(look);
     const live = await page.evaluate(() => {
       const m = window.__mech, A = m.weapons.arsenal;

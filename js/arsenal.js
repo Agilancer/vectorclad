@@ -975,8 +975,8 @@ export class Arsenal {
       const k = smp ? Math.max(0, 1 - age / 0.16) * (1 - i / T.n) : 0;
       if (k > 0) live++;
       if (smp) { pos.setXYZ(i * 2, smp.a.x, smp.a.y, smp.a.z); pos.setXYZ(i * 2 + 1, smp.b.x, smp.b.y, smp.b.z); }
-      col.setXYZ(i * 2, c.r * k * 0.4, c.g * k * 0.4, c.b * k * 0.4);
-      col.setXYZ(i * 2 + 1, c.r * k * 1.6, c.g * k * 1.6, c.b * k * 1.6);
+      col.setXYZ(i * 2, c.r * k * 0.25, c.g * k * 0.25, c.b * k * 0.25);
+      col.setXYZ(i * 2 + 1, c.r * k * 1.1, c.g * k * 1.1, c.b * k * 1.1);
     }
     pos.needsUpdate = col.needsUpdate = true;
     if (!live) { this.scene.remove(T.mesh); T.samples.length = 0; }
