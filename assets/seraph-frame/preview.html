@@ -1,0 +1,95 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VECTORCLAD AV-09 Seraph</title>
+<style>:root{color-scheme:dark;--foreground:#e1e5e7}body{margin:24px auto;max-width:1100px;padding:0 20px;background:#171c20;color:var(--foreground);font:15px system-ui}button,select{font:inherit;padding:9px 14px;background:#303a41;color:inherit;border:1px solid #616b73;border-radius:5px}.text-small{color:#b5c0c8;margin-top:12px}#sp canvas{display:block;width:100%;height:640px;touch-action:none}.controls{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px}label{display:flex;gap:8px;align-items:center}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body><h2>VECTORCLAD / AV-09 Seraph</h2><div id="sp">
+<div class="controls"><label>Binders<select id="anim"></select></label><button type="button" id="pause" aria-pressed="false">Pause</button><label><input type="checkbox" id="wire"> Wireframe</label></div>
+<canvas role="img" aria-label="AV-09 Seraph medium-poly mech with two articulated binder thrusters"></canvas>
+<div class="text-small" id="status" aria-live="polite">Loading seraph.glb…</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const host = document.getElementById('sp');
+const canvas = host.querySelector('canvas');
+const status = document.getElementById('status');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1d2328);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+camera.position.set(-9, 7, 16);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 5, 0);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x30363c, 1.6));
+const key = new THREE.DirectionalLight(0xffffff, 2.4);
+key.position.set(-6, 12, -10);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x9fd8ff, 1.2);
+rim.position.set(5, 6, 10);
+scene.add(rim);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(12, 48), new THREE.MeshStandardMaterial({ color: 0x2a3138, roughness: 0.9 }));
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+let mixer, actions = {}, current, paused = false;
+const clock = new THREE.Clock();
+
+new GLTFLoader().load('./seraph.glb', (gltf) => {
+  const model = gltf.scene;
+  scene.add(model);
+  let tris = 0;
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (!/plume/i.test(o.name)) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+    o.material.side = THREE.FrontSide;
+  });
+  mixer = new THREE.AnimationMixer(model);
+  const sel = document.getElementById('anim');
+  for (const clip of gltf.animations) {
+    actions[clip.name] = mixer.clipAction(clip);
+    if (!/Cycle|Thrust/.test(clip.name)) {
+      actions[clip.name].setLoop(THREE.LoopOnce);
+      actions[clip.name].clampWhenFinished = true;
+    }
+    sel.add(new Option(clip.name.replace('Binders_', ''), clip.name));
+  }
+  const play = (name) => {
+    if (current) current.stop();
+    current = actions[name];
+    current.reset().play();
+  };
+  sel.value = 'Binders_Cycle';
+  play(sel.value);
+  sel.onchange = () => play(sel.value);
+  status.textContent = `${Math.round(tris).toLocaleString()} triangles · ${gltf.animations.length} binder animations · drag to orbit, scroll to zoom`;
+}, undefined, (e) => { status.textContent = `Could not load seraph.glb: ${e.message || e}`; });
+
+document.getElementById('pause').onclick = (e) => {
+  paused = !paused;
+  e.target.textContent = paused ? 'Play' : 'Pause';
+  e.target.setAttribute('aria-pressed', String(paused));
+};
+document.getElementById('wire').onchange = (e) => {
+  scene.traverse((o) => { if (o.isMesh && o !== ground) o.material.wireframe = e.target.checked; });
+};
+
+function frame() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.floor(w * renderer.getPixelRatio())) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  const dt = clock.getDelta();
+  if (mixer && !paused) mixer.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body></html>
