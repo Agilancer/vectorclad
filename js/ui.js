@@ -213,17 +213,69 @@ export class HUD {
 }
 
 // ---------------------------------------------------------------------------
+// Frame select
+// ---------------------------------------------------------------------------
+
+/**
+ * The frame cards on the select screen. frames: js/frames.js. meters: meters per game unit (a
+ * function, known once the world is scaled), for the speeds. onPick(id) swaps the frame on show.
+ */
+export class FrameSelect {
+  constructor({ frames, current, onPick, sound, meters }) {
+    this.frames = frames;
+    this.onPick = onPick;
+    this.sound = sound;
+    this.meters = meters;
+    this.list = $('#frame-list');
+    this.render(current);
+  }
+
+  render(current) {
+    const kmh = (v) => `${Math.round(v * this.meters() * 3.6)} km/h`;
+    // Bars are scaled to the best frame in the bay
+    const all = Object.values(this.frames);
+    const top = (k) => Math.max(...all.map((f) => f[k]));
+    this.list.innerHTML = '';
+    for (const f of all) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'frame-card';
+      b.setAttribute('aria-pressed', f.id === current ? 'true' : 'false');
+      b.innerHTML = `<span class="fc-head"><span class="fc-code mono">${f.code}</span><span class="fc-name">${f.name}</span></span>
+        <span class="fc-role">${f.role}</span>
+        <span class="fc-stats">${[
+          ['Armor', f.ap / top('ap'), `${f.ap} AP`],
+          ['Walk', f.walk / top('walk'), kmh(f.walk)],
+          ['Dash', f.dash / top('dash'), kmh(f.dash)],
+          ['Boost', f.boost / top('boost'), `${(9.6 * f.boost).toFixed(1)} s`],
+        ].map(([k, frac, v]) => `<span class="fc-stat"><span class="label">${k}</span><i><b style="width:${Math.round(frac * 100)}%"></b></i><span class="mono">${v}</span></span>`).join('')}</span>
+        <span class="fc-blurb">${f.blurb}</span>`;
+      b.addEventListener('click', () => {
+        this.sound && this.sound.click();
+        this.onPick(f.id);
+        this.render(f.id);
+      });
+      this.list.appendChild(b);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hangar (loadout menu)
 // ---------------------------------------------------------------------------
 
 export class Hangar {
-  constructor({ loadout, settings, onChange, onSettings, sound, touch = false }) {
+  /** frames, frame(), onFrame(id): the frame section (js/frames.js); the paint section follows the frame */
+  constructor({ loadout, settings, onChange, onSettings, sound, touch = false, frames = null, frame = null, onFrame = null }) {
     this.touch = touch;
     this.loadout = loadout;
     this.settings = settings;
     this.onChange = onChange;
     this.onSettings = onSettings;
     this.sound = sound;
+    this.frames = frames;
+    this.frame = frame;
+    this.onFrame = onFrame;
     this.body = $('#hangar-body');
     this.render();
   }
@@ -233,6 +285,23 @@ export class Hangar {
   render() {
     const L = this.loadout, b = this.body;
     b.innerHTML = '';
+    const F = this.frames && this.frames[this.frame()];
+
+    // Frame
+    if (F) {
+      const fr = section('Frame', F.role);
+      const fc = div('chips');
+      for (const f of Object.values(this.frames)) {
+        fc.appendChild(chip(`${f.code} ${f.name}`, f === F, () => {
+          if (f === F) return;
+          this.click();
+          this.onFrame(f.id);
+          this.render();
+        }));
+      }
+      fr.appendChild(fc);
+      b.appendChild(fr);
+    }
 
     // Presets
     const pre = section('Presets', 'Quick loadouts');
@@ -249,20 +318,28 @@ export class Hangar {
     pre.appendChild(pc);
     b.appendChild(pre);
 
-    // Paint
-    const paint = section('Frame paint', PAINTS.find((p) => p.id === L.paint)?.name || '');
-    const sw = div('swatches');
-    for (const p of PAINTS) {
-      const s = swatch(p.name, p.armor, p.second, L.paint === p.id, () => {
-        L.paint = p.id;
-        this.click();
-        this.onChange();
-        this.render();
-      });
-      sw.appendChild(s);
+    // Paint (the heavy frame wears its own black, ivory and gold)
+    if (F && !F.paint) {
+      const paint = section('Frame paint', 'Fixed finish');
+      const note = div('slot-desc');
+      note.textContent = `The ${F.code} ${F.name} wears its own black, ivory and gold armor; paint schemes apply to the FS-07A.`;
+      paint.appendChild(note);
+      b.appendChild(paint);
+    } else {
+      const paint = section('Frame paint', PAINTS.find((p) => p.id === L.paint)?.name || '');
+      const sw = div('swatches');
+      for (const p of PAINTS) {
+        const s = swatch(p.name, p.armor, p.second, L.paint === p.id, () => {
+          L.paint = p.id;
+          this.click();
+          this.onChange();
+          this.render();
+        });
+        sw.appendChild(s);
+      }
+      paint.appendChild(sw);
+      b.appendChild(paint);
     }
-    paint.appendChild(sw);
-    b.appendChild(paint);
 
     // Slots
     for (const slot of SLOTS) {

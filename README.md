@@ -1,10 +1,12 @@
 # VECTORCLAD
 
-A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
-loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
+A three.js tech demo for VECTORCLAD: an Armored Core-style mech, the FS-07A Vanguard or
+the HV-02 Obsidian heavy frame, flown in from the harbor under a heavy lifter and set down
+in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
 that climb the towers and swarm in growing waves, and scorpion-frames that dig up
 out of the streets to claw and sting at it. Every tenth wave brings a black
-robotic millipede long enough to lie across several city blocks. The mech walks, boost-dashes,
+robotic millipede long enough to lie across several city blocks. Packs of dropships set
+allied tanks down in the streets to hunt them too. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. The city is alive:
 people walk its sidewalks and fill its buildings, traffic drives its streets and trains
 run on its elevated railway, and all of it can be blown apart. Everything is
@@ -115,12 +117,34 @@ Missiles lock onto targets inside the dashed circle. A salvo spreads its missile
 across every lock; with nothing locked they fly to the crosshair. Leg pods pop
 their missiles almost straight up so they arc over the ground in front of the feet.
 
+## Frames
+
+**Launch** on the intro card opens the frame select screen, then the loadout, then
+**Deploy** flies the frame in (see [Insertion](#insertion)). **Quick deploy** skips
+straight to the drop with the last frame and loadout. After a lost fight, **Hangar**
+goes back to the frame select and **Redeploy** flies a fresh frame in.
+
+| Frame | Armor | Walk | Dash | Boost | |
+| --- | --- | --- | --- | --- | --- |
+| **FS-07A Vanguard** | 1000 AP | 46 km/h | 220 km/h | 9.6 s | The field-trial frame; takes the hangar's paint schemes |
+| **HV-02 Obsidian** | 1450 AP | 39 km/h | 189 km/h | 7.7 s | Heavy armor in black, ivory and gold (`assets/heavy-frame`) |
+
+The select screen shows each frame's armor, walk and dash speeds and how long a full
+boost gauge lasts, and puts the picked frame on show in the plaza. Both frames are built
+on the same rig, sockets and thrusters (`HeavyMech` subclasses `Mech` and reskins it), so
+a loadout moves across unchanged; the world is always scaled from the Vanguard, so the
+city's size never changes with the frame. The frame can also be swapped in the pause
+hangar mid-fight: it keeps the same share of its armor. The frame list is in
+`js/frames.js`; the pick is saved under `vectorclad.frame`.
+
 ## Hangar
 
 The hangar sets the loadout for six hardpoints (both hands, both shoulders, both
-legs), a frame paint scheme, and one of eight colorways per weapon. It has five
+legs), the frame, a frame paint scheme (the Vanguard's; the Obsidian wears its own finish),
+and one of eight colorways per weapon. It has five
 presets and settings for sound, music, shadows, ink outlines, look sensitivity, inverted
-look and render resolution. The loadout and settings are saved in `localStorage`
+look and render resolution. Before a drop it is the loadout screen, with **Deploy** and
+a way back to the frames; in a fight it pauses the game. The loadout and settings are saved in `localStorage`
 under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 
 Weapons, from the weapon sheet:
@@ -709,6 +733,60 @@ walls or nothing (they dangle). The head is built from primitives with the body'
 own plates on its crown; it's a target of its own, armored until the cores are
 gone.
 
+## Insertion
+
+Every deploy starts with the frame slung under a **Kestrel H heavy lifter**: a gunmetal
+variant of the Kestrel dropship, half again its size, with ducted lift fans in place of the
+rocket pods and a cradle under the belly whose clamp arms hold the mech by the shoulders.
+There is no control during the flight, about five and a half seconds behind letterbox bars
+with a release countdown:
+
+- It comes in low over the harbor south of the city, the skyline ahead, then climbs over
+  the towers and dives into the starting plaza, braking to a hover with its nose up.
+- Its path is worked out each time from the city under it: the lowest line that clears every
+  roof under its wings and the hanging mech, climbing at most 0.6 toward what is ahead and
+  diving at most 1.6 past what it has cleared.
+- The camera chases it off the right flank, rises behind it over the towers, and eases into
+  the usual over-the-shoulder view by the release.
+- The clamps open about seven meters up and the frame drops onto the plaza; it is the
+  player's from the moment it lets go. The lifter climbs straight out of the towers and
+  flies off north. The swarm can't touch it.
+
+## Allies
+
+Packs of three to ten **Kestrel assault lifters**, each with a **Bastion armored carrier**
+slung under it, fly in about every minute (the first a quarter of a minute after the
+release), mostly over the harbor, sometimes over the rivers east or west. Both are the
+models from the Riftlings preview (`assets/riftlings/preview.html`), ported to
+`js/vehicles/models.js`.
+
+- **Kestrels** fly in a V at a height that clears every roof on the way, split up over the
+  city, each to its own street: a crossing or the middle of a block 40 to 260 m from the
+  mech, with open sky over it (never under the El or the highway). Over its spot a Kestrel
+  turns to lie along the street, comes straight down between the buildings, sets its tank
+  down, and climbs back out over the skyline. While it is low its chin turret covers the
+  street in short bursts.
+- **Bastions** drive the street grid, keeping to the right of the road, from crossing to
+  crossing toward the nearest bug, or back toward the mech when there is none. They stop to
+  shoot at whatever they can see within 175 m, leading it, with twin guns that elevate to hit
+  bugs on walls and roofs, and roll over cars and flatten them. Tanks give each other room,
+  and one that can't get past rubble or wrecks marks that block and finds another way.
+- **The swarm hunts them back.** A spider, scorpion or medium frame goes after a tank or
+  Kestrel that is a good deal nearer than the mech: it crawls, perches and aims at it, and
+  its plasma, lasers, mortar shells, pounces, pincers and stings land on it. Bosses keep to
+  the mech. A Bastion has 150 armor; wrecked, it burns for half a minute with its turret
+  blown off its ring. A Kestrel has 300; shot down, it spins in burning and crashes, and a
+  tank still under it is lost with it. Only the Kestrel H carrying the mech is safe.
+- Tank kills don't count toward the mech's kills or light its hit marker. There are at most
+  16 tanks and 12 Kestrels at once (10 and 8 on touch devices), drawn as instanced meshes:
+  one per part and material of each model, posed per copy, so a whole pack costs a few dozen
+  draw calls.
+
+The headless test `tools/tests/allies.js [frames|drop|tanks|soak]` checks the frame select
+and loadout screens on a desktop and a landscape phone, flies an insertion and checks the
+landing, forces a pack in and watches the tanks fight the swarm (and a Kestrel shot down),
+and plays two minutes in real time for the frame rate. Screenshots go to `tools/tests/out/`.
+
 ## Design notes
 
 The suit follows Armored Core's style:
@@ -757,6 +835,8 @@ in the hangar settings.
 | `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
+| `js/frames.js` | The frames in the hangar (FS-07A Vanguard, HV-02 Obsidian): armor, speeds, boost, and how each is built |
+| `assets/heavy-frame/heavy-mech.js` | The HV-02 Obsidian: new armor on the stock rig (subclasses `Mech`) |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, houses and row houses, roofs, parks, the forest, street furniture, elevated railway and highway, waterfront, bridges, distant scenery |
@@ -779,7 +859,10 @@ in the hangar settings.
 | `js/destruct/ceilings.js` | Ceiling themes, per-floor layouts, the ceiling and room-lighting shader, and the lights' power: flicker, outages, pieces going dark |
 | `js/ceilingTiles.js` | Generated: slots of the ceiling atlas and the theme tags of its fixtures, tiles and vents |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
-| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions and the millipede |
+| `tools/tests/allies.js` | Headless frame select, loadout, insertion, tank drops and the tanks' fight with the swarm: checks and screenshots |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions and the millipede; which foe each one goes after (the mech or an ally) |
+| `js/allies.js` | The Kestrel H insertion, packs of Kestrels setting Bastion tanks down, tank driving and gunnery, what the swarm does to them, and the instanced fleets that draw them |
+| `js/vehicles/models.js` | The Kestrel dropship (and its Kestrel H heavy-lifter variant) and the Bastion armored carrier, from the Riftlings preview |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
 | `js/mediums.js` | Medium spider-frames: variants, bridging between roofs, gear, shield domes, repair and tractor beams, thrown boulders |
 | `js/millipede.js` | The millipede: rooftop route and drape, sectioned body, three-layer plate armor and reactor cores, legs, the head's flight, eye beams, ramming and finale |
@@ -789,8 +872,8 @@ in the hangar settings.
 | `js/music.js` | Soundtrack playlist: title theme, shuffled rotation, volume drop after the title |
 | `js/boot.js` | Entry point: downloads the title theme, then loads the title screen and the game |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
-| `js/ui.js` | HUD (armor, waves, damage indicators) and hangar menu |
-| `js/main.js` | Renderer, world scale, player physics and armor, camera, game loop, game over |
+| `js/ui.js` | HUD (armor, waves, damage indicators), frame select cards and hangar menu |
+| `js/main.js` | Renderer, world scale, player physics and armor, frame swaps, the screens from intro to drop, camera (and the insertion's), game loop, game over |
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |
 | `js/title/wordmark-data.js` | Generated: wordmark geometry and brand palette |

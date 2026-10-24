@@ -300,6 +300,55 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .touch-note { margin: 0; font-size: 13px; color: var(--dim); }
 .intro-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 
+/* ---------- frame select: cards on the left, the frame itself in the showroom on the right ---------- */
+#frames {
+  position: fixed; inset: 0; z-index: 30;
+  display: grid; align-items: center;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  background: linear-gradient(90deg, rgba(13, 15, 18, 0.9) 0%, rgba(13, 15, 18, 0.5) 48%, rgba(13, 15, 18, 0) 72%);
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+.frames-card { width: min(540px, 100%); margin-left: max(0px, 5vw); display: grid; gap: 14px; padding-block: 20px; }
+.frames-card .stripe { width: 120px; }
+.frames-card h2 { margin: 0; font-size: clamp(28px, 4.4vw, 44px); letter-spacing: 0.03em; }
+.frame-list { display: grid; gap: 10px; }
+.frame-card {
+  display: grid; gap: 7px; text-align: left; color: var(--fg); font: inherit;
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line);
+  padding: 12px 14px;
+}
+.frame-card:hover { background: rgba(30, 33, 38, 0.92); }
+.frame-card[aria-pressed="true"] { border-color: rgba(242, 182, 50, 0.55); border-left-color: var(--signal); }
+.fc-head { display: flex; align-items: baseline; gap: 10px; }
+.fc-code { font-size: 15px; color: var(--hud); }
+.frame-card[aria-pressed="true"] .fc-code { color: var(--signal); }
+.fc-name { font-size: 22px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.fc-role { font-size: 11px; letter-spacing: 0.2em; color: var(--dim); text-transform: uppercase; }
+.fc-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 18px; }
+.fc-stat { display: grid; grid-template-columns: 44px 1fr 66px; align-items: center; gap: 8px; }
+.fc-stat i { display: block; height: 5px; background: rgba(255, 255, 255, 0.08); }
+.fc-stat b { display: block; height: 100%; background: var(--hud); }
+.frame-card[aria-pressed="true"] .fc-stat b { background: var(--signal); }
+.fc-stat .mono { font-size: 12px; text-align: right; }
+.fc-blurb { font-size: 13px; line-height: 1.45; color: #cfcbc1; }
+
+/* ---------- insertion: letterbox and caption while the Kestrel H flies the frame in ---------- */
+#drop { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+#drop .lb { position: absolute; left: 0; right: 0; height: 9vh; background: #000; animation: lb-in 0.6s ease-out both; }
+#drop .lb.top { top: 0; transform-origin: top; }
+#drop .lb.bottom { bottom: 0; transform-origin: bottom; }
+.drop-cap {
+  position: absolute; left: max(24px, env(safe-area-inset-left, 0px)); bottom: calc(9vh + 18px);
+  display: grid; gap: 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  animation: cap-in 0.8s 0.3s ease-out both;
+}
+.drop-title { font-size: clamp(22px, 3.4vw, 34px); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.drop-eta { font-size: 13px; letter-spacing: 0.16em; color: var(--hud); }
+.drop-eta b { font-weight: 400; color: var(--fg); }
+@keyframes lb-in { from { transform: scaleY(0); } }
+@keyframes cap-in { from { opacity: 0; transform: translateX(-12px); } }
+
 /* ---------- hangar ---------- */
 #hangar {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
@@ -313,6 +362,7 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .hangar-head { flex: none; }
 .hh-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; gap: 12px; border-bottom: 1px solid var(--line); }
 .hh-row h2 { margin: 2px 0 0; font-size: 26px; }
+.hh-actions { display: flex; gap: 8px; }
 .hangar-body {
   flex: 1; overflow-y: auto; overscroll-behavior: contain;
   padding: 12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
@@ -426,6 +476,9 @@ body.touch .score { padding: 3px 10px; }
   .controls { grid-template-columns: 1fr; }
   .intro-card { margin-left: 0; }
   #intro { background: rgba(13, 15, 18, 0.82); }
+  .frames-card { margin-left: 0; }
+  #frames { background: rgba(13, 15, 18, 0.7); }
+  .fc-stats { grid-template-columns: 1fr; }
   .hud-left { width: 180px; }
   .readouts b { font-size: 15px; }
   .unit-name { display: none; }
@@ -446,6 +499,15 @@ body.touch .score { padding: 3px 10px; }
   .lede { font-size: 14px; }
   .hh-row { padding: 8px 16px; }
   .hh-row h2 { font-size: 20px; }
+  /* Landscape phones: the two cards side by side, without their blurbs */
+  .frames-card { gap: 8px; padding-block: 10px; width: min(620px, 100%); }
+  .frames-card h2 { font-size: 24px; }
+  .frame-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .frame-card { padding: 8px 10px; gap: 5px; }
+  .fc-name { font-size: 17px; }
+  .fc-stats { grid-template-columns: 1fr; gap: 3px; }
+  .fc-blurb { display: none; }
+  .drop-cap { bottom: calc(9vh + 8px); }
 }
 @media (prefers-reduced-motion: reduce) {
   #overheat, .lock.new, .gauge.armor.low #ap-txt { animation: none; }
