@@ -1,0 +1,114 @@
+"""Trace the armor-piece sheets in textures/skins into js/skinPieces.js, and
+write a glow map beside each sheet (<name>-glow.webp) holding only its lights.
+
+Each sheet is a set of painted armor pieces laid out on a dark ground, with a
+gap (the seam line) around every piece. A piece is found by thresholding out
+the ground, splitting pieces that touch with a small erosion, and growing each
+one back; its outline is simplified to a polygon. Pieces are numbered in
+reading order, top to bottom and left to right. With --contact DIR it also
+writes a contact sheet per skin with every outline and number drawn on it,
+for picking which piece goes on which part of a frame.
+
+Run from the repository root:  python3 tools/build_skins.py [--contact DIR]
+"""
+import json, os, sys
+import cv2
+import numpy as np
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(ROOT, 'textures', 'skins')
+SKINS = ['valor', 'azure', 'frost', 'field', 'umbra', 'mech', 'thrust']
+
+
+def trace_sheet(img, thr=13, erode=3, min_area=500):
+    """Every piece on a sheet: [{b: [x, y, w, h], p: [[x, y], ...], a: area}]"""
+    h, w = img.shape[:2]
+    # The ground is the most common dark tone; a pixel belongs to a piece when it differs from it
+    border = np.concatenate([img[:6].reshape(-1, 3), img[-6:].reshape(-1, 3), img[:, :6].reshape(-1, 3), img[:, -6:].reshape(-1, 3)])
+    ground = np.median(border, axis=0)
+    blur = cv2.GaussianBlur(img, (5, 5), 0).astype(np.int16)
+    diff = np.abs(blur - ground[None, None, :]).max(axis=2)
+    mask = (diff > thr).astype(np.uint8) * 255
+    # Fill the dark recesses inside pieces (vents, grilles): close small gaps, then fill holes
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    filled = mask.copy()
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cv2.drawContours(filled, cnts, -1, 255, -1)
+    k = np.ones((3, 3), np.uint8)
+    core = cv2.morphologyEx(cv2.erode(filled, k, iterations=erode), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(core)
+    pieces = []
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < min_area:
+            continue
+        comp = (labels == i).astype(np.uint8) * 255
+        comp = cv2.dilate(comp, k, iterations=erode)
+        comp &= filled
+        cs, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        c = max(cs, key=cv2.contourArea)
+        poly = cv2.approxPolyDP(c, 1.8, True)[:, 0, :]
+        x, y, bw, bh = cv2.boundingRect(c)
+        pieces.append({'b': [int(x), int(y), int(bw), int(bh)], 'p': poly.astype(int).tolist(), 'a': int(cv2.contourArea(c))})
+    # Reading order: rows of 40 px, then left to right
+    pieces.sort(key=lambda q: (q['b'][1] // 40, q['b'][0]))
+    return pieces
+
+
+def glow_mask(img):
+    """Lit parts of a sheet: the cyan and teal gems, blue lights and violet slits.
+    Paint never gets this bright and this saturated at once, so only lights pass."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
+    h, s, v = hsv[..., 0], hsv[..., 1] / 255, hsv[..., 2] / 255
+    cyan = (h > 78) & (h < 102) & (s > 0.42) & (v > 0.5)
+    blue = (h >= 102) & (h < 118) & (s > 0.55) & (v > 0.78)
+    violet = (h > 128) & (h < 158) & (s > 0.36) & (v > 0.34)
+    m = (cyan | blue | violet).astype(np.uint8)
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)).astype(np.float32)
+    m = cv2.GaussianBlur(m, (5, 5), 0)
+    out = img.astype(np.float32) * m[..., None] * 1.3
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def contact(img, pieces, path):
+    out = img.copy()
+    for i, q in enumerate(pieces):
+        cv2.polylines(out, [np.array(q['p'], np.int32)], True, (60, 255, 60), 2)
+        x, y, w, h = q['b']
+        label = str(i)
+        org = (x + w // 2 - 10 * len(label), y + h // 2 + 12)
+        cv2.putText(out, label, org, cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 0), 6, cv2.LINE_AA)
+        cv2.putText(out, label, org, cv2.FONT_HERSHEY_SIMPLEX, 1.1, (40, 230, 255), 2, cv2.LINE_AA)
+    cv2.imwrite(path, out, [cv2.IMWRITE_JPEG_QUALITY, 85])
+
+
+def main():
+    out_dir = None
+    if '--contact' in sys.argv:
+        out_dir = sys.argv[sys.argv.index('--contact') + 1]
+        os.makedirs(out_dir, exist_ok=True)
+    data = {}
+    for name in SKINS:
+        img = cv2.imread(os.path.join(SRC, name + '.webp'))
+        pieces = trace_sheet(img)
+        data[name] = [{'b': q['b'], 'p': q['p']} for q in pieces]
+        glow = glow_mask(img)
+        lit = int((glow.max(axis=2) > 40).sum())
+        cv2.imwrite(os.path.join(SRC, name + '-glow.webp'), glow, [cv2.IMWRITE_WEBP_QUALITY, 80])
+        print(f'{name}: {len(pieces)} pieces, {lit} lit pixels')
+        if out_dir:
+            contact(img, pieces, os.path.join(out_dir, name + '.jpg'))
+    js = '// Generated by tools/build_skins.py: every armor piece on the sheets in textures/skins,\n'
+    js += '// in reading order, as { b: [x, y, w, h], p: outline } in sheet pixels.\n'
+    js += 'export const SKIN_PIECES = {\n'
+    for name, pieces in data.items():
+        js += f'  {name}: [\n'
+        for q in pieces:
+            js += '    { b: ' + json.dumps(q['b']) + ', p: ' + json.dumps(q['p'], separators=(',', ':')) + ' },\n'
+        js += '  ],\n'
+    js += '};\n'
+    with open(os.path.join(ROOT, 'js', 'skinPieces.js'), 'w') as f:
+        f.write(js)
+
+
+if __name__ == '__main__':
+    main()
