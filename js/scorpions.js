@@ -104,13 +104,15 @@ const STING_HEIGHTS = [3.8, 5.4, 2.6];   // where on the mech a sting can land, 
 // ---------------------------------------------------------------------------
 
 const EYE = new V3(0, 0.5, 1.3);
+const HEAD = 1.8, TAIL_END = 2.35;   // how far the front of the carapace and the back of the body are from the center
 const BODY_MID = new V3(0, 0.35, -0.4);
 const EYES_BIG = [[-0.12, 0.47, 1.24], [0.12, 0.47, 1.24]];
 const EYES_SMALL = [[-0.5, 0.3, 1.58], [0.5, 0.3, 1.58], [-0.42, 0.33, 1.68], [0.42, 0.33, 1.68]];
 
-// Eight legs along the carapace in alternating tetrapods (L0 R1 L2 R3 / R0 L1 R2 L3), knees thrown wide
+// Eight legs along the carapace in alternating tetrapods (L0 R1 L2 R3 / R0 L1 R2 L3), knees thrown wide.
+// Every scorpion is drawn twice the size its variant lists.
 const SCORPION_RIG = {
-  bodyH: 0.8, lift: 0.42, knee: 1.5, eye: EYE, femur: 1.45, tibia: 1.75,
+  scale: 2, bodyH: 0.8, lift: 0.42, knee: 1.5, eye: EYE, femur: 1.45, tibia: 1.75,
   legs: mirrorLegs([
     { hip: [0.6, -0.04, 1.05], rest: [2.55, 2.0] },
     { hip: [0.72, -0.04, 0.62], rest: [3.0, 0.75] },
@@ -135,7 +137,7 @@ const SHOULDER = [0.42, 0.02, 1.5];
 const ARM = 1.2, FOREARM = 1.1, MANUS = 1.05, FINGER = 1.15;
 const WRIST_REST = [0.95, -0.2, 2.75];
 
-const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0);
+const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0), FWD = new V3(0, 0, 1);
 const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _e = new V3(), _g = new V3(), _h = new V3(), _q = new V3();
 const _f = new V3(), _u = new V3(), _w = new V3(), _t = new V3();
 const _p0 = new V3(), _p1 = new V3(), _dir = new V3(), _dor = new V3(), _tn = new V3(), _ty = new V3();
@@ -309,11 +311,13 @@ export class ScorpionNest {
       _e.copy(p).project(cam);
       return _e.z < 1 && Math.abs(_e.x) < 1.1 && Math.abs(_e.y) < 1.1 && p.distanceTo(P) < 150;
     };
-    const at = this.findGround(P, 60, 200, inView, 30);
+    // Bigger kinds need more open street to come up in, and come up further apart
+    const big = v.size[1] * SCORPION_RIG.scale, room = clamp(1 + 1.2 * big, 3.5, 7);
+    const at = this.findGround(P, 60, 200, inView, 30, room);
     if (!at) return 0;
     let made = 0;
     for (let i = 0; i < n; i++) {
-      const spot = i === 0 ? at : this.findGround(at.point, 4, 16, null, 8) || at;
+      const spot = i === 0 ? at : this.findGround(at.point, 1.8 * big, 7 * big, null, 8, room) || at;
       if (this.spawn(spot, id)) made++;
     }
     // The Emperor arrives with an escort of the kinds already in the fight
@@ -321,7 +325,7 @@ export class ScorpionNest {
       const room = sw.phase === 'active' ? sw.toSpawn - made : v.escort;
       const kin = SCORPION_MIX.filter((m) => m[2] <= Math.max(1, sw.wave) && m[0] !== id);
       for (let i = 0; i < Math.min(v.escort, room) && kin.length; i++) {
-        const spot = this.findGround(at.point, 5, 18, null, 8);
+        const spot = this.findGround(at.point, 1.5 * big, 4 * big, null, 8);
         if (spot && this.spawn(spot, kin[Math.floor(Math.random() * kin.length)][0])) made++;
       }
     }
@@ -333,8 +337,8 @@ export class ScorpionNest {
     return made;
   }
 
-  /** Open street near center, between rMin and rMax away, with room around it for the body */
-  findGround(center, rMin, rMax, avoidView, tries = 20) {
+  /** Open street near center, between rMin and rMax away, with `room` clear around it for the body */
+  findGround(center, rMin, rMax, avoidView, tries = 20, room = 3.5) {
     const B = this.sw.world.bounds;
     for (let i = 0; i < tries; i++) {
       const a = Math.random() * Math.PI * 2, d = rand(rMin, rMax);
@@ -342,12 +346,12 @@ export class ScorpionNest {
       if (x < B.minX + 6 || x > B.maxX - 6 || z < B.minZ + 6 || z > B.maxZ - 6) continue;
       const hit = this.groundAt(x, z);
       if (!hit || (avoidView && avoidView(hit.point))) continue;
-      let room = true;
-      for (let k = 0; k < 4 && room; k++) {
+      let open = true;
+      for (let k = 0; k < 4 && open; k++) {
         _d.set(Math.cos(k * Math.PI / 2), 0, Math.sin(k * Math.PI / 2));
-        if (this.sw.ray(_c.copy(hit.point).setY(hit.point.y + 1.2), _d, 3.5)) room = false;
+        if (this.sw.ray(_c.copy(hit.point).setY(hit.point.y + 1.2), _d, room)) open = false;
       }
-      if (room) return hit;
+      if (open) return hit;
     }
     return null;
   }
@@ -543,7 +547,7 @@ export class ScorpionNest {
     }
 
     // Close in: rush the mech (Prowlers swing round behind it), climbing as high as it can after one out of reach
-    const stand = 1.9 + 2.3 * sc;
+    const stand = 1.9 + 2 * sc;
     if (!high && near < stand) { this.face(s, P.chest, dt); return; }
     const goal = v.stealth && !high ? this.flank(s, P) : P.pos;
     this.move(s, dt, goal, flat < 30 ? 1.15 : 1);
@@ -565,9 +569,13 @@ export class ScorpionNest {
       if (d >= min || d < 1e-3) continue;
       const push = Math.min(min - d, 6 * dt) * (o.scale / (s.scale + o.scale)) * 2;
       _a.divideScalar(d);
-      if (!this.sw.ray(_b.copy(s.p).addScaledVector(s.n, 0.5), _a, push + 1.5)) s.p.addScaledVector(_a, push);
+      _b.copy(s.p).addScaledVector(s.n, 0.5);
+      if (this.sw.ray(_b, _a, push + 1.5)) continue;
+      // On a wall, only if there's still wall under it a body's width further on
+      if (wall && !this.sw.ray(_b.addScaledVector(_a, push + 1.5 * s.scale), _c.copy(s.n).negate(), 2)) continue;
+      s.p.addScaledVector(_a, push);
     }
-    if (wall && s.p.y > this.climb) s.p.y = this.climb;
+    if (wall) this.holdBelow(s);
   }
 
   /** Crawl toward goal along whatever it's on: up walls, over low roofs, down to the street */
@@ -582,7 +590,7 @@ export class ScorpionNest {
     // A goal mostly straight through a wall is on another face: go up or down to get round
     if (_a.length() < dist * 0.3 && wall) _a.set(0, goal.y > s.p.y - 3 ? 1 : -1, 0).addScaledVector(s.n, -s.n.y);
     // The weakness: no grip past the climb limit. Crawl along the wall instead, or scrabble at it.
-    if (wall && s.p.y > this.climb - 0.6 && _a.y > 0) {
+    if (wall && this.over(s) > -0.6 && _a.y > 0) {
       const up = _a.y;
       _a.y = 0;
       if (_a.length() < up * 0.5) { this.scrabble(s, dt); return; }
@@ -591,8 +599,18 @@ export class ScorpionNest {
     sw.turn(s, _a.normalize(), 5, dt);
     const speed = s.speed * s.scale * k;
     sw.crawl(s, speed * dt);
-    if (Math.abs(s.n.y) < 0.5 && s.p.y > this.climb) s.p.y = this.climb;
+    if (Math.abs(s.n.y) < 0.5) this.holdBelow(s);
     s.moveVel.copy(s.f).multiplyScalar(speed);
+  }
+
+  /** How far the top of a scorpion on a wall (its head climbing, its tail end descending) is past the climb limit */
+  over(s) {
+    return s.p.y + s.scale * Math.max(s.f.y * HEAD, -s.f.y * TAIL_END) - this.climb;
+  }
+
+  holdBelow(s) {
+    const o = this.over(s);
+    if (o > 0) s.p.y -= o;
   }
 
   face(s, target, dt) {
@@ -694,7 +712,7 @@ export class ScorpionNest {
     const aim = this._aim || (this._aim = {}), ang = this._ang || (this._ang = [0, 0, 0, 0, 0]);
     for (const y of STING_HEIGHTS) {
       this.stingAim(s, P, aim, y);
-      if (aim.U < -1 || aim.V < 0.2) continue;
+      if (aim.U < -1 || aim.V < -1.5) continue;
       for (let i = 0; i < 5; i++) ang[i] = s.tail[i];
       // The lunge carries the stinger about half a body unit further. The tip has to end
       // within the hit radius (2.2) of the mech's axis; the aim point is 1.4 in from it.
@@ -712,11 +730,22 @@ export class ScorpionNest {
     return this.toLocal(s, _b, out);
   }
 
+  /**
+   * Arm pose that puts a pincer's tip on the mech: the hand points halfway between straight ahead
+   * and the target, and the wrist sits a hand's length back from the target, folding the arm in when
+   * the mech is close. Writes the wrist (body units) and the hand's direction; returns whether the arm
+   * reaches, allowing for the lunge.
+   */
+  clawPose(s, P, side, wrist, hand) {
+    const L = this.clawAim(s, P, side, _b);
+    _c.set(side * SHOULDER[0], SHOULDER[1], SHOULDER[2]);
+    hand.subVectors(L, _c).normalize().add(FWD).normalize();
+    wrist.copy(L).addScaledVector(hand, -(MANUS + FINGER * 0.65));
+    return L.z > SHOULDER[2] - 0.3 && wrist.distanceTo(_c) < ARM + FOREARM + 0.3;
+  }
+
   canClaw(s, P, side) {
-    if (!s.B) return false;
-    const L = this.clawAim(s, P, side, _d);
-    if (L.z < SHOULDER[2]) return false;
-    return Math.hypot(L.x - side * SHOULDER[0], L.y - SHOULDER[1], L.z - SHOULDER[2]) < ARM + FOREARM + MANUS + FINGER * 0.6 + 0.3;
+    return !!s.B && this.clawPose(s, P, side, _g, _h);
   }
 
   // ---- attacks ---------------------------------------------------------------------------
@@ -908,11 +937,11 @@ export class ScorpionNest {
     _a.subVectors(P.pos, s.p).setY(0);
     const d = _a.length();
     if (d > 0.1) s.f.copy(_a.divideScalar(d));
-    const step = s.speed * 2.2 * dt;
+    const speed = s.speed * s.scale * 2, step = speed * dt;
     s.p.addScaledVector(s.f, Math.min(step, d)).setY(0);
     s.n.set(0, 1, 0);
     s.c.copy(s.p).addScaledVector(s.n, s.rig.bodyH * s.scale);
-    s.moveVel.copy(s.f).multiplyScalar(s.speed * 2.2);
+    s.moveVel.copy(s.f).multiplyScalar(speed);
     // The street heaves above it
     s.trailT -= dt;
     if (s.trailT <= 0) {
@@ -925,7 +954,7 @@ export class ScorpionNest {
       sw.sound.burrow(s.p, 0.5);
     }
     // Close enough (or tunneled long enough): pick open street to burst out of
-    if (d < 6 || s.timer <= 0) {
+    if (d < 2 + 3.6 * s.scale || s.timer <= 0) {
       const at = this.groundAt(s.p.x, s.p.z) || (s.timer < -3 && this.findGround(s.p, 0, 12, null, 10));
       if (!at) return;
       s.erupt = { at: at.point, collider: at.collider, t: 0.6 };
@@ -961,7 +990,7 @@ export class ScorpionNest {
     sw.fx.sparksBurst(at, UP, 20, 0xc8a070, 30);
     this.debris(at, 1.6, 12);
     sw.sound.erupt(at);
-    if (P.alive && capsuleDist(at, P.pos) < 5.5) sw.cb.onPlayerHit && sw.cb.onPlayerHit(16, at.clone(), 'blast');
+    if (P.alive && capsuleDist(at, P.pos) < 2.2 + 3 * s.scale) sw.cb.onPlayerHit && sw.cb.onPlayerHit(16, at.clone(), 'blast');
   }
 
   debris(p, scale, n) {
@@ -1004,13 +1033,8 @@ export class ScorpionNest {
       _e.set(-side * 0.12, -0.12, 1);
       if (mine && ca.phase === 'windup') { _a.set(side * 1.3, 0.45, 2.15); _e.set(side * 0.35, 0.45, 1); open = 0.9; r = 10; }
       else if (mine && (ca.phase === 'strike' || ca.phase === 'hold') && s.B) {
-        // Reach the hand so the closing fingers meet the mech's armor
-        const L = this.clawAim(s, P, side, _b);
-        _c.set(side * SHOULDER[0], SHOULDER[1], SHOULDER[2]);
-        _d.subVectors(L, _c);
-        const dl = _d.length() || 1;
-        _a.copy(_c).addScaledVector(_d, clamp(dl - (MANUS + FINGER * 0.65), 0.6, ARM + FOREARM - 0.05) / dl);
-        _e.subVectors(L, _a);
+        // Reach so the closing fingers meet the mech's armor
+        this.clawPose(s, P, side, _a, _e);
         open = ca.phase === 'hold' ? 0.05 : 0.9 * (1 - ca.t / ca.dur) ** 2;
         r = 30;
       } else if (s.menace) {

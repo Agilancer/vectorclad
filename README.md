@@ -343,9 +343,10 @@ serves a local copy of the three.js package.
 ## Spider-frames
 
 The enemies are six-legged spider machines cut from the spider texture sheets.
-They are weak alone (one beam rifle bolt, one missile or a short burst drops
-most of them; the big Lancers and Bombardiers take two bolts) but come in waves
-that keep growing:
+They're big (a stalker's body alone is longer than the mech is tall) but weak
+alone (one beam rifle bolt, one missile or a short burst drops most of them; the
+big Lancers and Bombardiers take two bolts), and they come in waves that keep
+growing:
 
 - **Waves:** wave *n* sends 6 + 6*n* spiders and [scorpions](#scorpion-frames),
   in packs, with up to 6 + 5*n* alive at once (64 at most). Spider packs spawn out
@@ -427,9 +428,10 @@ cost about fifteen draw calls.
 ## Scorpion-frames
 
 Eight-legged ground hunters built from the same spider sheets and palette swap,
-running in the same waves. They don't leap or shoot from the rooftops. They dig
-up out of the street, 60 to 200 units away and out of sight, and come straight
-for the mech to fight up close:
+running in the same waves, and bigger than the spiders: a Burrower's raised tail
+stands as tall as the mech, and an Emperor's more than twice as tall. They don't
+leap or shoot from the rooftops. They dig up out of the street, 60 to 200 units
+away and out of sight, and come straight for the mech to fight up close:
 
 - **Pincers:** a claw opens as it winds up, then snaps shut on the mech's hips or
   torso (12 AP).
@@ -442,10 +444,11 @@ for the mech to fight up close:
 
 **Weakness:** a scorpion can only climb about 100 ft (30 m) up a wall. Past that
 its grip gives out: it scrabbles at the wall, slips back down and tries again, so
-scorpions chasing a mech up a tower end up lined along the wall at the 100 ft
-mark. They can still climb over buildings shorter than that, but a mech on a
-higher roof, or high in the air, is out of reach of everything but their ranged
-attacks.
+scorpions chasing a mech up a tower end up lined along the wall with their heads
+at the 100 ft mark. They can still climb over buildings shorter than that, but a
+mech on a higher roof, or high in the air, is out of reach of everything but
+their ranged attacks. Their pincers do reach a little past the line, so a mech
+standing right at the edge of a roof just above it can still be clawed.
 
 | Variant | Palette | From wave | What sets it apart |
 | --- | --- | --- | --- |

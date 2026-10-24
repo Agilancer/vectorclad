@@ -181,9 +181,10 @@ const BODY_MID = new V3(0, 0.25, -0.35);
 const NONE = new THREE.Matrix4().makeScale(0, 0, 0);
 
 // Six legs in alternating tripods (L0 R1 L2 / R0 L1 R2), so three feet are always down.
+// scale: every spider is drawn this much bigger than its variant's size range;
 // bodyH: body center above the surface; lift: how high a stepping foot rises
 const SPIDER_RIG = {
-  bodyH: 1.15, lift: 0.55, knee: 0.45, eye: EYE,
+  scale: 1.5, bodyH: 1.15, lift: 0.55, knee: 0.45, eye: EYE,
   legs: mirrorLegs([
     { hip: [0.6, 0.02, 0.72], rest: [2.3, 2.85] },
     { hip: [0.76, 0.04, 0.12], rest: [3.2, 0.55] },
@@ -486,9 +487,11 @@ export class SpiderSwarm {
    * the state every kind shares, with its legs curled under it, ready to unfold.
    */
   makeFrame(perch, v, slot, rig) {
-    const sc = rand(v.size[0], v.size[1]);
+    // A size in the variant's range, drawn larger by the body plan's scale. Toughness and
+    // speed follow where it falls in that range, so the plan's scale only changes how big it is.
+    const size = rand(v.size[0], v.size[1]), sc = size * rig.scale;
     // Bigger ones of a kind are a little tougher, up to the variant's hp
-    const hp = v.hp * (0.85 + 0.15 * (sc - v.size[0]) / (v.size[1] - v.size[0] || 1));
+    const hp = v.hp * (0.85 + 0.15 * (size - v.size[0]) / (v.size[1] - v.size[0] || 1));
     const s = {
       v, rig, name: v.name, boss: !!v.boss, legs: v.legs, removed: false,
       slot, alive: true, scale: sc, hp, maxHp: hp,
@@ -496,7 +499,7 @@ export class SpiderSwarm {
       ns: perch.normal.clone(), fs: new V3(), c: new V3(), moveVel: new V3(),
       state: 'emerge', timer: 0.8, t: 0, goal: null, losT: rand(0, 0.3), see: false, seeT: 0,
       cool: {}, burst: 0, burstT: 0, laser: null, brood: 0,
-      pitch: 0, pitchT: 0, crouch: 0, fang: 0, flash: 0, glow: 0, speed: SPEED * v.speed * rand(0.9, 1.15) / Math.sqrt(sc),
+      pitch: 0, pitchT: 0, crouch: 0, fang: 0, flash: 0, glow: 0, speed: SPEED * v.speed * rand(0.9, 1.15) / Math.sqrt(size) / rig.scale,
       best: Infinity, stuckT: 0, flight: null, silk: null, spin: new V3(), deadT: 0,
       feet: [],
     };
