@@ -1690,8 +1690,48 @@ export class Destruction {
     bs.group.matrixWorldNeedsUpdate = true;
     this.stats.bodies++;
     this.knockOff(b);
+    // What broke away took its skin along: the parent's copy of it goes, so nothing of it is left in the air
+    if (cells.length >= 200) this.pruneSkin(s);
     this.checkDead(s);
     return b;
+  }
+
+  /** Drop skin triangles with no solid cell left at or next to any of their corners' backing cells */
+  pruneSkin(s) {
+    if (s.dead) return;
+    const g = s.g, { nx, ny, nz, nxz, mat } = g;
+    const near = (c) => {
+      if (c < 0) return false;
+      const y = (c / nxz) | 0, r = c - y * nxz, z = (r / nx) | 0, x = r - z * nx;
+      for (let Y = Math.max(0, y - 1); Y <= Math.min(ny - 1, y + 1); Y++) for (let Z = Math.max(0, z - 1); Z <= Math.min(nz - 1, z + 1); Z++) {
+        for (let X = Math.max(0, x - 1); X <= Math.min(nx - 1, x + 1); X++) if (mat[X + nx * (Z + nz * Y)] >= SOLID) return true;
+      }
+      return false;
+    };
+    let changed = false;
+    const parts = [];
+    for (const part of s.skin) {
+      const Bk = part.attrs.aBack.a, tris = part.count / 3, keep = [];
+      for (let t = 0; t < tris; t++) {
+        const v = t * 9;
+        if (near(g.cellAt(Bk[v], Bk[v + 1], Bk[v + 2])) || near(g.cellAt(Bk[v + 3], Bk[v + 4], Bk[v + 5])) || near(g.cellAt(Bk[v + 6], Bk[v + 7], Bk[v + 8]))) keep.push(t);
+      }
+      if (keep.length === tris) { parts.push(part); continue; }
+      changed = true;
+      if (!keep.length) continue;
+      const attrs = {};
+      for (const k in part.attrs) {
+        const { a, size } = part.attrs[k], n = size * 3, A = new Float32Array(keep.length * n);
+        keep.forEach((t, j) => A.set(a.subarray(t * n, t * n + n), j * n));
+        attrs[k] = { a: A, size };
+      }
+      parts.push(Object.assign({}, part, { attrs, count: keep.length * 3 }));
+    }
+    if (!changed) return;
+    for (const mesh of s.skinMeshes) { s.group.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); mesh.customDepthMaterial.dispose(); }
+    s.skinMeshes = [];
+    s.skin = parts;
+    this.buildSkin(s);
   }
 
   /** A structure with nothing solid left goes */
