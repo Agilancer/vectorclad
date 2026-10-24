@@ -3,7 +3,8 @@
 A three.js tech demo for VECTORCLAD: FS-07A Vanguard, an Armored Core-style mech
 loose in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
 that climb the towers and swarm in growing waves, and scorpion-frames that dig up
-out of the streets to claw and sting at it. The mech walks, boost-dashes,
+out of the streets to claw and sting at it. Every tenth wave brings a black
+robotic millipede long enough to lie across several city blocks. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. Everything is
 procedural geometry: the mech and its weapons are textured from two sheets in
 `textures/`, the city from fifty-two more in `textures/city-src/`, and the spiders
@@ -21,7 +22,8 @@ npx http-server -p 8080 .
 three.js 0.170.0 loads from jsDelivr, so the first load needs a network connection.
 
 Add `?wave=N` to the URL to start the fight at wave N, with every kind that has
-joined by then (every spider and scorpion is in by wave 6).
+joined by then (every spider and scorpion is in by wave 7). `?wave=10` starts
+with [the millipede](#the-millipede).
 
 ## Deploy
 
@@ -343,15 +345,17 @@ serves a local copy of the three.js package.
 ## Spider-frames
 
 The enemies are six-legged spider machines cut from the spider texture sheets.
-They are weak alone (one beam rifle bolt, one missile or a short burst drops
-most of them; the big Lancers and Bombardiers take two bolts) but come in waves
-that keep growing:
+They're big (a stalker's body alone is longer than the mech is tall) but weak
+alone (one beam rifle bolt, one missile or a short burst drops most of them; the
+big Lancers and Bombardiers take two bolts), and they come in waves that keep
+growing:
 
 - **Waves:** wave *n* sends 6 + 6*n* spiders and [scorpions](#scorpion-frames),
   in packs, with up to 6 + 5*n* alive at once (64 at most). Spider packs spawn out
   of sight, 75 to 230 units away, on walls and roofs, and the gap between packs
   shrinks each wave. New kinds join as the waves go on, and a Broodmother leads
-  every fifth wave. Clearing a wave patches 30% of the mech's armor.
+  every fifth wave, except every tenth, when [the millipede](#the-millipede)
+  comes instead. Clearing a wave patches 30% of the mech's armor.
 - **Variants:** each kind has its own palette, proportions, tactics and weapon.
   Every one of them has the same glowing red eyes.
 
@@ -424,12 +428,35 @@ dorsal lance plate.
 Every spider part is an `InstancedMesh` shared by the whole swarm, so 64 spiders
 cost about fifteen draw calls.
 
+## Medium spider-frames
+
+Twice the size of a stalker, slow, and built to soak up fire: 170 to 300 HP, six
+to ten beam rifle bolts or two or three bazooka hits. They're too heavy to leap.
+To get from one roof to the next a medium spider bridges: it walks to the edge
+facing the next roof and, if the gap is within its leg span and the roofs are
+close enough in height, stretches across, rear feet gripping one roof and front
+feet the other, until its body is over. A gap too wide (any street) means
+climbing down, crossing and climbing up the other side. They join the waves one
+at a time from wave 3.
+
+| Variant | Palette | From wave | What sets it apart |
+| --- | --- | --- | --- |
+| **Bulwark** | Brass, amber glow | 3 | A riot-shield plate over its face turns away three quarters of direct fire from in front, and 40% of blasts. Fires twelve-round gatling bursts. Flank it, or shoot it from behind. |
+| **Mender** | White, green glow | 4 | Keeps near the other frames and plays medic: a green beam from the emitter on its crane arm repairs the most damaged frame within 70 units, 32 HP a second. Shoots at the mech when nothing needs fixing. Kill it first. |
+| **Warden** | Blue steel, gold glow | 5 | Raises a shield dome (240 HP) over itself and whatever stands near it. Shots from outside stop on the dome, blasts outside it don't reach in, and missiles can't lock onto it. Broken, it comes back eight seconds later. Step inside it, or break it and finish the Warden before it's back. |
+| **Magnetar** | Silver, red trim, blue glow | 6 | Two spinning coils on its back charge a tractor beam that holds the mech for three seconds and drags it toward the Magnetar a little faster than the mech can walk. Dash to pull away. |
+| **Quarrier** | Sandstone, orange glow | 7 | Tears a boulder out of the roof it stands on, holds it overhead and hurls it at where the mech is heading. The boulder smashes what it lands on (about 57 AP on a direct hit). |
+
+`js/mediums.js` gives them their goals, their bridging and their gear; the
+spider code in `js/spiders.js` walks and draws them like any other spider.
+
 ## Scorpion-frames
 
 Eight-legged ground hunters built from the same spider sheets and palette swap,
-running in the same waves. They don't leap or shoot from the rooftops. They dig
-up out of the street, 60 to 200 units away and out of sight, and come straight
-for the mech to fight up close:
+running in the same waves, and bigger than the spiders: a Burrower's raised tail
+stands as tall as the mech, and an Emperor's more than twice as tall. They don't
+leap or shoot from the rooftops. They dig up out of the street, 60 to 200 units
+away and out of sight, and come straight for the mech to fight up close:
 
 - **Pincers:** a claw opens as it winds up, then snaps shut on the mech's hips or
   torso (12 AP).
@@ -442,10 +469,11 @@ for the mech to fight up close:
 
 **Weakness:** a scorpion can only climb about 100 ft (30 m) up a wall. Past that
 its grip gives out: it scrabbles at the wall, slips back down and tries again, so
-scorpions chasing a mech up a tower end up lined along the wall at the 100 ft
-mark. They can still climb over buildings shorter than that, but a mech on a
-higher roof, or high in the air, is out of reach of everything but their ranged
-attacks.
+scorpions chasing a mech up a tower end up lined along the wall with their heads
+at the 100 ft mark. They can still climb over buildings shorter than that, but a
+mech on a higher roof, or high in the air, is out of reach of everything but
+their ranged attacks. Their pincers do reach a little past the line, so a mech
+standing right at the edge of a roof just above it can still be clawed.
 
 | Variant | Palette | From wave | What sets it apart |
 | --- | --- | --- | --- |
@@ -478,6 +506,59 @@ fourth channel on the palette's accent that makes the paint itself glow.
 
 Every part is an `InstancedMesh`, drawn only up to the highest scorpion slot in
 use, so the 24 scorpions that can be alive at once cost about a dozen draw calls.
+
+## The millipede
+
+Every tenth wave, in the Broodmother's place and with half the usual spiders, a
+black robotic millipede hundreds of feet long crawls in along the rooftops and
+settles draped across two or three city blocks near the mech: it lies on the
+roofs, sags over the streets between them, and grips roofs and facades with two
+pairs of legs under each of its ten armored sections.
+
+- **Armor:** each section carries three layers of plates: black, then steel, then
+  bronze. Weapons break plates off one at a time (they tumble off the body), the
+  outer ones first; a plate with another still over it takes only a fifth of a
+  blast. Nothing else wears them down: not the roofs it lies on, not its own
+  coils. The keel underneath never comes off.
+- **Reactor cores:** a hole through all three layers over the middle of a section
+  opens its reactor core, a rainbow gem in a cage. A few more hits destroy it and
+  the section goes dark. Roughly four bazooka hits per core, or a missile salvo on
+  one spot.
+- **The head** can't be hurt while any core still burns. Raised on its neck at the
+  front of the body, it watches the mech, fires five-bolt plasma fans and bites
+  anything that comes close.
+- **Breaking loose:** with the last core gone, thrusters in its neck light, the
+  head tears free, climbs, flies off a fair way, turns and hunts the mech from the
+  air with twin solid red beams from its eyes. They charge for a second, then burn
+  for three, dragging after the mech (walking won't shake them, dashing will) and
+  carving through whatever buildings they cross. The head takes 1900 damage,
+  about fifteen direct bazooka hits.
+- **Death:** the dying head rams through twenty to thirty buildings, tearing a
+  tunnel through each, then climbs, spins faster and faster, and blows apart in a
+  huge explosion with fireworks and a ring of smoke rolling out. The rest of the
+  body goes up section by section.
+
+The boss bar counts its reactor cores, then the head's armor.
+
+### How it's built
+
+`js/millipede.js` tries 70 routes, each a gentle arc ending 50 to 95 units from
+the mech. Over each it lays the tightest drape: the lowest line over every roof
+it passes that never slopes more steeply than 0.65. It takes the route that lies
+most on roofs, low and smooth, clear of the mech, and starting out of sight, then
+crawls the body in along it. Each section is a rigid piece laid along the drape
+and lifted until it clears every roof under it, with a ribbed sleeve over each
+joint.
+
+The 1260 plates are curved tiles in three instanced meshes, one per layer. Shots
+are tested against each section analytically: the ray moves into the section's
+frame and meets the three armor cylinders, the keel, the core and the end frames
+in turn, so it stops on the first plate still there, or on the core through a
+hole. Blasts reach every plate in range, shielded by whatever is still on top.
+The legs reuse the spider atlas plates and two-bone IK, finding holds on roofs,
+walls or nothing (they dangle). The head is built from primitives with the body's
+own plates on its crown; it's a target of its own, armored until the cores are
+gone.
 
 ## Design notes
 
@@ -542,9 +623,11 @@ in the hangar settings.
 | `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
 | `js/destruct/textures.js` | Painted atlas for broken materials, office floors, lit ceilings and plaster |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
-| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders and scorpions |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions and the millipede |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
-| `js/frameParts.js` | Shared by spiders and scorpions: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, the mech's hit capsule |
+| `js/mediums.js` | Medium spider-frames: variants, bridging between roofs, gear, shield domes, repair and tractor beams, thrown boulders |
+| `js/millipede.js` | The millipede: rooftop route and drape, sectioned body, three-layer plate armor and reactor cores, legs, the head's flight, eye beams, ramming and finale |
+| `js/frameParts.js` | Shared by spiders, scorpions and the millipede: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, beams, the mech's hit capsule |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
 | `js/music.js` | Soundtrack playlist: title theme, shuffled rotation, volume drop after the title |

@@ -376,6 +376,80 @@ export class Sound {
     this.noiseHit({ type: 'bandpass', freq: 1500, freqEnd: 600, q: 2, peak: 0.25, attack: 0.01, decay: 0.18, pos });
     this.tone({ type: 'sine', freq: 520, freqEnd: 260, peak: 0.07, decay: 0.15, pos });
   }
+  // Medium spiders
+  mediumGrowl(pos) {
+    if (!this.gate('mgrowl', 0.5, pos, 0.03)) return;
+    this.tone({ type: 'sawtooth', freq: 1100, freqEnd: 260, peak: 0.12, attack: 0.06, decay: 0.8, pos });
+    this.tone({ type: 'square', freq: 160, freqEnd: 70, peak: 0.1, attack: 0.05, decay: 0.9, pos });
+    this.noiseHit({ type: 'bandpass', freq: 2000, freqEnd: 600, q: 3, peak: 0.25, attack: 0.05, decay: 0.8, pos });
+  }
+  bridgeCreak(pos) {
+    if (!this.gate('creak', 0.6, pos)) return;
+    const f = 1 + Math.random() * 0.3;
+    this.tone({ type: 'sawtooth', freq: 140 * f, freqEnd: 95 * f, peak: 0.08, attack: 0.15, decay: 0.7, pos });
+    this.noiseHit({ type: 'bandpass', freq: 1100 * f, freqEnd: 700, q: 9, peak: 0.16, attack: 0.1, decay: 0.7, pos });
+  }
+  tractor(pos) {
+    if (!this.gate('tractor', 0.5, pos, 0.03)) return;
+    this.tone({ type: 'sawtooth', freq: 70, freqEnd: 52, peak: 0.16, attack: 0.08, decay: 3, pos });
+    this.tone({ type: 'sine', freq: 940, freqEnd: 610, peak: 0.06, attack: 0.1, decay: 3, pos });
+    this.noiseHit({ type: 'bandpass', freq: 500, q: 4, peak: 0.12, attack: 0.2, decay: 2.8, pos });
+  }
+  boulderThrow(pos) {
+    if (!this.gate('hurl', 0.15, pos)) return;
+    this.noiseHit({ type: 'bandpass', freq: 400, freqEnd: 1400, q: 1.2, peak: 0.35, attack: 0.04, decay: 0.35, pos });
+    this.tone({ type: 'sine', freq: 80, freqEnd: 140, peak: 0.25, decay: 0.3, pos });
+  }
+  domeUp(pos) {
+    if (!this.gate('domeup', 0.3, pos)) return;
+    this.tone({ type: 'sine', freq: 180, freqEnd: 720, peak: 0.12, attack: 0.25, decay: 0.5, pos });
+    this.tone({ type: 'triangle', freq: 362, freqEnd: 1440, peak: 0.05, attack: 0.25, decay: 0.5, pos });
+  }
+  domeBreak(pos) {
+    if (!this.gate('domebreak', 0.2, pos)) return;
+    this.noiseHit({ type: 'highpass', freq: 3000, peak: 0.3, decay: 0.6, pos });
+    for (let i = 0; i < 8; i++) this.tone({ type: 'sine', freq: 1800 + Math.random() * 3000, freqEnd: 600, peak: 0.04, decay: 0.12, pos, delay: Math.random() * 0.3 });
+    this.tone({ type: 'sine', freq: 600, freqEnd: 90, peak: 0.15, decay: 0.6, pos });
+  }
+  // The millipede
+  millipedeRoar(pos, k = 1) {
+    if (!this.gate('mroar', 0.8, pos, 0.01)) return;
+    this.tone({ type: 'sawtooth', freq: 160, freqEnd: 48, peak: 0.28 * k, attack: 0.15, decay: 1.8, pos });
+    this.tone({ type: 'sawtooth', freq: 171, freqEnd: 52, peak: 0.22 * k, attack: 0.18, decay: 1.7, pos });
+    this.tone({ type: 'square', freq: 82, freqEnd: 30, peak: 0.12 * k, attack: 0.1, decay: 2, pos });
+    this.noiseHit({ type: 'bandpass', freq: 700, freqEnd: 180, q: 2, peak: 0.45 * k, attack: 0.12, decay: 1.8, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 200, peak: 0.6 * k, attack: 0.2, decay: 2, pos });
+  }
+  coreBreak(pos) {
+    if (!this.gate('core', 0.2, pos, 0.01)) return;
+    for (let i = 0; i < 10; i++) this.tone({ type: 'sine', freq: 600 * Math.pow(2, i / 5), freqEnd: 300, peak: 0.06, decay: 0.8, pos, delay: i * 0.03 });
+    this.noiseHit({ type: 'highpass', freq: 2500, peak: 0.3, decay: 0.7, pos });
+    this.explosion(pos, 2);
+  }
+  thrusters(pos) {
+    if (!this.gate('thrust', 0.5, pos, 0.01)) return;
+    this.noiseHit({ type: 'lowpass', freq: 600, freqEnd: 1600, peak: 0.6, attack: 0.9, decay: 2.5, pos });
+    this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 300, peak: 0.7, attack: 1, decay: 3, pos });
+    this.tone({ type: 'sawtooth', freq: 60, freqEnd: 140, peak: 0.15, attack: 1.2, decay: 1.5, pos });
+  }
+  eyeBeam(pos, dur) {
+    if (!this.gate('eyebeam', 0.5, pos, 0.01)) return;
+    this.tone({ type: 'sawtooth', freq: 220, freqEnd: 180, peak: 0.12, attack: 0.05, decay: dur, pos });
+    this.tone({ type: 'square', freq: 110, freqEnd: 95, peak: 0.08, attack: 0.05, decay: dur, pos });
+    this.noiseHit({ type: 'bandpass', freq: 3000, q: 2, peak: 0.12, attack: 0.05, decay: dur, pos });
+  }
+  spinWhine(pos, k) {
+    if (!this.gate('whine', 0.3, pos, 0.01)) return;
+    const f = 300 + 1400 * k;
+    this.tone({ type: 'sawtooth', freq: f, freqEnd: f * 1.25, peak: 0.08 + 0.08 * k, attack: 0.05, decay: 0.4, pos });
+    this.noiseHit({ type: 'bandpass', freq: f * 2, q: 4, peak: 0.1 + 0.1 * k, decay: 0.35, pos });
+  }
+  fireworkPop(pos) {
+    if (!this.gate('pop' + ((Math.random() * 3) | 0), 0.05, pos, 0.005)) return;
+    this.noiseHit({ type: 'lowpass', freq: 2400, freqEnd: 300, peak: 0.5, decay: 0.4, pos });
+    this.tone({ type: 'sine', freq: 140, freqEnd: 50, peak: 0.3, decay: 0.3, pos });
+    for (let i = 0; i < 10; i++) this.tone({ type: 'square', freq: 2500 + Math.random() * 3000, peak: 0.025, decay: 0.02, pos, delay: 0.35 + i * 0.06 + Math.random() * 0.05 });
+  }
   playerHit(heavy = 1) {
     if (!this.gate('phit', 0.05)) return;
     this.noiseHit({ type: 'bandpass', freq: 1300, q: 1.5, peak: 0.35 * heavy, decay: 0.2 });

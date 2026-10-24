@@ -10,6 +10,7 @@ import { SPIDER_ATLAS, SPIDER_PARTS } from './spiderParts.js';
 const V3 = THREE.Vector3;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const _a = new V3(), _u = new V3(), _r = new V3(), _n = new V3();
+const UP = new V3(0, 1, 0);
 
 const AW = SPIDER_ATLAS.w, AH = SPIDER_ATLAS.h;
 const EDGE_UV = new THREE.Vector2(1014 / AW, 1 - 1014 / AH); // an unused black corner: plate edges read as dark seams
@@ -230,6 +231,59 @@ export function markerTexture() {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+// ---------------------------------------------------------------------------
+// Beam shader (camera-facing ribbon along local +y, 0..1)
+// ---------------------------------------------------------------------------
+
+const BEAM_VERT = /* glsl */`
+uniform float uWidth;
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  vec3 base = (modelMatrix * vec4(0.0, position.y, 0.0, 1.0)).xyz;
+  vec3 axis = normalize((modelMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+  vec3 side = cross(axis, cameraPosition - base);
+  float L = length(side);
+  side = L > 1e-5 ? side / L : vec3(1.0, 0.0, 0.0);
+  gl_Position = projectionMatrix * viewMatrix * vec4(base + side * position.x * uWidth, 1.0);
+}`;
+const BEAM_FRAG = /* glsl */`
+uniform vec3 uColor; uniform float uAlpha; uniform float uCore; uniform float uTime;
+varying vec2 vUv;
+void main() {
+  float d = abs(vUv.x - 0.5) * 2.0;
+  float glow = pow(1.0 - d, 2.2);
+  float core = smoothstep(0.35, 0.0, d) * uCore;
+  float ripple = 0.8 + 0.2 * sin(vUv.y * 220.0 - uTime * 80.0);
+  gl_FragColor = vec4((uColor * glow * 1.5 + vec3(1.0, 0.85, 0.85) * core) * ripple * uAlpha, 1.0);
+}`;
+const BEAM_GEO = new THREE.PlaneGeometry(1, 1, 1, 6).translate(0, 0.5, 0);
+
+export function beamMesh(color) {
+  const m = new THREE.Mesh(BEAM_GEO, new THREE.ShaderMaterial({
+    vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG,
+    uniforms: { uColor: { value: new THREE.Color(color) }, uAlpha: { value: 1 }, uCore: { value: 1 }, uWidth: { value: 1 }, uTime: { value: 0 } },
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+  }));
+  m.frustumCulled = false;
+  m.renderOrder = 6;
+  m.visible = false;
+  return m;
+}
+
+/** Lay a beam mesh from a to b: width, alpha and the white-hot core's strength, at time t (for the ripple) */
+export function drawBeam(mesh, a, b, width, alpha, core, t) {
+  const len = a.distanceTo(b);
+  mesh.visible = alpha > 0.01 && len > 0.1;
+  if (!mesh.visible) return;
+  mesh.position.copy(a);
+  mesh.quaternion.setFromUnitVectors(UP, _a.subVectors(b, a).divideScalar(len));
+  mesh.scale.set(1, len, 1);
+  const u = mesh.material.uniforms;
+  u.uWidth.value = width; u.uAlpha.value = alpha; u.uCore.value = core; u.uTime.value = t;
 }
 
 // ---------------------------------------------------------------------------

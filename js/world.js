@@ -329,6 +329,12 @@ export class World {
     if (targets) {
       for (const t of this.targets) {
         if (!t.alive) continue;
+        // Shaped targets (millipede segments, shield domes) test the ray against themselves
+        if (t.ray) {
+          const h = t.ray(o, d, best, pad);
+          if (h) { best = h.t; target = t; collider = null; normal = h.normal; }
+          continue;
+        }
         const r = t.radius + pad;
         const ox = o.x - t.pos.x, oy = o.y - t.pos.y, oz = o.z - t.pos.z;
         const b = ox * d.x + oy * d.y + oz * d.z;
@@ -437,20 +443,24 @@ export class World {
     return { t: tmin, n };
   }
 
-  damage(t, amount, point) {
+  /** from: where a blast went off, for splash damage (a shield dome between them takes it instead) */
+  damage(t, amount, point, from = null) {
     if (!t || !t.alive) return false;
     if (t.kind === 'car') return this.city.damageCar(t, amount, point);
     if (t.kind === 'tree') return this.trees.hit(t, amount, point);
     this.cb.onHit && this.cb.onHit(t, point);
-    return this.spiders.damage(t, amount, point);
+    // Shaped targets take hits their own way (armor carved where it was struck)
+    if (t.hit) return t.hit(amount, point);
+    return this.spiders.damage(t, amount, point, from);
   }
 
   damageRadius(point, radius, amount) {
     // A copy: kills drop targets from the list
     for (const t of [...this.targets]) {
       if (!t.alive) continue;
+      if (t.blast) { t.blast(point, radius, amount); continue; }
       const d = t.pos.distanceTo(point) - t.radius;
-      if (d < radius) this.damage(t, amount * (1 - Math.max(0, d) / radius) * 0.85 + amount * 0.15, t.pos);
+      if (d < radius) this.damage(t, amount * (1 - Math.max(0, d) / radius) * 0.85 + amount * 0.15, t.pos, point);
     }
     this.trees.blast(point, radius, amount);
     if (point.y > 6) return;
