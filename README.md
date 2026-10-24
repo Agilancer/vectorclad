@@ -207,8 +207,9 @@ instance's skin from a data texture and moves the vertices to fit it.
   on the cross streets; the roads round the edge of the city run both ways, so a car that
   comes to the edge always has somewhere to turn. Cars follow the car ahead, turn at intersections where the streets
   allow, and stop for the mech, for wrecks, rubble and pieces of building in the road, and
-  for fallen trees. Up to 180 drive at once; new ones keep coming in out of the mech's
-  sight to replace those lost, and wrecks are cleared away once nobody is near.
+  for fallen trees. Up to 240 drive at once, kept round the mech: new ones come in out of
+  its sight a few blocks off, cars that have driven far away are taken off to come back
+  near, and wrecks are cleared away once nobody is near.
 - Driving cars are as breakable as parked ones: the mech treads on them, and shots and
   blasts set them burning.
 

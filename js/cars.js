@@ -17,13 +17,15 @@ import { CAR_SKINS } from './kitTiles.js';
 // Traffic keeps to the moving lanes (the curb lanes are for parking): one way
 // up and down the avenues, one way or two way on the cross streets. Cars
 // follow the car ahead, turn at intersections where the streets allow, stop
-// for the mech and for wrecks, rubble and fallen trees in their way, and new
-// ones keep coming in out of sight to replace those lost.
+// for the mech and for wrecks, rubble and fallen trees in their way. The
+// traffic is kept round the mech: new cars come in out of its sight a few
+// blocks off, and cars that have driven far away are taken off to come back.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
 const N = 28; // stations along a car, as measured
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new V3(), _p = new V3(), _d = new V3(), _up = new V3(0, 1, 0), _col = new THREE.Color();
+const _view = new THREE.Frustum(), _vm = new THREE.Matrix4(), _sph = new THREE.Sphere();
 const rand = (a, b) => a + Math.random() * (b - a);
 const pickR = (a) => a[Math.floor(Math.random() * a.length)];
 
@@ -208,7 +210,7 @@ export class Cars {
         }
       }
     }
-    this.maxMoving = 180;
+    this.maxMoving = 240;
     const cap = spots.length + this.maxMoving + 40;
     const { mat, depth } = carMaterials(atlas, skin);
     const geo = carGeometry();
@@ -315,14 +317,32 @@ export class Cars {
     return car;
   }
 
-  /** Keep the streets busy: new cars out of the mech's sight, and wrecks cleared away once out of it */
-  respawn(dt, P) {
+  /**
+   * Keep the streets round the mech busy: new cars come in out of its sight, 120 to 450 m off;
+   * cars that have driven far away, out of view, are taken off to come back near; and wrecks
+   * are cleared away once nobody is near
+   */
+  respawn(dt, P, cam) {
     this.spawnT -= dt;
     if (this.spawnT > 0) return;
     this.spawnT = 0.5;
-    const m = (x) => this.city.m(x), L = this.city.L;
-    const live = this.moving.filter((c) => c.state === 0).length;
-    for (let k = 0; k < (live < this.maxMoving * 0.5 ? 6 : 2) && live + k < this.maxMoving; k++) {
+    const m = (x) => this.city.m(x), L = this.city.L, D = this.world.destruct;
+    if (cam) _view.setFromProjectionMatrix(_vm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const seen = (x, z) => cam && Math.hypot(x - cam.position.x, z - cam.position.z) < m(900) && _view.intersectsSphere(_sph.set(_p.set(x, m(1), z), m(5)));
+    let live = 0, recycled = 0;
+    for (const car of this.moving) {
+      if (car.gone) continue;
+      if (car.state !== 0) {
+        // Wrecks that burned out a while ago go once nobody is near
+        car.dead = (car.dead || 0) + 0.5;
+        if (car.dead > 60 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(200)) this.remove(car);
+        continue;
+      }
+      if (recycled < 4 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(650) && !seen(car.pos.x, car.pos.z)) { this.remove(car); recycled++; continue; }
+      live++;
+    }
+    const want = Math.min(this.maxMoving - live, live < this.maxMoving * 0.6 ? 8 : 3);
+    for (let tries = 0, k = 0; k < want && tries < 40; tries++) {
       const l = pickR(this.lanes);
       // Between two crossings, not in one
       const cross = this.crossings(l), j = Math.floor(Math.random() * (cross.length - 1));
@@ -331,14 +351,10 @@ export class Cars {
       const along = rand(a, b), x = l.ave ? l.c : along, z = l.ave ? along : l.c;
       if (z < L.sts[0].z1) continue;
       const d = Math.hypot(x - P.x, z - P.z);
-      if (d < m(120) || d > m(900)) continue;
-      this.spawnOn(l, along);
-    }
-    // Wrecks that burned out a while ago go once nobody is near
-    for (const car of this.moving) {
-      if (car.state === 0 || car.gone) continue;
-      car.dead = (car.dead || 0) + 0.5;
-      if (car.dead > 60 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(200)) this.remove(car);
+      if (d < m(120) || d > m(450) || seen(x, z)) continue;
+      // Not into rubble
+      if (D && D.solidAt(x, m(1), z)) continue;
+      if (this.spawnOn(l, along)) k++;
     }
     if (this.moving.some((c) => c.gone)) this.moving = this.moving.filter((c) => !c.gone);
   }
@@ -433,7 +449,7 @@ export class Cars {
     if (!this.world) return;
     this.time += dt;
     const P = ctx.player, m = (x) => this.city.m(x);
-    if (P) this.respawn(dt, P);
+    if (P) this.respawn(dt, P, ctx.camera);
     for (const car of this.moving) {
       if (car.gone || car.state !== 0) continue;
       if (!car.curve && car.next === undefined) this.plan(car);
