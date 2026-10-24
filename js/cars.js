@@ -319,7 +319,7 @@ export class Cars {
   }
 
   /**
-   * Keep the streets round the mech busy: new cars come in out of its sight, 120 to 650 m off;
+   * Keep the streets round the mech busy: new cars come in out of its sight, 60 to 650 m off;
    * cars that have driven farther away, out of view, are taken off to come back near; and wrecks
    * are cleared away once nobody is near to see it
    */
@@ -363,7 +363,7 @@ export class Cars {
       if (z < L.sts[0].z1) continue;
       const d = Math.hypot(x - P.x, z - P.z);
       // Most of them within a few blocks, a few farther out to fill the streets into the haze
-      if (d < m(120) || d > m(650) || (d > m(400) && Math.random() < 0.65) || seen(x, z)) continue;
+      if (d < m(first ? 25 : 60) || d > m(650) || (d > m(400) && Math.random() < 0.65) || seen(x, z)) continue;
       // Not into rubble or a fallen tree: the car's length clear, down at bumper height
       const fx = l.ave ? 0 : 1, fz = l.ave ? 1 : 0;
       if (D && (D.solidAt(x, m(0.6), z) || D.solidAt(x - fx * m(3), m(0.6), z - fz * m(3)) || D.solidAt(x + fx * m(3), m(0.6), z + fz * m(3)))) continue;
