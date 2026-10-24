@@ -101,6 +101,10 @@ The song list is at the top of `js/music.js`.
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
 | Camera zoom | Mouse wheel | |
 
+The aim reaches straight up and straight down, so the weapons fire in any direction.
+Looking steeply down, the view slides forward so the crosshair rests on the ground just
+ahead of the feet, where the arms can reach. The camera starts zoomed all the way in.
+
 Dashing and jump-jetting draw on one boost gauge. A full gauge holds about nine
 seconds of dash and refills in about three once the mech is back on the ground. If
 it runs dry the boosters overheat and stay off until the gauge is back to 40.
