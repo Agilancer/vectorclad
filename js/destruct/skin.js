@@ -29,8 +29,9 @@ float dLut(float p, int row) {
   return mix(a, b, f - float(i));
 }
 float dSolid(vec3 c) {
-  if (any(lessThan(c, vec3(0.0))) || any(greaterThanEqual(c, uDim))) return 1.0;
-  ivec3 i = ivec3(floor(c));
+  // On or just past the grid's edge (a facade's corners and its top edge), the edge cell itself:
+  // read as solid, those strips would outlive the building as a wire frame in the air
+  ivec3 i = ivec3(clamp(floor(c), vec3(0.0), uDim - 1.0));
   return texelFetch(uMask, ivec3(i.x, i.z, i.y), 0).r;
 }
 float dHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }

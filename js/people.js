@@ -203,24 +203,46 @@ class Splats {
   constructor(scene, cap = 500) {
     const geo = new THREE.PlaneGeometry(1, 1);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshStandardMaterial({ map: splatTexture(), transparent: true, alphaTest: 0.3, depthWrite: false, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
+    // Just enough offset to sit on the floor without fighting it, not so much that it shows through walls
+    const mat = new THREE.MeshStandardMaterial({ map: splatTexture(), transparent: true, alphaTest: 0.3, depthWrite: false, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     this.mesh = new THREE.InstancedMesh(geo, mat, cap);
     this.mesh.count = 0;
     this.mesh.renderOrder = 2;
     this.mesh.frustumCulled = false;
     this.mesh.receiveShadow = true;
     scene.add(this.mesh);
-    this.cap = cap; this.next = 0;
+    this.cap = cap; this.next = 0; this.check = 0;
+    this.at = new Float32Array(cap * 3);  // where each one lies
+    this.live = new Uint8Array(cap);
   }
 
   add(x, y, z, size) {
     const i = this.next;
+    this.at[i * 3] = x; this.at[i * 3 + 1] = y; this.at[i * 3 + 2] = z; this.live[i] = 1;
     this.next = (this.next + 1) % this.cap;
     this.mesh.count = Math.max(this.mesh.count, i + 1);
     _q.setFromAxisAngle(_up, Math.random() * TAU);
     _m.compose(_v.set(x, y, z), _q, _s.set(size * rand(0.8, 1.3), 1, size * rand(0.8, 1.3)));
     this.mesh.setMatrixAt(i, _m);
     this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * A few a frame: is the floor or street each lies on still there? A splat on a floor that was
+   * blown away, or on a slab that fell, goes with it rather than hanging in the air.
+   * groundAt(x, z, y): the top under (x, z) at or below y.
+   */
+  update(groundAt, lift) {
+    const n = this.mesh.count;
+    for (let k = 0; k < Math.min(24, n); k++) {
+      const i = (this.check = (this.check + 1) % n);
+      if (!this.live[i]) continue;
+      const x = this.at[i * 3], y = this.at[i * 3 + 1], z = this.at[i * 3 + 2];
+      if (groundAt(x, z, y + lift) > y - lift * 0.6) continue;
+      this.live[i] = 0;
+      this.mesh.setMatrixAt(i, _m.makeScale(0, 0, 0));
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 }
 
@@ -536,6 +558,7 @@ export class People {
     const P = ctx.player;
     this.player = P;
     if (!this.started) { this.started = true; this.repopulate(P, true); }
+    this.splats.update(this.splatGround || (this.splatGround = (x, z, y) => this.groundAt(x, z, y)), this.m(0.3));
     this.spawnT -= dt;
     if (this.spawnT <= 0) {
       this.spawnT = 0.4;
