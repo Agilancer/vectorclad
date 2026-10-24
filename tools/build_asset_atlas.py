@@ -17,7 +17,7 @@ sliver of its neighbor repeats along an edge. Car sheets hold ten unfolded car n
 either side of it, the front fascia above and the rear fascia below. Some nets have their
 pieces touching, the fascias hanging off the plan strip like tabs: those are cut apart
 along the narrowest gap between them. Each piece is trimmed to its opaque pixels, which
-drops the soft, half-transparent fringe the sheets have around every piece.
+drops the pale, half-transparent rim the sheets draw around every piece, two pixels in.
 
 Run from the repository root:  python3 tools/build_asset_atlas.py [--review DIR]
 --review writes the car cuts drawn over each sheet, for checking.
@@ -224,6 +224,8 @@ def cut_net(A):
     if nl > 1:
       sizes = ndimage.sum(M, lab, range(1, nl + 1))
       M = lab == (1 + int(np.argmax(sizes)))
+    # and its edge: the sheets draw a pale, half-transparent rim round every piece
+    M = ndimage.binary_erosion(M, iterations=2)
     if M.any():
       yy, xx = np.nonzero(M)
       boxes[name] = (xx.min(), yy.min(), xx.max() + 1, yy.max() + 1)

@@ -120,12 +120,14 @@ function tileRect(name) {
 }
 
 /** A leafy blob: an icosphere with its surface knocked about, so it reads as a clump and not a ball */
-function blobGeometry() {
-  const g = new THREE.IcosahedronGeometry(1, 1);
+function blobGeometry(detail = 1) {
+  const g = new THREE.IcosahedronGeometry(1, detail);
   const p = g.attributes.position, v = new V3();
-  const seen = new Map();
+  const seen = new Map(), nor = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i);
+    // Shaded as the round clump it stands for, not as its facets
+    nor[i * 3] = v.x; nor[i * 3 + 1] = v.y; nor[i * 3 + 2] = v.z;
     const key = `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
     let k = seen.get(key);
     if (k === undefined) {
@@ -137,7 +139,7 @@ function blobGeometry() {
     if (v.y < 0) v.y *= 0.72;
     p.setXYZ(i, v.x, v.y, v.z);
   }
-  g.computeVertexNormals();
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   return g;
 }
 
@@ -218,7 +220,7 @@ export class Trees {
     const base = {
       trunk: (() => { const g = new THREE.CylinderGeometry(0.62, 1, 1, 9, 2, true); g.translate(0, 0.5, 0); return g; })(),
       stump: (() => { const g = new THREE.CylinderGeometry(0.85, 1, 1, 9, 1); g.translate(0, 0.5, 0); return g; })(),
-      blob: blobGeometry(), cone: coneGeometry(),
+      blob: blobGeometry(1), blobHi: blobGeometry(2), cone: coneGeometry(),
     };
     const mk = (src, mat, count) => {
       // Each mesh has its own per-instance tiles, over the shared shape
@@ -243,6 +245,17 @@ export class Trees {
         leaf: mk(base.blob, leafMat, c.nBlob), cone: mk(base.cone, leafMat, c.nCone), nt: 0, nb: 0, nc: 0,
       };
       ch.stump.count = 0;
+      // Near the camera the clumps are finer: the same instances, a rounder shape
+      ch.leafHi = new THREE.InstancedMesh(new THREE.BufferGeometry(), leafMat, ch.leaf.instanceMatrix.count);
+      for (const k of ['position', 'normal']) ch.leafHi.geometry.setAttribute(k, base.blobHi.attributes[k]);
+      ch.leafHi.geometry.setAttribute('aTile', ch.leaf.geometry.attributes.aTile);
+      ch.leafHi.geometry.setAttribute('aRep', ch.leaf.geometry.attributes.aRep);
+      ch.leafHi.instanceMatrix = ch.leaf.instanceMatrix;
+      ch.leafHi.instanceColor = ch.leaf.instanceColor;
+      ch.leafHi.count = ch.leaf.count;
+      ch.leafHi.castShadow = ch.leafHi.receiveShadow = true;
+      ch.leafHi.visible = false;
+      city.scene.add(ch.leafHi);
       this.chunks.push(ch);
       for (const i of c.trees) tch[i] = ch;
     }
@@ -293,6 +306,7 @@ export class Trees {
         m.boundingSphere.radius += city.m(60);
       }
       ch.stump.boundingSphere = ch.trunk.boundingSphere.clone();
+      ch.leafHi.boundingSphere = ch.leaf.boundingSphere.clone();
     }
     this.flushMeshes(true);
   }
@@ -674,8 +688,18 @@ export class Trees {
   // ---- per frame ------------------------------------------------------------------
 
   /** ctx: { player: V3 (feet), vel: V3 } */
+  /** Fine clumps for the chunks near the camera, coarse ones further out */
+  lod(cam) {
+    const near = this.city.m(260);
+    for (const ch of this.chunks) {
+      const S = ch.leaf.boundingSphere, hi = S.center.distanceTo(cam) - S.radius < near;
+      ch.leafHi.visible = hi; ch.leaf.visible = !hi;
+    }
+  }
+
   update(dt, ctx) {
     if (!this.world) return;
+    if (ctx.camera) this.lod(ctx.camera.position);
     const P = ctx.player, mv = ctx.vel;
     // The mech rips out any standing tree it walks into, and wakes any fallen one it touches
     // (the kick itself happens in collide(), which only runs for trees that are awake)

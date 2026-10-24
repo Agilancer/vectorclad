@@ -69,10 +69,12 @@ function carGeometry() {
     if (n.dot(new V3(...out[f])) >= 0) idx.push(i0, i1, i2, i0, i2, i3);
     else idx.push(i0, i2, i1, i0, i3, i2);
   };
+  // Every other measured station along the body (the shader reads the station's own numbers), and
+  // the second and second-to-last, where the hood and trunk turn down to the bumpers
+  const ST = [0, 1, ...Array.from({ length: (N - 4) / 2 }, (_, j) => 2 + j * 2), N - 2, N - 1].filter((k, i, a) => a.indexOf(k) === i);
   const strips = (f, across) => {
-    const rows = [];
-    for (let k = 0; k < N; k++) rows.push(across.map((a) => vert(k, a, 0, f)));
-    for (let k = 0; k < N - 1; k++) for (let j = 0; j < across.length - 1; j++) quad(rows[k][j], rows[k + 1][j], rows[k + 1][j + 1], rows[k][j + 1], f);
+    const rows = ST.map((k) => across.map((a) => vert(k, a, 0, f)));
+    for (let r = 0; r < rows.length - 1; r++) for (let j = 0; j < across.length - 1; j++) quad(rows[r][j], rows[r + 1][j], rows[r + 1][j + 1], rows[r][j + 1], f);
   };
   strips(0, [0, 0.35, 0.6, 0.8, 1]);
   strips(1, [0, 0.35, 0.6, 0.8, 1]);
@@ -447,7 +449,7 @@ export class Cars {
         const l = car.lane;
         car.along += step * l.dir;
         if (l.ave) car.pos.set(l.c, 0, car.along); else car.pos.set(car.along, 0, l.c);
-        if (car.turn && (car.next.at - car.along) * l.dir <= m(8)) this.startTurn(car);
+        if (car.turn && (car.turn.c - car.along) * l.dir <= m(8)) this.startTurn(car);
         else if (car.next && (car.along - car.next.at) * l.dir > m(2)) this.plan(car);
         // Off the end of the grid with nowhere to turn
         if (car.along < l.lo - m(10) || car.along > l.hi + m(10)) { this.remove(car); continue; }

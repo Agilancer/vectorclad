@@ -247,17 +247,20 @@ and come to rest on the street, on the rubble or on the floors below.
 ### Trains
 
 A train sets out down the elevated railway about once a minute from the north, beyond the
-barricade (`js/train.js`): cab cars at both ends and four coaches between, built from the
-ribbed titanium, blue-gray panel and black steel facade sheets, on bogies. It runs south
+barricade (`js/train.js`): cab cars at both ends and four coaches between, stainless steel
+from the silver aluminum facade sheet with ribbed titanium roofs, on bogies. It runs south
 down the line, stops at the end of it by the water, crosses over to the other track and
 runs back north out of the city.
 
-Wherever the deck has been shot away under it, or something is on the track (the mech, a
-wreck already lying there), it derails: every car goes on as a rigid body with the train's
-speed, tumbles off the end of the track and crashes down onto whatever is below, crushing
-cars, people and trees. The trains keep coming whether or not the line is still there, so
-the wrecks pile up under the gap, each settled car becoming something solid for the next
-ones to land on and for the mech to climb.
+It brakes to a stop for the mech standing on the track. But wherever the deck has been shot
+away under it, or a wreck is lying on the line, it derails: the cars stay coupled while it
+brakes, and each one leaves the rails as it runs off the broken end of the track (the
+leading one as it runs into the wreck ahead), going on as a rigid body with the train's
+speed. It tumbles off and crashes down onto whatever is below, crushing cars, people and
+trees. Whatever is left when the train stops lies on the deck for the next one to plough
+into. The trains keep coming whether or not the line is still there, so the wrecks pile up
+in and under the gap, each settled car becoming something solid for the next ones to land
+on and for the mech to climb.
 
 ### Atlases
 

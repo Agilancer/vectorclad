@@ -6,18 +6,21 @@ import { Trees } from './trees.js';
 import { Cars } from './cars.js';
 
 // ---------------------------------------------------------------------------
-// Port Meridian, built from the city texture sheets.
+// Port Meridian, built from the city texture sheets and the asset packs.
 //
-// A 10 x 10 grid of blocks at real proportions: 100 ft avenues, 60 ft cross
-// streets, blocks long east-west. Everything is laid out in meters and scaled
-// by M (game units per meter), which main.js derives from the mech's height
-// so the mech stands 40 ft tall.
+// A 15 x 15 grid of blocks at real proportions: 100 ft avenues, 60 ft cross
+// streets, blocks long east-west, with a forest along the west side and
+// residential streets of houses and row houses beside it. Everything is laid
+// out in meters and scaled by M (game units per meter), which main.js derives
+// from the mech's height so the mech stands 40 ft tall.
 //
 // Geometry is merged per material and per chunk. Every surface samples one of
 // six texture atlases through a shader that tiles inside an atlas cell, so
 // the whole city draws in a few dozen calls. Many facades are composed from
 // panel kits: piers, runs of window bays and louvered vent floors cut from one
-// family of materials. Streets and sidewalks draw on ground kits picked by how
+// family of materials (the skyN kits are the skyscraper facade sheets, the storeN
+// kits the storefront sheets, whose entries make the ground floors' shop fronts).
+// Streets and sidewalks draw on ground kits picked by how
 // worn the pavement is in each part of town. An elevated railway, an elevated
 // highway and two bridges are built from structure kits.
 // ---------------------------------------------------------------------------

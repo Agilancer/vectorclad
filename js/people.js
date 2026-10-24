@@ -282,7 +282,7 @@ export class People {
     const lp = this.loop(B);
     s = ((s % lp.total) + lp.total) % lp.total;
     let e = 0;
-    while (s > lp.len[e]) { s -= lp.len[e]; e++; }
+    while (e < 3 && s > lp.len[e]) { s -= lp.len[e]; e++; }
     const a = lp.c[e], b = lp.c[(e + 1) % 4], f = s / lp.len[e];
     const dx = (b[0] - a[0]) / lp.len[e], dz = (b[1] - a[1]) / lp.len[e];
     // Clockwise round the block, so out to the street is to the left of the way along
@@ -380,7 +380,7 @@ export class People {
 
   splat(q, k = 1) {
     const g = this.groundAt(q.pos.x, q.pos.z, q.pos.y + this.m(0.4));
-    this.splats.add(q.pos.x, g + this.m(0.03), q.pos.z, this.m(rand(1.4, 2.6) * k));
+    this.splats.add(q.pos.x, g + this.m(0.03), q.pos.z, this.m(rand(0.9, 1.6) * k));
     const fx = this.fx;
     for (let i = 0; i < 8; i++) {
       fx.smoke.emit(q.pos.x, g + this.m(0.3), q.pos.z, rand(-2, 2), rand(1, 3), rand(-2, 2), rand(0.35, 0.7), this.m(0.25), this.m(0.6),
@@ -757,10 +757,10 @@ export class People {
         q.flat = 0.55;
         this.sound.crunch(q.pos);
       } else {
-        // Got up again: run
+        // Got up again: run, out in the street or still in the building
         q.tilt.identity();
         q.vel.set(0, 0, 0);
-        q.mode = 'free';
+        q.mode = q.s && !q.s.dead && g > this.city.L.curb + m(1) ? 'inside' : 'free';
         q.state = 'run';
         q.fear = rand(6, 12);
         q.from = q.from || q.pos.clone().add(_v.set(rand(-1, 1), 0, rand(-1, 1)));
