@@ -85,7 +85,7 @@ const G = {
   roof: ['roof00', 'roof01', 'roof02', 'roof03', 'roof04', 'roof05', 'roof44', 'roof45', 'roof53'],
   roofMetal: ['roof40', 'roof42'],
   // Roof sheets (assets/rooftop-textures): flat coverings, and pitched ones for houses
-  roofFlat: ['rf01', 'rf02', 'rf07', 'rf08', 'rf09', 'rf10', 'rf13', 'rf14', 'rf15', 'rf18', 'rf20', 'rf11'].flatMap((k) => ROOF_KITS[k].cover),
+  roofFlat: ['rf01', 'rf02', 'rf07', 'rf08', 'rf09', 'rf10', 'rf13', 'rf14', 'rf15', 'rf18', 'rf20', 'rf11', 'rf12'].flatMap((k) => ROOF_KITS[k].cover),
   roofPitched: ['rf05', 'rf06', 'rf17', 'rf19', 'rf16', 'rf04', 'rf03'].flatMap((k) => ROOF_KITS[k].cover),
   ac: ['roof20', 'roof21', 'roof22'],
   skylight: ['roof13', 'roof14', 'roof15'],
@@ -103,16 +103,28 @@ const STREET_TREES = ['oak', 'maple', 'elm', 'beech', 'oak', 'maple', 'linden', 
 // The skyN kits are the skyscraper facade sheets (assets/skyscraper-facades), the storeN kits the
 // storefront sheets (assets/street-level-storefronts): their upper-floor windows suit walk-ups.
 const STORE_KITS = Array.from({ length: 20 }, (_, i) => `store${String(i + 1).padStart(2, '0')}`);
+// Shop fronts for tower lobbies: aluminum, dark glass and bronze; and the wood and brass ones for stone towers
+const LOBBY_STORES = ['store15', 'store18', 'store02', 'store10', 'store07', 'store09', 'store13', 'store04'];
+const DECO_STORES = ['store10', 'store07', 'store20', 'store03', 'store19', 'store10'];
+// The skyscraper sheets' glass and metal curtain walls, for crowns, lanterns and sky bridges
+const SKY_GLASS = ['sky01', 'sky04', 'sky07', 'sky10', 'sky13', 'sky18', 'sky19'].flatMap((k) => KITS[k].bays);
 const KIT_STYLE = {
   walkup: ['brick', 'limestone', 'masonry', 'sandstone', 'travertine', 'ivory', 'sky05', 'sky02', 'sky12', 'sky17', ...STORE_KITS],
   prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete', 'masonry', 'travertine', 'ivory', 'sandstone', 'sky02', 'sky05', 'sky12', 'sky20', 'sky16', 'sky09'],
   modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches', 'seaglass', 'silver', 'azure', 'travertine', 'masonry', 'sandstone',
     'sky03', 'sky06', 'sky08', 'sky11', 'sky16', 'sky17', 'sky18'],
-  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass',
-    'sky01', 'sky04', 'sky07', 'sky09', 'sky10', 'sky13', 'sky14', 'sky18', 'sky19', 'sky03', 'sky08'],
-  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'slate', 'indigo', 'silver', 'basalt', 'azure',
-    'sky01', 'sky04', 'sky07', 'sky09', 'sky10', 'sky13', 'sky14', 'sky15', 'sky19', 'sky01', 'sky04', 'sky13'],
-  deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone', 'sky02', 'sky02', 'sky12', 'sky20', 'sky20', 'sky15', 'sky09'],
+  // Offices and towers wear the skyscraper sheets four times in five
+  office: ['steel', 'graphite', 'teal', 'aluminum', 'seaglass',
+    'sky01', 'sky03', 'sky04', 'sky06', 'sky07', 'sky08', 'sky09', 'sky10', 'sky11', 'sky13', 'sky14', 'sky16', 'sky17', 'sky18', 'sky19',
+    'sky01', 'sky03', 'sky08', 'sky09', 'sky13', 'sky18'],
+  tower: ['steel', 'graphite', 'navy', 'azure',
+    'sky01', 'sky03', 'sky04', 'sky06', 'sky07', 'sky08', 'sky09', 'sky10', 'sky13', 'sky14', 'sky15', 'sky16', 'sky18', 'sky19',
+    'sky01', 'sky04', 'sky07', 'sky09', 'sky13', 'sky14'],
+  deco: ['limestone', 'ivory', 'sky02', 'sky02', 'sky12', 'sky12', 'sky20', 'sky20', 'sky15', 'sky09', 'sky14'],
+  // The two landmark towers: a setback tower in stone or dark glass, and twins in metal and glass
+  spire: ['sky04', 'sky07', 'sky14', 'sky09', 'sky15', 'sky02', 'sky20', 'sky13'],
+  twins: ['sky01', 'sky13', 'sky19', 'sky07', 'sky04', 'sky10', 'sky18'],
+  terrace: ['sky03', 'sky06', 'sky09', 'sky11', 'sky15', 'sky16', 'sky20', 'sky02', 'sky12'],
   far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine',
     'sky01', 'sky03', 'sky04', 'sky07', 'sky09', 'sky13', 'sky14', 'sky18', 'sky19'],
   // Houses and row houses in the residential streets
@@ -346,6 +358,7 @@ export class City {
     this.owner = null;
     this.ownerDepth = 0;
     this.rw = mulberry(2027); // water towers, apart from the layout so it doesn't shift
+    this.rr = mulberry(1883); // tower and crown roof coverings, likewise
     this.mats = {
       facade: atlasMaterial(tex.facade, { roughness: 0.75, glass: true }),
       surface: atlasMaterial(tex.surface, { roughness: 0.85 }),
@@ -940,14 +953,14 @@ export class City {
     // Special blocks
     const special = {
       '5,3': 'needle', '6,5': 'plaza', '7,5': 'twist', '9,8': 'park', '4,7': 'green', '9,5': 'twins',
-      '6,7': 'gate', '10,3': 'stack', '11,7': 'terraces', '8,9': 'deco', '12,11': 'park', '2,10': 'green', '6,12': 'green',
-      '13,4': 'twist', '12,9': 'stack',
+      '6,7': 'gate', '10,3': 'stack', '11,7': 'terraces', '8,9': 'deco', '13,13': 'park', '2,10': 'green', '6,12': 'green',
+      '13,4': 'twist', '12,9': 'stack', '8,4': 'spire', '12,11': 'skytwins',
     };
     // Tall clusters: around the needle and the plaza (north), a second spine to the southeast and a
-    // smaller one beyond it toward the highway
+    // third beyond it toward the highway
     const tall = (j, k) => {
       const d1 = Math.hypot(j - 7.2, k - 4.4), d2 = Math.hypot(j - 9.8, k - 7.4), d3 = Math.hypot(j - 12.4, k - 10.6);
-      return Math.max(Math.exp(-d1 * d1 / 7), 0.92 * Math.exp(-d2 * d2 / 6), 0.8 * Math.exp(-d3 * d3 / 4), 0.18);
+      return Math.max(Math.exp(-d1 * d1 / 7), 0.92 * Math.exp(-d2 * d2 / 6), 0.88 * Math.exp(-d3 * d3 / 5.5), 0.18);
     };
     // Residential streets: detached houses by the forest on the west side, row houses beyond them
     // and along the south waterfront
@@ -958,7 +971,11 @@ export class City {
       if (k >= 13 && j <= 10) return (j + k) % 3 === 0 ? 'houses' : 'rows';
       return null;
     };
+    const layout = this.r;
     for (const B of L.blocks) {
+      // Each block builds from its own stream, seeded from the layout's, so changing one block
+      // leaves the rest of the city as it was
+      this.r = mulberry(Math.floor(layout() * 4294967296));
       this.cur = this.chunkOf((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2);
       const type = B.playable ? special[`${B.j},${B.k}`] : null;
       const t = B.playable ? tall(B.j, B.k) : 0.25 + this.r() * 0.15;
@@ -969,14 +986,16 @@ export class City {
       else if (type === 'park') this.parkBlock(B, true);
       else if (type === 'green') this.parkBlock(B, false);
       else if (type === 'twins') this.twinsBlock(B, t);
+      else if (type === 'skytwins') this.skyTwinsBlock(B);
       else if (type === 'gate') this.gateBlock(B, t);
       else if (type) this.towerBlock(B, t, type);
       else if (res) this.residentialBlock(B, res);
-      else if (t > 0.62 && this.r() < 0.8) {
+      else if (t > 0.51 && this.r() < 0.8) {
         const q = this.r();
         this.towerBlock(B, t, q < 0.38 ? 'glass' : q < 0.46 ? 'deco' : q < 0.66 ? 'prism' : q < 0.86 ? 'twist' : 'stack');
       } else this.mixedBlock(B, t);
     }
+    this.r = layout;
   }
 
   /**
@@ -1167,7 +1186,7 @@ export class City {
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
         tiers: [{ x0, x1, z0, z1, y1: y0 + band.h + m(n * bh), tile: F.bay, F, band }],
-        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        roof: { tile: pick(r, r() < 0.85 ? G.roofFlat : G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
         cornice: r() < 0.8,
       });
     } else if (style === 'walkup') {
@@ -1180,7 +1199,7 @@ export class City {
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
         tiers: [{ x0, x1, z0, z1, y1: top, tile: upper, band }],
-        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        roof: { tile: pick(r, r() < 0.85 ? G.roofFlat : G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
         cornice: r() < 0.8,
       });
     } else if (style === 'prewar') {
@@ -1198,7 +1217,7 @@ export class City {
       }
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), tiers,
-        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), feature: r() < 0.45, bulkhead: true, ac: Math.floor(r() * 3) },
+        roof: { tile: pick(r, r() < 0.85 ? G.roofFlat : G.roof), feature: r() < 0.45, bulkhead: true, ac: Math.floor(r() * 3) },
         cornice: true,
       });
     } else if (style === 'modern' || style === 'office') {
@@ -1212,7 +1231,7 @@ export class City {
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: (F && F.solid) || pick(r, G.panel),
         tiers: [{ x0, x1, z0, z1, y1: S.y, tile, F, bands: S.bands, band }],
-        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), mech: (F && F.vent) || pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
+        roof: { tile: pick(r, r() < 0.85 ? G.roofFlat : G.roof), mech: (F && F.vent) || pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
       });
     }
   }
@@ -1228,6 +1247,18 @@ export class City {
     const r = this.r, b = 1 - k + r() * k * 1.6;
     return [b * (0.97 + r() * 0.06), b * (0.97 + r() * 0.06), b * (0.97 + r() * 0.06)];
   }
+
+  /** A flat roof covering from the roof sheets, drawn apart from the layout so it doesn't shift */
+  roofSheet() { return pick(this.rr, G.roofFlat); }
+
+  /** A flat roof over x0..x1, z0..z1 at y, its covering (a roof sheet unless given) at its own size */
+  roofOver(x0, z0, x1, z1, y, tile = this.roofSheet()) {
+    const s = this.m(PANELS[tile] ? tileMeters(tile)[0] : 6);
+    this.flat(this.bufFor(tile), tile, x0, z0, x1, z1, y, (x, z) => [x / s, -z / s]);
+  }
+
+  /** A tower's lobby: a band of shop fronts and doorways from one of the given storefront kits */
+  lobby(kits = LOBBY_STORES) { return this.storeEntry(pick(this.r, kits)); }
 
   /**
    * Emit a building: stacked tiers, facades on street sides (party walls elsewhere),
@@ -1261,8 +1292,12 @@ export class City {
           if (T.band && ti === 0) {
             const bt = T.band.tile, [bw, bh] = tileMeters(bt);
             const isFacade = !bt.startsWith('walls');
-            if (T.band.kit) this.entryWall(T.band, ax, az, bx, bz, y, { tint: o.tint, base: o.y0, F: T.F, front: o.streets[side] });
-            else this.wall(this.bufFor(bt), bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
+            if (T.band.kit && (o.streets[side] || T.band.door)) this.entryWall(T.band, ax, az, bx, bz, y, { tint: o.tint, base: o.y0, F: T.F, front: o.streets[side] });
+            else if (T.band.kit) {
+              // Shop fronts face the streets; toward the neighbors the band is plain wall
+              const pt = (T.F && T.F.solid) || o.party, [pw, ph] = tileMeters(pt);
+              this.wall(this.bufFor(pt), pt, ax, az, bx, bz, y, y + T.band.h, m(pw), m(ph), { snapU: true, tint: o.tint, base: o.y0 });
+            } else this.wall(this.bufFor(bt), bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
             y += T.band.h;
           }
           if (T.F) this.kitWall(T.F, ax, az, bx, bz, y, T.y1, { tint: o.tint, base: o.y0, bands: T.bands });
@@ -1280,7 +1315,8 @@ export class City {
       }
       // Roof (or setback terrace)
       const last = ti === o.tiers.length - 1;
-      const rt = T.roofTile || (o.roof && o.roof.tile) || 'roof00', rs = PANELS[rt] && !T.roofTile ? m(tileMeters(rt)[0]) : T.roofTile ? m(4) : m(6);
+      // (setback terraces under a crown are covered from the roof sheets too)
+      const rt = T.roofTile || (o.roof && o.roof.tile) || (o.cover ??= this.roofSheet()), rs = PANELS[rt] && !T.roofTile ? m(tileMeters(rt)[0]) : T.roofTile ? m(4) : m(6);
       if (!(last && o.crown)) this.flat(this.bufFor(rt), rt, T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / rs, -z / rs]);
       this.collide(T.x0, ti === 0 ? 0 : ylo, T.z0, T.x1, T.y1, T.z1, { building: true });
       ylo = T.y1;
@@ -1331,7 +1367,7 @@ export class City {
       for (const [ax, az, bx, bz] of [[x0, z1, x1, z1], [x1, z0, x0, z0], [x1, z1, x1, z0], [x0, z0, x0, z1]]) {
         this.wall(this.bufFor(R.mech), R.mech, ax, az, bx, bz, y, y + h, m(mw), m(mh), { snapU: true, ao: false });
       }
-      this.flat(sb, 'roof04', x0, z0, x1, z1, y + h, (x, z) => [x / m(6), -z / m(6)]);
+      this.roofOver(x0, z0, x1, z1, y + h);
       this.collide(x0, y, z0, x1, y + h, z1, { building: true });
       if (r() < 0.5) {
         const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ah = m(15 + r() * 25);
@@ -1609,9 +1645,10 @@ export class City {
 
   towerBlock(B, t, kind) {
     const r = this.r, m = (x) => this.m(x);
-    const W = B.x1 - B.x0;
-    const tw = Math.min(W * 0.65, m(52 + r() * 22));
-    const at = r();
+    const W = B.x1 - B.x0, spire = kind === 'spire';
+    // The landmark spire stands square in the middle of its block
+    const tw = spire ? m(64) : Math.min(W * 0.65, m(52 + r() * 22));
+    const at = spire ? 0.5 : r();
     const tx0 = B.x0 + (W - tw) * (at < 0.33 ? 0 : at < 0.66 ? 0.5 : 1), tx1 = tx0 + tw;
     // Fill the rest of the block with mid-rises
     const rest = [[B.x0, tx0], [tx1, B.x1]].filter(([a, b]) => b - a > m(6));
@@ -1631,45 +1668,47 @@ export class City {
     else if (kind === 'twist' || kind === 'prism') this.prismTower(f, t, kind === 'twist');
     else if (kind === 'stack') this.stackTower(f, streets, t);
     else if (kind === 'terraces') this.terraceTower(f, streets, t);
+    else if (spire) this.spireTower(f, streets);
     else this.decoTower(f, streets, t, kind);
     this.endOwner();
   }
 
   glassTower(f, streets, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
-    // Most towers are composed from a kit, the rest wrapped in one curtain-wall tile
-    const F = r() < 0.7 ? this.kitFacade(pick(r, KIT_STYLE.tower), Math.min(f.x1 - f.x0, f.z1 - f.z0)) : null;
-    const tile = F ? F.bay : pick(r, G.officeGlass), th = m(tileMeters(tile)[1]);
-    const band = { tile: 'facade12', h: m(7.2) };
+    // Composed from a kit (mostly the skyscraper sheets) over a lobby of shop fronts
+    const F = this.kitFacade(pick(r, KIT_STYLE.tower), Math.min(f.x1 - f.x0, f.z1 - f.z0));
+    const tile = F.bay, th = m(tileMeters(tile)[1]);
+    const band = this.lobby();
     let tiers = [], fp = { ...f }, y = y0 + band.h;
-    const total = Math.round(m(120 + t * 150 + r() * 40) / th);
+    const total = Math.round(m(130 + t * 175 + r() * 45) / th);
     const nt = 1 + Math.floor(r() * 3), every = Math.max(4, Math.round(m(55 + r() * 30) / th));
     let left = total;
     for (let i = 0; i < nt && fp && left > 0; i++) {
       const last = i === nt - 1;
       const n = last ? left : Math.min(left, Math.max(4, Math.round(left * (0.45 + r() * 0.2))));
       left -= n;
-      // Kit towers get a mechanical floor under each setback and every so often up the shaft
-      const S = F ? this.kitStack(F, y, n, { every, ventTop: !last && left > 0, crown: last || left <= 0 }) : { y: y + n * th };
+      // A mechanical floor under each setback and every so often up the shaft
+      const S = this.kitStack(F, y, n, { every, ventTop: !last && left > 0, crown: last || left <= 0 });
       y = S.y;
       tiers.push({ ...fp, y1: y, tile, F, bands: S.bands, band: i === 0 ? band : null });
       fp = this.inset(fp, m(4 + r() * 4), { n: true, s: true, e: true, w: true });
     }
     this.building({
-      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: (F && F.solid) || 'walls05',
+      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: F.solid || 'walls05',
       tiers,
       // A third of them are topped with a crown instead of rooftop plant
-      ...(r() < 0.35 ? { crown: (T) => this.crown(T) } : { roof: { tile: pick(this.r, this.r() < 0.65 ? G.roofFlat : G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 } }),
+      ...(r() < 0.35 ? { crown: (T) => this.crown(T) } : { roof: { tile: this.roofSheet(), mech: F.vent || pick(this.r, G.mech), ac: 2 } }),
     });
   }
 
   decoTower(f, streets, t, kind) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
-    // Half the deco towers are composed from a stone or brick kit, with bays narrow enough for the upper tiers
-    const F = kind === 'deco' && r() < 0.5 ? this.kitFacade(pick(r, KIT_STYLE.deco), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.5) : null;
-    const tile = F ? F.bay : pick(r, G.officeStone);
+    // Composed from a stone kit (mostly the skyscraper sheets' limestone, sandstone and granite), with
+    // bays narrow enough for the upper tiers, over a lobby of wood and brass shop fronts
+    const F = this.kitFacade(pick(r, KIT_STYLE.deco), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.5);
+    const tile = F.bay;
     const [, thm] = tileMeters(tile), th = m(thm);
-    const band = { tile: pick(r, G.stone), h: m(9) };
+    const band = this.lobby(DECO_STORES);
     // A broad base and a couple of shallow setbacks up to the crown
     const plan = r() < 0.5 ? [7, 10] : [6, 6, 8];
     const scale = (thm === 12 ? 1 : 12 / thm) * (0.55 + t * 0.45);
@@ -1685,22 +1724,22 @@ export class City {
     });
     const tint = this.tint(0.05);
     this.building({
-      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint, party: 'walls50', tiers,
+      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint, party: F.solid || 'walls50', tiers,
       crown: (T) => this.crown(T),
     });
   }
 
   /** A tower crown: a glass wedge, a glowing halo over a glass drum, or a steel lattice lantern around a needle */
   crown(T) {
-    const m = (x) => this.m(x), sb = this.buf('surface', this.cur), r = this.r;
+    const m = (x) => this.m(x), r = this.r;
     const cx = (T.x0 + T.x1) / 2, cz = (T.z0 + T.z1) / 2, W = T.x1 - T.x0, D = T.z1 - T.z0;
     const q = r();
-    if (q < 0.35) return this.wedge(T, pick(r, G.officeGlass), Math.max(W, D) * (0.5 + r() * 0.3), r() < 0.5);
+    if (q < 0.35) return this.wedge(T, pick(r, SKY_GLASS), Math.max(W, D) * (0.5 + r() * 0.3), r() < 0.5);
     if (q < 0.7) {
       // Halo: a glass drum on the roof, and a ring of light held above it on four struts
-      this.flat(sb, 'roof04', T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / m(6), -z / m(6)]);
-      const dr = Math.min(W, D) * 0.3, dh = Math.min(W, D) * 0.35, glass = pick(r, G.officeGlass);
-      this.prismSeg(cx, cz, 10, dr, dr * 0.8, 0, T.y1, T.y1 + dh, glass, m(6), m(6), { top: 'roof04' });
+      this.roofOver(T.x0, T.z0, T.x1, T.z1, T.y1);
+      const dr = Math.min(W, D) * 0.3, dh = Math.min(W, D) * 0.35, glass = pick(r, SKY_GLASS);
+      this.prismSeg(cx, cz, 10, dr, dr * 0.8, 0, T.y1, T.y1 + dh, glass, m(4), m(4), { top: this.roofSheet() });
       this.collide(cx - dr, T.y1, cz - dr, cx + dr, T.y1 + dh, cz + dr, { building: true });
       const R = Math.min(W, D) * 0.48, yr = T.y1 + dh + m(8), glow = pick(r, [[0.35, 1.5, 1.6], [1.6, 0.9, 0.3], [1.5, 0.35, 0.9]]);
       for (let k = 0; k < 4; k++) {
@@ -1712,13 +1751,13 @@ export class City {
       return;
     }
     // Lattice lantern: truss cards around a glass drum, a needle through the middle
-    this.flat(sb, 'roof04', T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / m(6), -z / m(6)]);
+    this.roofOver(T.x0, T.z0, T.x1, T.z1, T.y1);
     const truss = pick(r, STRUCTS.steeltruss.truss), h = Math.min(W, D) * 0.5, e = m(1);
     for (const [ax, az, bx, bz] of [[T.x0 + e, T.z1 - e, T.x1 - e, T.z1 - e], [T.x1 - e, T.z0 + e, T.x0 + e, T.z0 + e], [T.x1 - e, T.z1 - e, T.x1 - e, T.z0 + e], [T.x0 + e, T.z0 + e, T.x0 + e, T.z1 - e]]) {
       this.card(truss, ax, az, bx, bz, T.y1, T.y1 + h, h * cell(truss).aspect);
     }
-    const dr = Math.min(W, D) * 0.28, glass = pick(r, G.officeGlass);
-    this.prismSeg(cx, cz, 8, dr, dr, 0, T.y1, T.y1 + h * 0.8, glass, m(6), m(6), { top: 'roof04' });
+    const dr = Math.min(W, D) * 0.28, glass = pick(r, SKY_GLASS);
+    this.prismSeg(cx, cz, 8, dr, dr, 0, T.y1, T.y1 + h * 0.8, glass, m(4), m(4), { top: this.roofSheet() });
     this.collide(T.x0, T.y1, T.z0, T.x1, T.y1 + h * 0.8, T.z1, { building: true });
     const sh = h * 2.4;
     this.prop('cyl6', cx, T.y1 + h * 0.8 + sh / 2, cz, m(0.8), sh, m(0.8), [0.75, 0.77, 0.8]);
@@ -1793,7 +1832,7 @@ export class City {
 
   /** A flat polygon cap (up or down) for a polygonal tower segment */
   polyCap(cx, cz, n, r, rot, y, tile, up) {
-    const b = this.bufFor(tile), c = cell(tile), ts = this.m(6), C = new V3(cx, y, cz), want = new V3(0, up ? 1 : -1, 0);
+    const b = this.bufFor(tile), c = cell(tile), ts = this.m(PANELS[tile] ? tileMeters(tile)[0] : 6), C = new V3(cx, y, cz), want = new V3(0, up ? 1 : -1, 0);
     const V = (k) => { const a = rot + (k / n) * Math.PI * 2; return new V3(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r); };
     const uv = (p) => [p.x / ts, -p.z / ts];
     for (let k = 0; k < n; k++) { const p = V(k), q = V(k + 1); this.tri(b, [C, p, q], [uv(C), uv(p), uv(q)], c, WHITE, 0, want); }
@@ -1812,21 +1851,22 @@ export class City {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
     const cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2, half = Math.min(f.x1 - f.x0, f.z1 - f.z0) / 2;
     const n = twist ? 4 : pick(r, [6, 8, 8]), R = half * (twist ? 0.98 : 0.92);
-    const tile = r() < 0.5 ? pick(r, G.officeGlass) : pick(r, KITS[pick(r, KIT_STYLE.tower)].bays);
-    const [tw, th] = tileMeters(tile).map(m), tint = this.tint(0.05);
-    // A glass lobby box over the whole lot
+    const tile = pick(r, KITS[pick(r, KIT_STYLE.tower)].bays);
+    const [tw, th] = tileMeters(tile).map(m), tint = this.tint(0.05), cover = this.roofSheet();
+    // A lobby box over the whole lot: shop fronts under a floor of the tower's facade
+    const band = this.lobby(), yl = y0 + band.h + th;
     this.building({
       x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets: { n: true, s: true, e: true, w: true }, allFacade: true, tint,
-      party: 'walls05', tiers: [{ ...f, y1: y0 + m(10), tile: 'facade12' }], roof: { tile: 'roof04' },
+      party: 'walls05', tiers: [{ ...f, y1: yl, tile, band }], roof: { tile: cover },
     });
     const per = 2 * th, nseg = Math.max(8, Math.round(m(150 + t * 170 + r() * 60) / per));
     const turn = twist ? (Math.PI / 2) * (0.7 + r() * 0.6) * (r() < 0.5 ? 1 : -1) : 0;
-    let y = y0 + m(10);
+    let y = yl;
     for (let i = 0; i < nseg; i++) {
       // Squares start square to the streets; polygons taper over their top fifth
       const rot = Math.PI / 4 + (turn * i) / nseg, k = (j) => (twist ? 1 : 1 - Math.max(0, j / nseg - 0.8) * 1.6);
       const ra = R * k(i), rb = R * k(i + 1), last = i === nseg - 1;
-      this.prismSeg(cx, cz, n, ra, rb, rot, y, y + per, tile, tw, th, { tint, top: twist || last ? 'roof04' : null, bottom: twist ? 'walls05' : null });
+      this.prismSeg(cx, cz, n, ra, rb, rot, y, y + per, tile, tw, th, { tint, top: twist || last ? cover : null, bottom: twist ? 'walls05' : null });
       const hh = this.innerHalf(n, Math.min(ra, rb), rot);
       this.collide(cx - hh, i ? y : 0, cz - hh, cx + hh, y + per, cz + hh, { building: true });
       y += per;
@@ -1840,15 +1880,19 @@ export class City {
     }
   }
 
-  /** A box of a block-built tower: facades all round, a roof, an underside if it floats, and a collider */
+  /**
+   * A box of a block-built tower: facades all round, a roof, an underside if it floats, and a collider.
+   * B.band: a lobby of shop fronts round its foot (see storeEntry); B.cover: its roof covering.
+   */
   boxBlock(B, tile, tint, soffit) {
     const m = (x) => this.m(x), [tw, th] = tileMeters(tile).map(m), base = this.L.curb;
-    const wm = wallMat(tile);
-    this.vol({ t: 'box', x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0: soffit ? B.ya : 0, y1: B.yb, sides: { n: wm, s: wm, e: wm, w: wm }, band: null, floors: this.floorsFor(B.ya, B.yb, th / this.M), roof: true });
+    const wm = wallMat(tile), E = B.band, ya = E ? B.ya + E.h : B.ya;
+    this.vol({ t: 'box', x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0: soffit ? B.ya : 0, y1: B.yb, sides: { n: wm, s: wm, e: wm, w: wm }, band: E ? { y: ya, mat: wallMat(E.tile) } : null, floors: this.floorsFor(ya, B.yb, th / this.M), roof: true });
     for (const [ax, az, bx, bz] of [[B.x0, B.z1, B.x1, B.z1], [B.x1, B.z0, B.x0, B.z0], [B.x1, B.z1, B.x1, B.z0], [B.x0, B.z0, B.x0, B.z1]]) {
-      this.wall(this.bufFor(tile), tile, ax, az, bx, bz, B.ya, B.yb, tw, th, { snapU: true, tint, base });
+      if (E) this.entryWall(E, ax, az, bx, bz, B.ya, { tint, base });
+      this.wall(this.bufFor(tile), tile, ax, az, bx, bz, ya, B.yb, tw, th, { snapU: true, tint, base });
     }
-    this.flat(this.buf('surface', this.cur), 'roof04', B.x0, B.z0, B.x1, B.z1, B.yb, (x, z) => [x / m(6), -z / m(6)]);
+    this.roofOver(B.x0, B.z0, B.x1, B.z1, B.yb, B.cover);
     if (soffit) this.under(this.buf('surface', this.cur), 'walls05', B.x0, B.z0, B.x1, B.z1, B.ya, (x, z) => [x / m(3.2), z / m(3.2)], [0.7, 0.7, 0.72]);
     this.collide(B.x0, soffit ? B.ya : 0, B.z0, B.x1, B.yb, B.z1, { building: true });
   }
@@ -1859,8 +1903,8 @@ export class City {
    */
   stackTower(f, streets, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = f.x1 - f.x0, D = f.z1 - f.z0;
-    const tiles = [pick(r, G.officeGlass), pick(r, KITS[pick(r, KIT_STYLE.office)].bays)], tint = this.tint(0.05);
-    const top = y0 + m(110 + t * 120 + r() * 40);
+    const tiles = [pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), pick(r, KITS[pick(r, KIT_STYLE.office)].bays)], tint = this.tint(0.05);
+    const top = y0 + m(125 + t * 135 + r() * 40), band = this.lobby(), cover = this.roofSheet();
     let y = y0, i = 0, prev = null;
     while (y < top) {
       const tile = tiles[i % 2], th = m(tileMeters(tile)[1]), h = Math.max(1, Math.round(m(14 + r() * 14) / th)) * th;
@@ -1874,7 +1918,7 @@ export class City {
         z0 = clamp(z0, prev.z0 - d * 0.6, prev.z1 - d * 0.4);
         x0 = clamp(x0, lx, hx - w); z0 = clamp(z0, lz, hz - d);
       }
-      prev = { x0, z0, x1: x0 + w, z1: z0 + d, ya: y, yb: y + h };
+      prev = { x0, z0, x1: x0 + w, z1: z0 + d, ya: y, yb: y + h, band: i ? null : band, cover };
       this.boxBlock(prev, tile, tint, i > 0);
       y += h; i++;
     }
@@ -1886,12 +1930,12 @@ export class City {
   /** A gate: two towers at the ends of the block joined by a bridge of floors high over a plaza */
   gateBlock(B, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0;
-    const tile = pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), span = pick(r, G.officeGlass), tint = this.tint(0.04);
-    const legW = m(28), H = y0 + m(160 + t * 50), hb = m(42);
+    const tile = pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), span = pick(r, SKY_GLASS), tint = this.tint(0.04);
+    const legW = m(28), H = y0 + m(160 + t * 50), hb = m(42), band = this.lobby(), cover = this.roofSheet();
     this.beginOwner('gate');
-    this.boxBlock({ x0: B.x0, x1: B.x0 + legW, z0: B.z0, z1: B.z1, ya: y0, yb: H }, tile, tint, false);
-    this.boxBlock({ x0: B.x1 - legW, x1: B.x1, z0: B.z0, z1: B.z1, ya: y0, yb: H }, tile, tint, false);
-    this.boxBlock({ x0: B.x0 + legW, x1: B.x1 - legW, z0: B.z0 + m(6), z1: B.z1 - m(6), ya: H - hb, yb: H }, span, tint, true);
+    this.boxBlock({ x0: B.x0, x1: B.x0 + legW, z0: B.z0, z1: B.z1, ya: y0, yb: H, band, cover }, tile, tint, false);
+    this.boxBlock({ x0: B.x1 - legW, x1: B.x1, z0: B.z0, z1: B.z1, ya: y0, yb: H, band, cover }, tile, tint, false);
+    this.boxBlock({ x0: B.x0 + legW, x1: B.x1 - legW, z0: B.z0 + m(6), z1: B.z1 - m(6), ya: H - hb, yb: H, cover }, span, tint, true);
     // A helipad on one leg, a mast on the other
     this.helipad(B.x0 + legW / 2, H, (B.z0 + B.z1) / 2, legW * 0.8);
     this.antenna(B.x1 - legW / 2, H, (B.z0 + B.z1) / 2, m(38));
@@ -1916,41 +1960,42 @@ export class City {
   twinsBlock(B, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0, cz = (B.z0 + B.z1) / 2;
     const all = { n: true, s: true, e: true, w: true }, yp = y0 + m(14), tint = this.tint(0.04);
+    const s = m(15), F = this.kitFacade(pick(r, KIT_STYLE.tower), 2 * s), tile = F.bay, th = m(tileMeters(tile)[1]), cover = this.roofSheet();
     this.beginOwner('twins');
     this.building({
-      x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0, streets: all, allFacade: true, tint, party: 'walls05',
-      tiers: [{ x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y1: yp, tile: 'facade12', band: { tile: pick(r, G.ground), h: m(4.5) } }],
-      roof: { tile: 'roof04', ac: 2 },
+      x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y0, streets: all, allFacade: true, tint, party: F.solid || 'walls05',
+      tiers: [{ x0: B.x0, x1: B.x1, z0: B.z0, z1: B.z1, y1: yp, tile, F, band: this.lobby() }],
+      roof: { tile: cover, ac: 2 },
     });
-    const tile = r() < 0.5 ? pick(r, G.officeGlass) : pick(r, KITS[pick(r, KIT_STYLE.tower)].bays), th = m(tileMeters(tile)[1]);
-    const s = m(15), H = yp + Math.round(m(180 + t * 60) / th) * th, xs = [B.x0 + W * 0.27, B.x0 + W * 0.73];
+    const H = yp + Math.round(m(200 + t * 70) / th) * th, xs = [B.x0 + W * 0.27, B.x0 + W * 0.73];
     for (const x of xs) {
       const f = { x0: x - s, x1: x + s, z0: cz - s, z1: cz + s }, top = this.inset(f, m(3), all);
       this.building({
-        ...f, y0: yp, streets: all, allFacade: true, tint, party: 'walls05',
-        tiers: [{ ...f, y1: H - 4 * th, tile }, { ...top, y1: H, tile }], roof: { tile: 'roof04', mech: pick(r, G.mech), ac: 1 },
+        ...f, y0: yp, streets: all, allFacade: true, tint, party: F.solid || 'walls05',
+        tiers: [{ ...f, y1: H - 4 * th, tile, F }, { ...top, y1: H, tile, F }], roof: { tile: cover, mech: F.vent || pick(r, G.mech), ac: 1 },
       });
     }
     // Two-floor glass bridge between them, a little over halfway up
     const yb = yp + Math.round((H - yp) * 0.58 / th) * th;
-    this.boxBlock({ x0: xs[0] + s, x1: xs[1] - s, z0: cz - m(5), z1: cz + m(5), ya: yb, yb: yb + m(9) }, 'facade12', [0.95, 1, 1.05], true);
+    this.boxBlock({ x0: xs[0] + s, x1: xs[1] - s, z0: cz - m(5), z1: cz + m(5), ya: yb, yb: yb + m(9), cover }, pick(r, SKY_GLASS), [0.95, 1, 1.05], true);
     this.endOwner();
   }
 
   /** A ziggurat stepping in every few floors, each terrace planted with grass and trees */
   terraceTower(f, streets, t) {
     const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, all = { n: true, s: true, e: true, w: true };
-    const F = this.kitFacade(pick(r, ['precast', 'limestone', 'concrete', 'travertine', 'ivory']), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.4);
+    const F = this.kitFacade(pick(r, KIT_STYLE.terrace), Math.min(f.x1 - f.x0, f.z1 - f.z0) * 0.4);
     const th = m(tileMeters(F.bay)[1]), per = Math.max(3, Math.round(m(16 + t * 10) / th)), nt = 6 + Math.floor(r() * 3);
-    let fp = { ...f }, y = y0 + m(6);
+    const band = this.lobby();
+    let fp = { ...f }, y = y0 + band.h;
     const tiers = [];
     for (let i = 0; i < nt && fp; i++) {
       y += per * th;
-      tiers.push({ ...fp, y1: y, tile: F.bay, F, band: i === 0 ? { tile: pick(r, G.stone), h: m(6) } : null, roofTile: pick(r, G.grass) });
+      tiers.push({ ...fp, y1: y, tile: F.bay, F, band: i === 0 ? band : null, roofTile: pick(r, G.grass) });
       fp = this.inset(fp, m(4.5), all);
     }
     tiers[tiers.length - 1].roofTile = null;
-    this.building({ x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.05), party: 'walls50', tiers, roof: { tile: 'roof04', ac: 1 } });
+    this.building({ x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.05), party: F.solid || 'walls50', tiers, roof: { tile: this.roofSheet(), ac: 1 } });
     // Trees along the middle of each terrace
     tiers.slice(0, -1).forEach((T, i) => {
       const N = tiers[i + 1];
@@ -1959,17 +2004,118 @@ export class City {
     });
   }
 
+  // ---- landmarks -------------------------------------------------------------------
+
+  /**
+   * The tiers of a landmark faced in kit F over footprint f, from y: plan gives each tier's top (m
+   * above the curb) and how far it steps back from the one below. A mechanical floor every dozen
+   * floors and under each setback, a crown band at the top.
+   */
+  setbacks(F, f, y, plan, band) {
+    const m = (x) => this.m(x), y0 = this.L.curb, th = m(tileMeters(F.bay)[1]), all = { n: true, s: true, e: true, w: true };
+    const tiers = [];
+    let fp = { ...f };
+    plan.forEach(([top, step], i) => {
+      if (step) fp = this.inset(fp, m(step), all);
+      const last = i === plan.length - 1;
+      // Floors enough to reach the top with the vent floors on the way
+      const n = Math.max(2, Math.round(((y0 + m(top) - y) / th - (last ? 0 : 1)) * 12 / 13));
+      const S = this.kitStack(F, y, n, { every: 12, ventTop: !last, crown: last });
+      tiers.push({ ...fp, y1: S.y, tile: F.bay, F, bands: S.bands, band: i ? null : band });
+      y = S.y;
+    });
+    return tiers;
+  }
+
+  /**
+   * The landmark tower: a shaft from one of the skyscraper sheets stepping back four times on its
+   * way up to 360 m, crowned by a tapering glass lantern ringed with light and a spire
+   */
+  spireTower(f, streets) {
+    const r = this.r, y0 = this.L.curb, F = this.kitFacade(pick(r, KIT_STYLE.spire), this.m(30)), band = this.lobby();
+    const tiers = this.setbacks(F, f, y0 + band.h, [[150, 0], [240, 5], [300, 5], [338, 4], [358, 3.5]], band);
+    this.building({
+      x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.04), party: F.solid || 'walls05', tiers,
+      crown: (T) => this.lantern(T),
+    });
+  }
+
+  /** The landmark's crown: a twelve-sided glass lantern narrowing in two courses, a ring of light at its foot and a spire */
+  lantern(T) {
+    const m = (x) => this.m(x), r = this.r, cover = this.roofSheet(), glass = pick(r, SKY_GLASS);
+    const cx = (T.x0 + T.x1) / 2, cz = (T.z0 + T.z1) / 2, R = Math.min(T.x1 - T.x0, T.z1 - T.z0) / 2;
+    const ya = T.y1, yb = ya + m(20), yc = yb + m(10), sh = m(26);
+    this.roofOver(T.x0, T.z0, T.x1, T.z1, ya, cover);
+    this.prismSeg(cx, cz, 12, R * 0.95, R * 0.7, 0, ya, yb, glass, m(4), m(4), { top: cover });
+    this.prismSeg(cx, cz, 12, R * 0.58, R * 0.3, 0, yb, yc, glass, m(4), m(4), { top: cover });
+    const ha = this.innerHalf(12, R * 0.7, 0), hb = this.innerHalf(12, R * 0.3, 0);
+    this.collide(cx - ha, ya, cz - ha, cx + ha, yb, cz + ha, { building: true });
+    this.collide(cx - hb, yb, cz - hb, cx + hb, yc, cz + hb, { building: true });
+    this.prop('torus', cx, ya + m(1.2), cz, R * 0.97, R * 0.97, R * 0.97, [1.6, 1.15, 0.45], 0, Math.PI / 2);
+    this.prop('cone', cx, yc + sh / 2, cz, R * 0.22, sh, R * 0.22, [0.78, 0.8, 0.84]);
+    this.prop('sphere', cx, yc + sh, cz, m(0.9), m(0.9), m(0.9), [1.5, 0.25, 0.2]);
+  }
+
+  /**
+   * The second landmark: twin towers 36 m square from one of the skyscraper sheets, rising in three
+   * setbacks to 340 m and on to pinnacles, joined halfway up by a two-storey sky bridge on raking
+   * struts, over a forecourt of paving and trees
+   */
+  skyTwinsBlock(B) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, W = B.x1 - B.x0, cz = (B.z0 + B.z1) / 2;
+    const s = m(18), F = this.kitFacade(pick(r, KIT_STYLE.twins), 2 * s), th = m(tileMeters(F.bay)[1]), tint = this.tint(0.04);
+    const band = this.lobby(), xs = [B.x0 + W * 0.21, B.x0 + W * 0.79], all = { n: true, s: true, e: true, w: true };
+    const pave = pick(this.rg, Object.values(GROUND).flatMap((k) => k.plaza).concat(['paveB04']));
+    const [pw, ph] = PANELS[pave] ? tileMeters(pave).map(m) : [m(5), m(5)];
+    this.flat(this.groundBuf(pave, true), pave, B.x0, B.z0, B.x1, B.z1, y0 + m(0.05), (x, z) => [x / pw, -z / ph]);
+    for (const z of [B.z0 + m(6), B.z1 - m(6)]) for (let i = 0; i < 6; i++) this.tree(B.x0 + m(8) + i * (W - m(16)) / 5, y0, z, 0.85);
+    this.beginOwner('twins');
+    for (const x of xs) {
+      const f = { x0: x - s, x1: x + s, z0: cz - s, z1: cz + s };
+      this.building({
+        ...f, y0, streets: all, allFacade: true, tint, party: F.solid || 'walls05', style: 'tower',
+        tiers: this.setbacks(F, f, y0 + band.h, [[228, 0], [288, 3], [322, 3], [340, 2.5]], band),
+        crown: (T) => this.pinnacle(T, F.bay),
+      });
+    }
+    // The sky bridge, on a floor line about halfway up, and its struts down to the towers' inner faces
+    const yb = y0 + band.h + Math.round(m(165) / th) * th, xa = xs[0] + s, xb = xs[1] - s, xm = (xa + xb) / 2;
+    this.boxBlock({ x0: xa, x1: xb, z0: cz - m(6), z1: cz + m(6), ya: yb, yb: yb + 2 * th }, pick(r, SKY_GLASS), tint, true);
+    for (const dz of [-m(4), m(4)]) {
+      this.strut('cyl6', new V3(xa, yb - m(34), cz + dz), new V3(xm - m(1.5), yb, cz + dz), m(0.9), [0.62, 0.64, 0.68], this.cur);
+      this.strut('cyl6', new V3(xb, yb - m(34), cz + dz), new V3(xm + m(1.5), yb, cz + dz), m(0.9), [0.62, 0.64, 0.68], this.cur);
+    }
+    this.endOwner();
+  }
+
+  /** A twin's pinnacle: two stepped octagonal drums of its facade tile, and a spire with a beacon */
+  pinnacle(T, tile) {
+    const m = (x) => this.m(x), cover = this.roofSheet();
+    const cx = (T.x0 + T.x1) / 2, cz = (T.z0 + T.z1) / 2, R = Math.min(T.x1 - T.x0, T.z1 - T.z0) / 2, sh = m(36);
+    const ya = T.y1, yb = ya + m(12), yc = yb + m(8), rot = Math.PI / 8;
+    this.roofOver(T.x0, T.z0, T.x1, T.z1, ya, cover);
+    this.prismSeg(cx, cz, 8, R * 0.98, R * 0.85, rot, ya, yb, tile, m(4), m(4), { top: cover });
+    this.prismSeg(cx, cz, 8, R * 0.62, R * 0.45, rot, yb, yc, tile, m(4), m(4), { top: cover });
+    const ha = this.innerHalf(8, R * 0.85, rot), hb = this.innerHalf(8, R * 0.45, rot);
+    this.collide(cx - ha, ya, cz - ha, cx + ha, yb, cz + ha, { building: true });
+    this.collide(cx - hb, yb, cz - hb, cx + hb, yc, cz + hb, { building: true });
+    this.prop('cone', cx, yc + sh / 2, cz, R * 0.3, sh, R * 0.3, [0.78, 0.8, 0.84]);
+    this.prop('sphere', cx, yc + sh, cz, m(0.8), m(0.8), m(0.8), [1.5, 0.25, 0.2]);
+  }
+
   /**
    * The city's landmark: an observation needle. A lobby drum, a tapering twelve-sided concrete
    * shaft, a flared pod with a glass viewing ring and a mast with beacons.
    */
   needleBlock(B) {
     const m = (x) => this.m(x), y0 = this.L.curb, cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
-    const concrete = STRUCTS.overpass.slab[0], glass = 'office00', c4 = m(4);
+    const concrete = STRUCTS.overpass.slab[0], glass = pick(this.r, SKY_GLASS), c4 = m(4);
+    const entry = pick(this.r, KITS[pick(this.r, LOBBY_STORES)].entries), ye = y0 + m(4.6);
     this.flat(this.buf('decal'), 'paveB32', B.x0, B.z0, B.x1, B.z1, y0 + m(0.05), (x, z) => [x / m(4), -z / m(4)]);
     this.beginOwner('needle');
-    // Lobby drum with a planted roof
-    this.prismSeg(cx, cz, 12, m(26), m(24), 0, y0, y0 + m(9), 'facade12', m(7.2), m(9), { top: pick(this.r, G.grass) });
+    // Lobby drum: a ring of shop fronts and doors under a band of curtain wall, with a planted roof
+    this.prismSeg(cx, cz, 12, m(26), m(25), 0, y0, ye, entry, m(4.2), ye - y0);
+    this.prismSeg(cx, cz, 12, m(25), m(24), 0, ye, y0 + m(9), glass, m(4), y0 + m(9) - ye, { top: pick(this.r, G.grass) });
     this.collide(cx - m(18), 0, cz - m(18), cx + m(18), y0 + m(9), cz + m(18), { building: true });
     // Shaft
     const yS = y0 + m(250), segs = 10;
@@ -1983,9 +2129,9 @@ export class City {
     // Pod: underside flaring out, a viewing ring of glass, a deck and a cap
     const yp = yS - m(18);
     this.prismSeg(cx, cz, 12, m(7.5), m(22), 0, yp, yp + m(8), concrete, c4, c4, { bottom: concrete });
-    this.prismSeg(cx, cz, 12, m(22), m(22), 0, yp + m(8), yp + m(18), glass, m(6), m(5));
+    this.prismSeg(cx, cz, 12, m(22), m(22), 0, yp + m(8), yp + m(18), glass, m(4), m(5));
     this.prismSeg(cx, cz, 12, m(24), m(24), 0, yp + m(18), yp + m(20), concrete, c4, c4, { bottom: concrete });
-    this.prismSeg(cx, cz, 12, m(17), m(9), 0, yp + m(20), yp + m(28), 'roof42', c4, c4, { top: 'roof04' });
+    this.prismSeg(cx, cz, 12, m(17), m(9), 0, yp + m(20), yp + m(28), ROOF_KITS.rf16.cover[0], c4, c4, { top: this.roofSheet() });
     this.collide(cx - m(15), yp, cz - m(15), cx + m(15), yp + m(28), cz + m(15), { building: true });
     // Mast with rings and beacons
     const ym = yp + m(28), sh = m(70);
