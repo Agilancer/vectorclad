@@ -934,7 +934,7 @@ function updateCamera(dt, speed) {
     cam.fov = damp(cam.fov, fovT, 4, dt);
     if (dropping) {
       // The insertion: a chase shot of the lifter that eases into this view by the release
-      const D = allies.drop, k = smoothstep(D.flyT - 1.2, D.releaseT, D.t);
+      const D = allies.drop, k = smoothstep(D.flyT - 2.4, D.releaseT, D.t);
       dropQ.copy(camera.quaternion);
       camera.position.copy(D.cam.pos);
       camera.lookAt(D.cam.look);
