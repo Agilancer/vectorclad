@@ -213,8 +213,8 @@ instance's skin from a data texture and moves the vertices to fit it.
   on the cross streets; the roads round the edge of the city run both ways, so a car that
   comes to the edge always has somewhere to turn. Cars follow the car ahead, turn at intersections where the streets
   allow, and stop for the mech, for wrecks, rubble and pieces of building in the road, and
-  for fallen trees. Up to 240 drive at once, kept round the mech: new ones come in out of
-  its sight a few blocks off, cars that have driven far away are taken off to come back
+  for fallen trees. Heavy traffic: up to 480 drive at once, the streets round the mech full
+  of them from the start, and kept round it: new ones come in out of its sight a few blocks off, cars that have driven far away are taken off to come back
   near, and wrecks are cleared away once nobody is near.
 - Driving cars are as breakable as parked ones: the mech treads on them, and shots and
   blasts set them burning.
@@ -237,9 +237,9 @@ The city is full of people, at their true size beside the 12 m mech (`js/people.
   stopping now and then and crossing the streets at the corners. Those left far behind are
   moved on to blocks near the mech again, out of its sight.
 - **In the buildings:** when a building is first broken open, its floors round the hole
-  fill with people and furniture, some buildings far more than others (offices most, homes
-  fewer), with a crowd right by the hole. Every hole spills them, the more the bigger it
-  is: about one person for every six cubic meters it blew away in a busy office, fewer in a
+  fill with people and furniture, crowded floors, some buildings far more than others
+  (offices most, homes fewer), with a crowd right by the hole. Every hole spills them, the
+  more the bigger it is: about one person for every three cubic meters it blew away in a busy office, fewer in a
   quiet home, so a bullet hole lets out none or one and a rocket's crater a crowd. On the
   floors it broke into, within three times its radius, about half slide backward toward it
   as the floor sags, faster and faster, and go over the edge; the newcomers nearest it are
@@ -269,7 +269,8 @@ A train comes in on the elevated railway about once a minute, out of the north e
 line beyond the barricade (`js/train.js`): cab cars at both ends and four coaches between, stainless steel
 from the silver aluminum facade sheet with ribbed titanium roofs, on bogies. It runs south
 down the line, stops at the end of it by the water, crosses over to the other track and
-runs back north out of the city.
+runs back north out of the city. When the game starts one is already on its way down the
+line toward the mech.
 
 It brakes to a stop for the mech standing on the track, and for a train stopped ahead of it,
 so trains held up queue behind each other (and the next one waits to come in; one coming to

@@ -258,7 +258,7 @@ export class People {
   constructor({ scene, world, fx, sound, mobile = false }) {
     this.world = world; this.city = world.city; this.fx = fx; this.sound = sound;
     this.M = world.city.M;
-    this.cap = mobile ? 420 : 900;
+    this.cap = mobile ? 800 : 2000;
     this.walkers = mobile ? 110 : 280;
     this.radius = this.m(mobile ? 320 : 430);
     this.list = [];
@@ -538,14 +538,15 @@ export class People {
     let list = this.populated.get(s);
     if (!list) this.populated.set(s, (list = []));
     const near = this.m(22), id0 = this.ids || 0;
-    // One for about every six cubic meters blown away in a busy office, fewer in a quiet home:
+    // One for about every three cubic meters blown away in a busy office, fewer in a quiet home:
     // a bullet hole lets out none or one, a crater a crowd
-    const n = Math.floor((vol * (0.25 + crowd)) / 8 + Math.random());
+    const n = Math.floor((3 * vol * (0.25 + crowd)) / 8 + Math.random());
     let fresh = true, spots = null;
     for (const c of list) if ((c.x - x) ** 2 + (c.y - y) ** 2 + (c.z - z) ** 2 < near * near) { fresh = false; break; }
     if (fresh) {
       list.push(new V3(x, y, z));
-      spots = this.floorSpots(s, x, y, z, this.m(16), Math.round(10 + 22 * crowd));
+      // Busy floors: three times the people a quiet building would have
+      spots = this.floorSpots(s, x, y, z, this.m(16), Math.round(3 * (10 + 22 * crowd)));
       // The crowd by the hole, on the floors it broke into
       const by = this.floorSpots(s, x, y + r * 0.2, z, r * 1.6, n, 0.35);
       for (let k = 0; k < by.length + spots.length; k++) {
