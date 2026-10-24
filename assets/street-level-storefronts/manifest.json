@@ -1,0 +1,222 @@
+[
+  {
+    "index": 1,
+    "file": "01-corner-bakery.png",
+    "style": "Corner bakery: warm cream plaster, walnut framing, blank dark sign fascia, recessed door, opaque dark display panes, brick plinth",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-24efb5e1-4b6c-462d-8273-1d3947fc1d43.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Corner bakery: warm cream plaster, walnut framing, blank dark sign fascia, recessed door, opaque dark display panes, brick plinth",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "5e646135b7f47b34e62235a78aecf5971d344b6b22269659b410c653abe3531f",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 2,
+    "file": "02-neighborhood-convenience-store.png",
+    "style": "Neighborhood convenience store: off-white painted metal, muted red fascia without lettering, broad dark display panes, aluminum door, security shutter modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-20747b3b-f7c9-47ca-bd9e-04e0d47e7eb2.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Neighborhood convenience store: off-white painted metal, muted red fascia without lettering, broad dark display panes, aluminum door, security shutter modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "2aa2bc853bf5a658c9396412827c1a6d8d90282cabbee531c9e7cb18cd59b748",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 3,
+    "file": "03-traditional-bookstore.png",
+    "style": "Traditional bookstore: forest green painted timber, cream stone pilasters, blank signboard, tall dark shop windows, paneled door",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-25dad0b8-df40-4409-915e-04d0aac7367b.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Traditional bookstore: forest green painted timber, cream stone pilasters, blank signboard, tall dark shop windows, paneled door",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "4770e8fe36b94e3429ee2e122e826c94fb1f918839b543a4855e78869635a580",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 4,
+    "file": "04-coffee-shop.png",
+    "style": "Coffee shop: charcoal steel frames, warm brown brick, blank tan fascia, large matte dark panes, narrow entry, slatted timber panels",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-a90dc061-8f51-43d5-a7f9-88fa7b10ad37.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Coffee shop: charcoal steel frames, warm brown brick, blank tan fascia, large matte dark panes, narrow entry, slatted timber panels",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "af46355c3c76b1cfe2d517a05c35c62fd2a840e2ca431851b94cd549219875bb",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 5,
+    "file": "05-pharmacy.png",
+    "style": "Pharmacy: white tile facade, pale mint framing, blank green fascia, broad opaque dark windows, accessible entry, clean vent modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-950048cb-22d1-4338-8760-9fc5971858a7.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Pharmacy: white tile facade, pale mint framing, blank green fascia, broad opaque dark windows, accessible entry, clean vent modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "3560836513beb1acd82a442acfbd7a7adc2d6cdd1bc3ec7ba0cf41271b0b54ba",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 6,
+    "file": "06-florist.png",
+    "style": "Florist: sage painted wood, buff brick, blank cream signboard, dark nonreflective display panes, paneled entry, no flowers or movable props",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-41372e5e-235e-4470-b3bf-9059493b00dd.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Florist: sage painted wood, buff brick, blank cream signboard, dark nonreflective display panes, paneled entry, no flowers or movable props",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "0d90c3f03813f0be54f38042ce6737b23a292a5c0cb203d2fc63c361c28fd90e",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 7,
+    "file": "07-boutique-clothing-store.png",
+    "style": "Boutique clothing store: pale travertine, bronze frames, blank ivory fascia, tall opaque charcoal display windows, recessed entrance",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-01f15f7e-d526-458f-9d21-fd4dbd1c0543.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Boutique clothing store: pale travertine, bronze frames, blank ivory fascia, tall opaque charcoal display windows, recessed entrance",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "ec2fd927b465b5541647b0c2ee70d8728a5d5c716a1ebe54dbc2cd9962593e23",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 8,
+    "file": "08-old-city-butcher-shop.png",
+    "style": "Old city butcher shop: burgundy painted timber, glazed cream ceramic tile, blank red fascia, dark windows, service door, tiled wall modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-adcb2925-b662-49f8-ab6e-b6624dcbc9dd.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Old city butcher shop: burgundy painted timber, glazed cream ceramic tile, blank red fascia, dark windows, service door, tiled wall modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "3234f2ddb90daa8f3912f70fc9d7a56489d670a3e730b983a38fe1468fbd3f7a",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 9,
+    "file": "09-electronics-shop.png",
+    "style": "Electronics shop: cobalt blue enamel panels, silver aluminum frames, blank navy fascia, dark matte display windows, shutters and vents",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-1027f1cc-648c-4d87-94ce-1efa8183e546.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Electronics shop: cobalt blue enamel panels, silver aluminum frames, blank navy fascia, dark matte display windows, shutters and vents",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "084ec849af2e659a510c4dbda05595bc79320339a8a27adf20054306f657ee5f",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 10,
+    "file": "10-jewelry-storefront.png",
+    "style": "Jewelry storefront: black granite, aged brass trim, blank dark fascia, narrow opaque black display panes, heavy framed entry",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-96e4565b-d5b4-450f-a97d-04787aea3fd9.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Jewelry storefront: black granite, aged brass trim, blank dark fascia, narrow opaque black display panes, heavy framed entry",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "62750c0030aa968b9671ebe54d66697137b451fc869821c847bdf2dd28c90d1b",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 11,
+    "file": "11-barbershop.png",
+    "style": "Barbershop: navy blue painted timber, white stone trim, blank fascia, dark shop windows, narrow entry, no barber pole or logos",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-d0eae8fd-906d-4d7e-93bd-ef0a8913d91c.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Barbershop: navy blue painted timber, white stone trim, blank fascia, dark shop windows, narrow entry, no barber pole or logos",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "c9c990e1271babbb24417c36ab0e82bce38eff3cd7c0c2a4e668974aab0a0930",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 12,
+    "file": "12-restaurant-frontage.png",
+    "style": "Restaurant frontage: dark walnut timber, ochre plaster, blank fascia, dark matte windows, double doors, vertical screen and wall modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-5de606af-1107-488c-8c4d-fdade803d4d0.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Restaurant frontage: dark walnut timber, ochre plaster, blank fascia, dark matte windows, double doors, vertical screen and wall modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "87bb5fd03b1c34ae26100e80d4b2852bf566eda32dd7b97a81c33e7e9f0abea5",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 13,
+    "file": "13-urban-laundromat.png",
+    "style": "Urban laundromat: pale blue ceramic tiles, white aluminum frames, blank powder blue sign panel, dark opaque windows, no visible machines",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-1b58a64c-5c94-4fcb-911d-b69f649a9114.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Urban laundromat: pale blue ceramic tiles, white aluminum frames, blank powder blue sign panel, dark opaque windows, no visible machines",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "46351d8c5977c3e4e7fc6b2fa6aae8f0e881acb73c9d7bb4cd56874228dd170f",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 14,
+    "file": "14-hardware-store.png",
+    "style": "Hardware store: weathered red brick, dark green steel frames, blank cream fascia, opaque shop panes, roll-up shutter modules",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-568659f3-9f1d-494d-8ef4-35b1e403f055.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Hardware store: weathered red brick, dark green steel frames, blank cream fascia, opaque shop panes, roll-up shutter modules",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "c93731a1cf8cb19b8c069c66bdf6b6b333527a97921073581777f85c18553217",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 15,
+    "file": "15-art-gallery.png",
+    "style": "Art gallery: minimalist white concrete, matte black frames, blank recessed sign panel, broad opaque charcoal display windows, flush doors",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-746eabb2-bfc5-4f75-b43d-a167cb5a70aa.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Art gallery: minimalist white concrete, matte black frames, blank recessed sign panel, broad opaque charcoal display windows, flush doors",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "159a57e67379e0d0cced0d715623db5a48c5714ff195793c96dc0d12bae57df6",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 16,
+    "file": "16-music-record-shop.png",
+    "style": "Music record shop: weathered dark timber, muted mustard fascia without lettering, dark display panes, brick base, panel door",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-e81ef316-4e6e-4be1-9610-22465b039a10.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Music record shop: weathered dark timber, muted mustard fascia without lettering, dark display panes, brick base, panel door",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "35b4dc7a0090c2cedbb5ac02e586deff4c481cb5fb25cbdcb43c857208e0cb51",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 17,
+    "file": "17-travel-office.png",
+    "style": "Travel office: pale sandstone, muted teal metal framing, blank teal fascia, dark nonreflective shop panes, glazed-looking opaque door",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-6bf19b53-4c2c-4d12-9170-0eefc43e795d.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Travel office: pale sandstone, muted teal metal framing, blank teal fascia, dark nonreflective shop panes, glazed-looking opaque door",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "b10983c7d61067b74c65bad48ae67b252c27faff3b38d245be23cd24004bd1b1",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 18,
+    "file": "18-small-supermarket.png",
+    "style": "Small supermarket: gray precast concrete, muted orange blank fascia, black aluminum frames, dark panes, wide entry and security shutter",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-0b800bbf-e883-4ca1-9887-f0c769a7c8ed.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Small supermarket: gray precast concrete, muted orange blank fascia, black aluminum frames, dark panes, wide entry and security shutter",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "65ec6f5f943f1050d2efda89715253b620cc952e2a05148d554cbe5ca4015a8d",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 19,
+    "file": "19-tailor-shop.png",
+    "style": "Tailor shop: reddish brown timber, warm beige stucco, blank olive signboard, narrow dark display panes, paneled door, decorative wall trim",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-fe492550-fd7d-41ca-9656-2b23f4137a5a.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Tailor shop: reddish brown timber, warm beige stucco, blank olive signboard, narrow dark display panes, paneled door, decorative wall trim",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "00a4298fcda213583b9bf378befd8fd28a92dbb357f8ceb9a27eb59f77d88eb4",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 20,
+    "file": "20-historic-apothecary-storefront.png",
+    "style": "Historic apothecary storefront: deep plum timber, ivory limestone pilasters, blank gold-edged signboard, arched opaque dark panes, ornate entry",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-61acc56a-b286-4844-bd14-5a522c42f745.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame street-level storefront modular texture sprite sheet, base-color facade atlas. Generate ONE high resolution square image, request 2048x2048 pixels. Exactly 4 columns and 4 rows of equal square modules filling the whole image edge-to-edge. Perfectly frontal orthographic flat elevation, straight verticals and horizontals, no perspective. Consistent shop architectural scale. First row four different storefront display-window modules; second row four storefront entry/door/window variants; third row four fascia/signboard/pilaster/base-wall modules; fourth row four closed security shutter/vent/solid wall/trim modules. Keep individual modules square and aligned to the 4x4 atlas grid. Rich realistic material detail and modest wear. Neutral diffuse illumination, minimal baked shading. WINDOWS AND DOOR PANES MUST HAVE NO REFLECTIONS: opaque matte uniform dark charcoal panes, no sky, clouds, buildings, trees, street, highlights, glare, shine or specular streaks. All signboards and fascias completely blank. No words, letters, numbers, logos, brands, labels, watermarks, people, merchandise, furniture, vehicles, sidewalk, ground, sky, awnings projecting into perspective, borders, margins or gutters. Flat texture artwork, not a photograph of a whole building or a presentation board. Shop style: Historic apothecary storefront: deep plum timber, ivory limestone pilasters, blank gold-edged signboard, arched opaque dark panes, ornate entry",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "06ab97a5ff717ea69e47fcc434a6fbc3f5a46e37ecf94333d734402208fe8629",
+    "generator": "Built-in ImageGen"
+  }
+]
