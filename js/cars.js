@@ -210,7 +210,8 @@ export class Cars {
         }
       }
     }
-    this.maxMoving = 240;
+    // Heavy traffic: the streets round the mech full of it
+    this.maxMoving = 480;
     const cap = spots.length + this.maxMoving + 40;
     const { mat, depth } = carMaterials(atlas, skin);
     const geo = carGeometry();
@@ -347,8 +348,12 @@ export class Cars {
       if (recycled < 4 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(800) && car.hidden) { this.remove(car); recycled++; continue; }
       live++;
     }
-    const want = Math.min(this.maxMoving - live, live < this.maxMoving * 0.6 ? 8 : 3);
-    for (let tries = 0, k = 0; k < want && tries < 60; tries++) {
+    // At the start the streets are filled at once, in view or not (nothing to see pop in yet)
+    const first = !this.filled;
+    this.filled = true;
+    if (first) cam = null;
+    const want = Math.min(this.maxMoving - live, first ? this.maxMoving : live < this.maxMoving * 0.6 ? 20 : 6);
+    for (let tries = 0, k = 0; k < want && tries < (first ? 6000 : 150); tries++) {
       const l = pickR(this.lanes);
       // Between two crossings, not in one
       const cross = this.crossings(l), j = Math.floor(Math.random() * (cross.length - 1));
