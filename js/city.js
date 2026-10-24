@@ -1,7 +1,9 @@
 import * as THREE from './three.js';
 import { ATLASES, TILES, PANELS, KITS, GROUND, PARTS, STRUCTS, OUTLINES } from './cityTiles.js';
+import { KIT_MATS, ROOF_KITS } from './kitTiles.js';
 import { canvasTexture } from './atlas.js';
 import { Trees } from './trees.js';
+import { Cars } from './cars.js';
 
 // ---------------------------------------------------------------------------
 // Port Meridian, built from the city texture sheets.
@@ -79,6 +81,9 @@ const G = {
   panel: ['walls00', 'walls01', 'walls03', 'walls05', 'walls40', 'walls46', 'walls70', 'walls71', 'walls77'],
   roof: ['roof00', 'roof01', 'roof02', 'roof03', 'roof04', 'roof05', 'roof44', 'roof45', 'roof53'],
   roofMetal: ['roof40', 'roof42'],
+  // Roof sheets (assets/rooftop-textures): flat coverings, and pitched ones for houses
+  roofFlat: ['rf01', 'rf02', 'rf07', 'rf08', 'rf09', 'rf10', 'rf13', 'rf14', 'rf15', 'rf18', 'rf20', 'rf11'].flatMap((k) => ROOF_KITS[k].cover),
+  roofPitched: ['rf05', 'rf06', 'rf17', 'rf19', 'rf16', 'rf04', 'rf03'].flatMap((k) => ROOF_KITS[k].cover),
   ac: ['roof20', 'roof21', 'roof22'],
   skylight: ['roof13', 'roof14', 'roof15'],
   slab: ['paveB00', 'paveB01', 'paveB03', 'paveB30', 'paveB33', 'paveA00', 'paveA02', 'paveA03', 'paveA05', 'paveB25'],
@@ -88,24 +93,38 @@ const G = {
   manholeSquare: ['street23', 'street24', 'street25'],
 };
 const pick = (r, a) => a[Math.floor(r() * a.length)];
+// Species along the streets and in the parks (trees.js has them all)
+const STREET_TREES = ['oak', 'maple', 'elm', 'beech', 'oak', 'maple', 'linden', 'birch', 'elm', 'pine'];
 
 // Panel kits that suit each kind of building (repeats weight the pick)
+// The skyN kits are the skyscraper facade sheets (assets/skyscraper-facades), the storeN kits the
+// storefront sheets (assets/street-level-storefronts): their upper-floor windows suit walk-ups.
+const STORE_KITS = Array.from({ length: 20 }, (_, i) => `store${String(i + 1).padStart(2, '0')}`);
 const KIT_STYLE = {
-  walkup: ['brick', 'limestone', 'masonry', 'sandstone', 'travertine', 'ivory'],
-  prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete', 'masonry', 'travertine', 'ivory', 'sandstone'],
-  modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches', 'seaglass', 'silver', 'azure', 'travertine', 'masonry', 'sandstone'],
-  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass'],
-  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'slate', 'indigo', 'silver', 'basalt', 'azure'],
-  deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone'],
-  far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine'],
+  walkup: ['brick', 'limestone', 'masonry', 'sandstone', 'travertine', 'ivory', 'sky05', 'sky02', 'sky12', 'sky17', ...STORE_KITS],
+  prewar: ['brick', 'limestone', 'limestone', 'precast', 'concrete', 'masonry', 'travertine', 'ivory', 'sandstone', 'sky02', 'sky05', 'sky12', 'sky20', 'sky16', 'sky09'],
+  modern: ['precast', 'concrete', 'aluminum', 'teal', 'swatches', 'seaglass', 'silver', 'azure', 'travertine', 'masonry', 'sandstone',
+    'sky03', 'sky06', 'sky08', 'sky11', 'sky16', 'sky17', 'sky18'],
+  office: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass',
+    'sky01', 'sky04', 'sky07', 'sky09', 'sky10', 'sky13', 'sky14', 'sky18', 'sky19', 'sky03', 'sky08'],
+  tower: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'slate', 'indigo', 'silver', 'basalt', 'azure',
+    'sky01', 'sky04', 'sky07', 'sky09', 'sky10', 'sky13', 'sky14', 'sky15', 'sky19', 'sky01', 'sky04', 'sky13'],
+  deco: ['limestone', 'limestone', 'brick', 'ivory', 'travertine', 'sandstone', 'sky02', 'sky02', 'sky12', 'sky20', 'sky20', 'sky15', 'sky09'],
+  far: ['steel', 'graphite', 'navy', 'teal', 'aluminum', 'precast', 'concrete', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass', 'ivory', 'travertine',
+    'sky01', 'sky03', 'sky04', 'sky07', 'sky09', 'sky13', 'sky14', 'sky18', 'sky19'],
+  // Houses and row houses in the residential streets
+  house: ['brick', 'masonry', 'sandstone', 'ivory', 'sky05', 'sky03', 'sky11', 'sky17', 'sky12', ...STORE_KITS],
+  row: ['brick', 'masonry', 'limestone', 'sandstone', 'sky05', 'sky02', 'sky12', 'sky17', 'sky20', ...STORE_KITS],
 };
 
 // What a facade is built of, for destruction: glass curtain walls shatter, masonry crumbles
 const GLASS_KITS = new Set(['steel', 'graphite', 'navy', 'teal', 'aluminum', 'swatches', 'slate', 'indigo', 'silver', 'basalt', 'azure', 'seaglass']);
 const STONE_KITS = new Set(['limestone', 'masonry', 'travertine', 'ivory', 'sandstone']);
 function wallMat(tile, F) {
-  if (F) return GLASS_KITS.has(F.kit) ? 'glass' : F.kit === 'brick' ? 'brick' : STONE_KITS.has(F.kit) ? 'stone' : 'panel';
+  if (F) return KIT_MATS[F.kit] || (GLASS_KITS.has(F.kit) ? 'glass' : F.kit === 'brick' ? 'brick' : STONE_KITS.has(F.kit) ? 'stone' : 'panel');
   if (!tile) return 'panel';
+  const kit = KIT_MATS[tile.split('_')[0]];
+  if (kit) return kit;
   if (G.officeGlass.includes(tile) || G.officePanel.includes(tile) || G.modern.includes(tile) || G.mech.includes(tile) || tile === 'facade12') return 'glass';
   if (tile.startsWith('walls1')) return 'brick';
   if (tile.startsWith('shop') || tile.startsWith('walls5') || G.prewar.includes(tile) || G.officeStone.includes(tile)) return 'stone';
@@ -334,6 +353,7 @@ export class City {
     this.depthMats = {};
     for (const k of Object.keys(ATLASES)) {
       if (k.startsWith('panels')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.75, glass: true });
+      if (k.startsWith('roofs')) this.mats[k] = atlasMaterial(tex[k], { roughness: 0.85 });
       if (k.startsWith('roads')) {
         this.mats[k] = atlasMaterial(tex[k], { roughness: 0.92 });
         this.mats[`${k}Decal`] = atlasMaterial(tex[k], { roughness: 0.6, decal: true });
@@ -345,9 +365,12 @@ export class City {
       }
     }
     this.rs = mulberry(2001); // structures, apart from the layout so neither shifts the other
+    this.rf = mulberry(1864); // the forest
+    this.tex = tex;
     this.layout();
     this.buildGround();
     this.buildBlocks();
+    this.buildForest();
     this.buildFurniture();
     this.buildEl();
     this.buildHighway();
@@ -368,12 +391,13 @@ export class City {
     const m = (x) => this.m(x);
     const L = (this.L = {
       blockW: m(120), blockD: m(64), aveW: m(28), aveWalk: m(5), stW: m(28), stWalk: m(4), curb: m(0.2),
-      prom: m(32), water: -m(3),
+      prom: m(32), water: -m(3), forest: m(190),
     });
-    const NX = 10, NZ = 10, NORTH = 2; // two extra rows of blocks north continue the city past the barrier
+    const NX = 15, NZ = 15, NORTH = 2; // two extra rows of blocks north continue the city past the barrier
     const TW = NX * L.blockW + (NX + 1) * L.aveW, TD = NZ * L.blockD + (NZ + 1) * L.stW;
     L.x0 = -TW / 2; L.x1 = TW / 2; L.z0 = -TD / 2; L.z1 = TD / 2;
     L.zN = L.z0 - NORTH * (L.blockD + L.stW); // north end of the filler rows
+    L.wx = L.x0 - L.forest; // west edge of the land: a forest runs between the city and the west esplanade
     L.aves = [];
     for (let i = 0; i <= NX; i++) {
       const a = L.x0 + i * (L.blockW + L.aveW);
@@ -392,7 +416,7 @@ export class City {
       }
     }
     // Playable area: the city plus the waterfront on three sides, closed off to the north
-    this.bounds = { minX: L.x0 - L.prom + m(2), maxX: L.x1 + L.prom - m(2), minZ: L.z0 + m(2), maxZ: L.z1 + L.prom - m(2) };
+    this.bounds = { minX: L.wx - L.prom + m(2), maxX: L.x1 + L.prom - m(2), minZ: L.z0 + m(2), maxZ: L.z1 + L.prom - m(2) };
   }
 
   // ---- buffers -------------------------------------------------------------
@@ -460,7 +484,7 @@ export class City {
   }
 
   chunkOf(x, z) {
-    const C = this.m(280);
+    const C = this.m(420);
     return `${Math.floor(x / C)},${Math.floor(z / C)}`;
   }
 
@@ -756,7 +780,7 @@ export class City {
       for (let i = 0; i < L.aves.length - 1; i++) patch(R, L.aves[i].x1, s.r0, L.aves[i + 1].x0, s.r1, false);
     }
     // Beyond the north edge: more road surface under the distant city
-    this.flat(this.buf('ground', 'far'), 'asphB01', L.x0 - L.prom, L.zN - m(2600), L.x1 + L.prom, L.zN + L.stWalk, 0, (x, z) => [x / m(60), -z / m(60)], 0, [0.7, 0.7, 0.72]);
+    this.flat(this.buf('ground', 'far'), 'asphB01', L.wx - L.prom, L.zN - m(2600), L.x1 + L.prom, L.zN + L.stWalk, 0, (x, z) => [x / m(60), -z / m(60)], 0, [0.7, 0.7, 0.72]);
     // Sidewalks: a raised, round-cornered slab per block with a granite curb
     for (const B of L.blocks) this.sidewalk(B);
     this.markings();
@@ -910,18 +934,31 @@ export class City {
     const L = this.L;
     // Special blocks
     const special = {
-      '2,2': 'needle', '3,4': 'plaza', '4,4': 'twist', '6,7': 'park', '1,6': 'green', '6,4': 'twins',
-      '3,6': 'gate', '7,2': 'stack', '8,6': 'terraces', '5,8': 'deco',
+      '5,3': 'needle', '6,5': 'plaza', '7,5': 'twist', '9,8': 'park', '4,7': 'green', '9,5': 'twins',
+      '6,7': 'gate', '10,3': 'stack', '11,7': 'terraces', '8,9': 'deco', '12,11': 'park', '2,10': 'green', '6,12': 'green',
+      '13,4': 'twist', '12,9': 'stack',
     };
-    // Tall clusters: around the needle and the plaza (north), and a second spine to the southeast
+    // Tall clusters: around the needle and the plaza (north), a second spine to the southeast and a
+    // smaller one beyond it toward the highway
     const tall = (j, k) => {
-      const d1 = Math.hypot(j - 4.2, k - 3.4), d2 = Math.hypot(j - 6.8, k - 6.4);
-      return Math.max(Math.exp(-d1 * d1 / 7), 0.92 * Math.exp(-d2 * d2 / 6), 0.18);
+      const d1 = Math.hypot(j - 7.2, k - 4.4), d2 = Math.hypot(j - 9.8, k - 7.4), d3 = Math.hypot(j - 12.4, k - 10.6);
+      return Math.max(Math.exp(-d1 * d1 / 7), 0.92 * Math.exp(-d2 * d2 / 6), 0.8 * Math.exp(-d3 * d3 / 4), 0.18);
+    };
+    // Residential streets: detached houses by the forest on the west side, row houses beyond them
+    // and along the south waterfront
+    const zone = (j, k) => {
+      if (tall(j, k) > 0.45) return null;
+      if (j <= 1) return 'houses';
+      if (j <= 3) return k % 4 === 1 ? 'houses' : 'rows';
+      if (k >= 13 && j <= 10) return (j + k) % 3 === 0 ? 'houses' : 'rows';
+      return null;
     };
     for (const B of L.blocks) {
       this.cur = this.chunkOf((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2);
       const type = B.playable ? special[`${B.j},${B.k}`] : null;
       const t = B.playable ? tall(B.j, B.k) : 0.25 + this.r() * 0.15;
+      const res = B.playable && !type ? zone(B.j, B.k) : null;
+      B.residential = !!res;
       if (type === 'needle') this.needleBlock(B);
       else if (type === 'plaza') this.plazaBlock(B);
       else if (type === 'park') this.parkBlock(B, true);
@@ -929,11 +966,153 @@ export class City {
       else if (type === 'twins') this.twinsBlock(B, t);
       else if (type === 'gate') this.gateBlock(B, t);
       else if (type) this.towerBlock(B, t, type);
+      else if (res) this.residentialBlock(B, res);
       else if (t > 0.62 && this.r() < 0.8) {
         const q = this.r();
         this.towerBlock(B, t, q < 0.38 ? 'glass' : q < 0.46 ? 'deco' : q < 0.66 ? 'prism' : q < 0.86 ? 'twist' : 'stack');
       } else this.mixedBlock(B, t);
     }
+  }
+
+  /**
+   * A residential block. houses: detached houses of two or three floors under hipped roofs, set
+   * back behind front yards with a tree or two. rows: row houses wall to wall along both long
+   * sides, three or four floors with a doorway each and a cornice.
+   */
+  residentialBlock(B, kind) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb, zm = (B.z0 + B.z1) / 2;
+    for (const [z0, z1, front] of [[B.z0, zm, 'n'], [zm, B.z1, 's']]) {
+      if (kind === 'rows') {
+        const kit = pick(r, KIT_STYLE.row), floors = 3 + Math.floor(r() * 2);
+        for (const [x0, x1] of this.lots(B.x0, B.x1, 6.5, 9.5)) {
+          const ends = { w: x0 <= B.x0 + 0.01, e: x1 >= B.x1 - 0.01 };
+          this.rowHouse(kit, x0, x1, z0, z1, front, ends, floors);
+        }
+        continue;
+      }
+      const lots = this.lots(B.x0, B.x1, 15, 22);
+      for (const [x0, x1] of lots) {
+        // The house sits back from the street behind its yard, clear of its neighbors
+        const yard = m(6 + r() * 3), side = m(2 + r() * 1.5), back = m(4);
+        const hz0 = front === 'n' ? z0 + yard : z0 + back, hz1 = front === 'n' ? z1 - back : z1 - yard;
+        const hx0 = x0 + side, hx1 = x1 - side;
+        // Lawn over the lot, a path to the door, and a tree in the yard
+        const grass = pick(r, G.grass);
+        this.flat(this.buf('decal', this.cur), grass, x0 + m(0.4), z0 + m(0.4), x1 - m(0.4), z1 - m(0.4), y0 + m(0.06), (x, z) => [x / m(4), -z / m(4)], 0, [0.92, 1, 0.9]);
+        const px = (hx0 + hx1) / 2, pz0 = front === 'n' ? z0 : hz1, pz1 = front === 'n' ? hz0 : z1;
+        this.flat(this.buf('decal', this.cur), 'paveB30', px - m(0.9), pz0, px + m(0.9), pz1, y0 + m(0.08), (x, z) => [x / m(2), -z / m(2)]);
+        if (r() < 0.85) {
+          const tz = front === 'n' ? z0 + yard * 0.45 : z1 - yard * 0.45;
+          this.tree(r() < 0.5 ? x0 + m(3) : x1 - m(3), y0, tz, 0.7 + r() * 0.35, pick(r, ['oak', 'maple', 'beech', 'elm', 'cedar', 'pine']));
+        }
+        if (hx1 - hx0 < m(8) || hz1 - hz0 < m(8)) continue;
+        this.house(hx0, hx1, hz0, hz1, front);
+      }
+    }
+  }
+
+  /** A detached house: two or three floors from a kit under a hipped roof */
+  house(x0, x1, z0, z1, front) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
+    const F = this.kitFacade(pick(r, KIT_STYLE.house), Math.min(x1 - x0, z1 - z0));
+    const [, bh] = tileMeters(F.bay);
+    const n = Math.max(1, Math.round((3.5 + r() * 4) / bh));
+    const entry = this.storeEntry(r() < 0.6 ? pick(r, STORE_KITS) : null, true);
+    const roof = pick(r, G.roofPitched), streets = { n: front === 'n', s: front === 's', e: true, w: true };
+    const H = Math.min(x1 - x0, z1 - z0) * (0.28 + r() * 0.16);
+    this.building({
+      x0, x1, z0, z1, y0, streets, allFacade: true, tint: this.tint(0.1), party: F.solid || pick(r, G.brick), style: 'house',
+      tiers: [{ x0, x1, z0, z1, y1: y0 + entry.h + m(n * bh), tile: F.bay, F, band: entry }],
+      crown: (T) => this.hipRoof(T, roof, H),
+    });
+  }
+
+  /** A row house: a narrow front of a kit's windows over a doorway, flush with its neighbors */
+  rowHouse(kit, x0, x1, z0, z1, front, ends, floors) {
+    const r = this.r, m = (x) => this.m(x), y0 = this.L.curb;
+    const F = this.kitFacade(kit, x1 - x0);
+    const [, bh] = tileMeters(F.bay);
+    const entry = this.storeEntry(kit.startsWith('store') ? kit : pick(r, STORE_KITS), true);
+    const n = Math.max(2, Math.round(floors * 3.3 / bh));
+    const streets = { n: front === 'n', s: front === 's', e: ends.e, w: ends.w };
+    this.building({
+      x0, x1, z0, z1, y0, streets, tint: this.tint(0.1), party: pick(r, G.brick), style: 'walkup',
+      tiers: [{ x0, x1, z0, z1, y1: y0 + entry.h + m(n * bh), tile: F.bay, F, band: entry }],
+      roof: { tile: pick(r, G.roofFlat), feature: r() < 0.2, bulkhead: r() < 0.4, ac: r() < 0.3 ? 1 : 0 },
+      cornice: r() < 0.85,
+    });
+  }
+
+  /**
+   * A ground-floor band of entries from a storefront kit (assets/street-level-storefronts): shop
+   * fronts and doorways side by side under a sign board. Returns the band for building().
+   * door: just doors and windows, no sign board (houses).
+   */
+  storeEntry(kit, door = false) {
+    const r = this.r, m = (x) => this.m(x);
+    if (!kit) return { tile: pick(r, r() < 0.5 ? G.doors : G.ground), h: m(4.5) };
+    const K = KITS[kit], sign = !door && K.signs.length && r() < 0.8;
+    const [, eh] = tileMeters(K.entries[0]);
+    return { tile: K.entries[0], kit, h: m(eh) + (sign ? m(tileMeters(K.signs[0])[1]) : 0), sign, door };
+  }
+
+  /**
+   * A ground-floor band of storefront entries from a to b (seen from outside): shop fronts and
+   * doorways side by side, now and then a shuttered one, under a sign board. A house's band is
+   * its kit's windows with one doorway in the middle of the front. o: { tint, base, F, front }
+   */
+  entryWall(E, ax, az, bx, bz, y, o) {
+    const m = (x) => this.m(x), r = this.rd, K = KITS[E.kit], len = Math.hypot(bx - ax, bz - az);
+    if (len < 1e-3) return;
+    const signH = E.sign ? m(tileMeters(K.signs[0])[1]) : 0, eh = E.h - signH;
+    const n = Math.max(1, Math.round(len / m(tileMeters(K.entries[0])[0]))), w = len / n;
+    const dx = (bx - ax) / len, dz = (bz - az) / len, wo = { tint: o.tint, base: o.base };
+    const shop = pick(r, K.entries);
+    for (let i = 0; i < n; i++) {
+      let tile;
+      if (E.door) tile = o.front && i === Math.floor(n / 2) ? pick(r, K.entries) : o.F ? o.F.bay : pick(r, K.bays);
+      else tile = r() < 0.12 ? pick(r, K.vents) : r() < 0.5 ? shop : pick(r, K.entries);
+      const x0 = ax + dx * w * i, z0 = az + dz * w * i, x1 = ax + dx * w * (i + 1), z1 = az + dz * w * (i + 1);
+      this.wall(this.bufFor(tile), tile, x0, z0, x1, z1, y, y + eh, w, eh, wo);
+    }
+    if (signH) {
+      const sg = pick(r, K.signs), sw = m(tileMeters(sg)[0]);
+      this.wall(this.bufFor(sg), sg, ax, az, bx, bz, y + eh, y + E.h, sw, signH, Object.assign({ snapU: true }, wo));
+    }
+  }
+
+  /** A hipped roof over a building's top: four slopes up to a ridge, h high, overhanging a little */
+  hipRoof(T, tile, h) {
+    const m = (x) => this.m(x), ov = m(0.6), [tw] = tileMeters(tile);
+    const x0 = T.x0 - ov, x1 = T.x1 + ov, z0 = T.z0 - ov, z1 = T.z1 + ov;
+    const b = this.bufFor(tile), c = cell(tile), ts = m(tw);
+    this.vol({ t: 'pyr', x0: T.x0, x1: T.x1, z0: T.z0, z1: T.z1, y0: T.y1, y1: T.y1 + h, mat: 'wood' });
+    // A ridge along the long side: the slopes meet a line, not a point
+    const alongX = x1 - x0 >= z1 - z0, half = (alongX ? z1 - z0 : x1 - x0) / 2, y1 = T.y1 + h;
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const ra = alongX ? new V3(x0 + half, y1, cz) : new V3(cx, y1, z0 + half), rb = alongX ? new V3(x1 - half, y1, cz) : new V3(cx, y1, z1 - half);
+    const P = [new V3(x0, T.y1, z1), new V3(x1, T.y1, z1), new V3(x1, T.y1, z0), new V3(x0, T.y1, z0)];
+    const C = new V3(cx, T.y1, cz);
+    for (let i = 0; i < 4; i++) {
+      const a = P[i], bb = P[(i + 1) % 4], mid = new V3().addVectors(a, bb).multiplyScalar(0.5);
+      const R = new V3().subVectors(bb, a).normalize(), out = new V3().subVectors(mid, C).setY(0).normalize();
+      // The ridge end nearest this eave
+      const sideLong = (Math.abs(R.x) > 0.5) === alongX;
+      const near = mid.distanceToSquared(ra) < mid.distanceToSquared(rb) ? ra : rb;
+      // Up the slope, square to the eave: to the middle of the ridge, or the ridge end over a short side
+      const Up = new V3().subVectors(sideLong ? new V3(cx, y1, cz) : near, mid).normalize();
+      const uv = (p) => [_a.subVectors(p, a).dot(R) / ts, _a.subVectors(p, mid).dot(Up) / ts];
+      const want = out.clone().setY(0.6);
+      if (sideLong) {
+        // A long side: a trapezoid up to the whole ridge
+        const pa = a.distanceToSquared(ra) < a.distanceToSquared(rb) ? ra : rb, pb = pa === ra ? rb : ra;
+        this.tri(b, [a, bb, pb], [uv(a), uv(bb), uv(pb)], c, WHITE, 0, want);
+        this.tri(b, [a, pb, pa], [uv(a), uv(pb), uv(pa)], c, WHITE, 0, want);
+      } else this.tri(b, [a, bb, near], [uv(a), uv(bb), uv(near)], c, WHITE, 0, want);
+    }
+    // The eaves' undersides
+    this.under(this.buf('surface', this.cur), 'walls05', x0, z0, x1, z1, T.y1, (x, z) => [x / m(3), z / m(3)], [0.55, 0.52, 0.5]);
+    this.collide(T.x0, T.y1, T.z0, T.x1, T.y1 + h * 0.5, T.z1, { building: true });
   }
 
   /** Split [x0, x1] into lots between minW and maxW meters wide */
@@ -977,12 +1156,11 @@ export class City {
       const F = this.kitFacade(pick(r, KIT_STYLE.walkup), x1 - x0);
       const [, bh] = tileMeters(F.bay);
       const n = Math.max(1, Math.round((10 + r() * 12) / bh));
-      const groundTile = r() < 0.25 ? pick(r, G.doors) : pick(r, G.ground);
-      const [, gh] = tileMeters(groundTile);
+      const band = this.storeEntry(r() < 0.75 ? pick(r, STORE_KITS) : null);
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
-        tiers: [{ x0, x1, z0, z1, y1: y0 + m(gh + n * bh), tile: F.bay, F, band: { tile: groundTile, h: m(gh) } }],
-        roof: { tile: pick(r, G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        tiers: [{ x0, x1, z0, z1, y1: y0 + band.h + m(n * bh), tile: F.bay, F, band }],
+        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
         cornice: r() < 0.8,
       });
     } else if (style === 'walkup') {
@@ -990,13 +1168,12 @@ export class City {
       const upper = useOne ? pick(r, G.walkupUpper) : pick(r, G.walkupBrick);
       const [, uh] = tileMeters(upper);
       const n = useOne ? 3 + Math.floor(r() * 4) : 2 + Math.floor(r() * 2);
-      const groundTile = r() < 0.25 ? pick(r, G.doors) : pick(r, G.ground);
-      const [, gh] = tileMeters(groundTile);
-      const top = y0 + m(gh + n * uh);
+      const band = this.storeEntry(r() < 0.6 ? pick(r, STORE_KITS) : null);
+      const top = y0 + band.h + m(n * uh);
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), style: 'walkup',
-        tiers: [{ x0, x1, z0, z1, y1: top, tile: upper, band: { tile: groundTile, h: m(gh) } }],
-        roof: { tile: pick(r, G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
+        tiers: [{ x0, x1, z0, z1, y1: top, tile: upper, band }],
+        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), feature: r() < 0.3, bulkhead: r() < 0.5, ac: r() < 0.3 ? 1 : 0 },
         cornice: r() < 0.8,
       });
     } else if (style === 'prewar') {
@@ -1004,7 +1181,7 @@ export class City {
       const tile = F ? F.bay : pick(r, r() < 0.8 ? G.prewar : G.officeStone);
       const [, th] = tileMeters(tile);
       const n = Math.max(F ? 2 : 3, Math.round((3 + r() * 5 + t * 7) * 7.2 / th));
-      const band = r() < 0.6 ? { tile: pick(r, G.ground), h: m(4.5) } : { tile: pick(r, G.stone), h: m(6), stone: true };
+      const q = r(), band = q < 0.45 ? this.storeEntry(pick(r, STORE_KITS)) : q < 0.7 ? { tile: pick(r, G.ground), h: m(4.5) } : { tile: pick(r, G.stone), h: m(6), stone: true };
       const h0 = band.h + m(n * th);
       const tiers = [{ x0, x1, z0, z1, y1: y0 + h0, tile, F, band }];
       if ((F ? n * th > 55 : n > 7) && r() < 0.6) {
@@ -1014,7 +1191,7 @@ export class City {
       }
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: pick(r, G.brick), tiers,
-        roof: { tile: pick(r, G.roof), feature: r() < 0.45, bulkhead: true, ac: Math.floor(r() * 3) },
+        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), feature: r() < 0.45, bulkhead: true, ac: Math.floor(r() * 3) },
         cornice: true,
       });
     } else if (style === 'modern' || style === 'office') {
@@ -1022,13 +1199,13 @@ export class City {
       const tile = F ? F.bay : style === 'modern' ? pick(r, G.modern) : pick(r, r() < 0.75 ? G.officeGlass : G.officePanel);
       const [, th] = tileMeters(tile);
       const n = Math.max(F ? 2 : 3, Math.round((style === 'modern' ? 30 + r() * 30 : 45 + r() * 50 + t * 60) / th));
-      const band = { tile: r() < 0.5 ? 'facade12' : pick(r, G.ground), h: r() < 0.5 ? m(7.2) : m(4.5) };
+      const q = r(), band = q < 0.3 ? this.storeEntry(pick(r, STORE_KITS)) : { tile: q < 0.65 ? 'facade12' : pick(r, G.ground), h: r() < 0.5 ? m(7.2) : m(4.5) };
       // Kit facades may get a vent floor every 40-70 m and a crown
       const S = F ? this.kitStack(F, y0 + band.h, n, { every: Math.max(3, Math.round((40 + r() * 30) / th)), crown: r() < 0.5 }) : { y: y0 + band.h + m(n * th) };
       this.building({
         x0, x1, z0, z1, y0, streets, tint, party: (F && F.solid) || pick(r, G.panel),
         tiers: [{ x0, x1, z0, z1, y1: S.y, tile, F, bands: S.bands, band }],
-        roof: { tile: pick(r, G.roof), mech: (F && F.vent) || pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
+        roof: { tile: pick(r, r() < 0.65 ? G.roofFlat : G.roof), mech: (F && F.vent) || pick(r, G.mech), ac: 1 + Math.floor(r() * 3) },
       });
     }
   }
@@ -1052,6 +1229,8 @@ export class City {
   building(o) {
     const m = (x) => this.m(x), r = this.r;
     this.beginOwner('building');
+    // What kind of building, for who and what is inside (js/people.js, js/furniture.js)
+    if (this.owner && !this.owner.style) this.owner.style = o.style || (o.allFacade ? 'tower' : 'office');
     const sb = this.buf('surface', this.cur);
     let ylo = o.y0;
     o.tiers.forEach((T, ti) => {
@@ -1075,7 +1254,8 @@ export class City {
           if (T.band && ti === 0) {
             const bt = T.band.tile, [bw, bh] = tileMeters(bt);
             const isFacade = !bt.startsWith('walls');
-            this.wall(this.bufFor(bt), bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
+            if (T.band.kit) this.entryWall(T.band, ax, az, bx, bz, y, { tint: o.tint, base: o.y0, F: T.F, front: o.streets[side] });
+            else this.wall(this.bufFor(bt), bt, ax, az, bx, bz, y, y + T.band.h, m(bw), isFacade ? T.band.h : m(bh), { snapU: isFacade, tint: o.tint, base: o.y0 });
             y += T.band.h;
           }
           if (T.F) this.kitWall(T.F, ax, az, bx, bz, y, T.y1, { tint: o.tint, base: o.y0, bands: T.bands });
@@ -1093,7 +1273,7 @@ export class City {
       }
       // Roof (or setback terrace)
       const last = ti === o.tiers.length - 1;
-      const rt = T.roofTile || (o.roof && o.roof.tile) || 'roof00', rs = T.roofTile ? m(4) : m(6);
+      const rt = T.roofTile || (o.roof && o.roof.tile) || 'roof00', rs = PANELS[rt] && !T.roofTile ? m(tileMeters(rt)[0]) : T.roofTile ? m(4) : m(6);
       if (!(last && o.crown)) this.flat(this.bufFor(rt), rt, T.x0, T.z0, T.x1, T.z1, T.y1, (x, z) => [x / rs, -z / rs]);
       this.collide(T.x0, ti === 0 ? 0 : ylo, T.z0, T.x1, T.y1, T.z1, { building: true });
       ylo = T.y1;
@@ -1119,6 +1299,14 @@ export class City {
     const m = (x) => this.m(x), r = this.r, sb = this.buf('surface', this.cur);
     const W = T.x1 - T.x0, D = T.z1 - T.z0, y = T.y1;
     const at = (fx, fz) => [T.x0 + W * fx, T.z0 + D * fz];
+    // Drains, vents and hatches from the roof covering's own sheet
+    const rk = R.tile && ROOF_KITS[R.tile.split('_')[0]];
+    if (rk && W > m(6) && D > m(6)) {
+      for (let k = 1 + Math.floor(r() * 3); k > 0; k--) {
+        const t = pick(r, rk.detail), q = m(1.4 + r() * 0.6), [x, z] = at(0.15 + r() * 0.7, 0.15 + r() * 0.7);
+        this.flat(this.bufFor(t), t, x - q / 2, z - q / 2, x + q / 2, z + q / 2, y + m(0.04), (xx, zz) => [(xx - x + q / 2) / q, (z + q / 2 - zz) / q]);
+      }
+    }
     // Walk-ups and prewar buildings may carry an old timber water tower on a steel frame
     if ((style === 'walkup' || style === 'prewar') && W > m(9) && D > m(9) && this.rw() < 0.5) {
       const rw = this.rw;
@@ -1463,7 +1651,7 @@ export class City {
       x0: f.x0, x1: f.x1, z0: f.z0, z1: f.z1, y0, streets, allFacade: true, tint: this.tint(0.06), party: (F && F.solid) || 'walls05',
       tiers,
       // A third of them are topped with a crown instead of rooftop plant
-      ...(r() < 0.35 ? { crown: (T) => this.crown(T) } : { roof: { tile: pick(this.r, G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 } }),
+      ...(r() < 0.35 ? { crown: (T) => this.crown(T) } : { roof: { tile: pick(this.r, this.r() < 0.65 ? G.roofFlat : G.roof), mech: (F && F.vent) || pick(this.r, G.mech), ac: 2 } }),
     });
   }
 
@@ -1856,18 +2044,13 @@ export class City {
     this.tree(x, y, z, 0.8);
   }
 
-  /** A tree: a trunk under three leafy blobs. Trees are drawn and simulated by trees.js. */
-  tree(x, y, z, scale = 1) {
-    const m = (v) => this.m(v) * scale, r = this.r;
-    const g = 0.75 + r() * 0.35;
-    const blobs = [];
-    for (let i = 0; i < 3; i++) {
-      // Same draws in the same order as when trees were merged props, so the rest of the city stays put
-      const a = r() * 6.28, d = m(1.2) * (i ? 1 : 0), s = m(2.2 + r() * 1.2);
-      const y1 = m(5.2 + r() * 1.8), color = [0.2 * g, (0.3 + r() * 0.08) * g, 0.14 * g];
-      blobs.push({ x: Math.cos(a) * d, y: y1, z: Math.sin(a) * d, s, color, ry: r() * 6, rx: r() * 3 });
-    }
-    this.treeSpots.push({ x, y, z, u: this.m(scale), trunk: [0.32, 0.25, 0.18], blobs });
+  /**
+   * A tree of a species (see SPECIES in trees.js; street trees by default), scale times its usual
+   * size. Trees are shaped, drawn and simulated by trees.js. rng: the draws to use, so the forest
+   * doesn't shift the rest of the city.
+   */
+  tree(x, y, z, scale = 1, species = null, rng = this.r) {
+    this.treeSpots.push({ x, y, z, scale, species: species || pick(rng, STREET_TREES), seed: Math.floor(rng() * 1e9) });
   }
 
   parkBlock(B, fountain) {
@@ -1898,6 +2081,68 @@ export class City {
       this.fountains.push(new V3(cx, y0 + m(3.4), cz));
       this.treeBlocks.push({ min: new V3(cx - R * 0.8, 0, cz - R * 0.8), max: new V3(cx + R * 0.8, y0 + m(0.9), cz + R * 0.8) });
       this.treeBlocks.push({ min: new V3(cx - m(1.5), 0, cz - m(1.5)), max: new V3(cx + m(1.5), y0 + m(3.5), cz + m(1.5)) });
+    }
+  }
+
+  /**
+   * The forest between the city and the west esplanade: a floor of grass and moss, gravel trails
+   * carrying the cross streets through it and one down its length, and stands of trees that
+   * drift from oak, beech and maple woods into pines, cedars and tall redwoods.
+   */
+  buildForest() {
+    const L = this.L, m = (x) => this.m(x), r = this.rf, y0 = L.curb;
+    const x0 = L.wx, x1 = L.x0, z0 = L.zN, z1 = L.z1 - L.stWalk;
+    // The floor, in patches so it doesn't repeat in a grid
+    const P = m(48);
+    for (let x = x0; x < x1 - 1e-3; x += P) {
+      for (let z = z0; z < z1 - 1e-3; z += P) {
+        const xa = x, xb = Math.min(x1, x + P), za = z, zb = Math.min(z1, z + P), t = pick(r, G.grass.slice(0, 11)), k = 0.48 + r() * 0.14;
+        this.cur = this.chunkOf((xa + xb) / 2, (za + zb) / 2);
+        this.flat(this.groundBuf(t), t, xa, za, xb, zb, y0, (xx, zz) => [xx / m(5), -zz / m(5)], 3, [k * 1.05, k, k * 0.72]);
+      }
+    }
+    this.collide(x0, 0, z0, x1, y0, z1, { low: true });
+    // Trails: each cross street carries on through the forest, and one runs its length
+    const gravel = ROOF_KITS.rf02.cover.concat(ROOF_KITS.rf18.cover.slice(0, 2)), tw = m(3.2), xm = (x0 + x1) / 2 + m(12);
+    const trails = [];
+    const trail = (ax, az, bx, bz) => {
+      trails.push([ax, az, bx, bz]);
+      const t = pick(r, gravel), alongZ = ax === bx;
+      for (let a = alongZ ? az : ax, e = alongZ ? bz : bx; a < e - 1e-3; a += m(40)) {
+        const b = Math.min(e, a + m(40));
+        this.cur = this.chunkOf(alongZ ? ax : (a + b) / 2, alongZ ? (a + b) / 2 : az);
+        if (alongZ) this.flat(this.bufFor(t), t, ax - tw / 2, a, ax + tw / 2, b, y0 + m(0.03), (xx, zz) => [xx / m(4), -zz / m(4)], 0, [0.85, 0.82, 0.75]);
+        else this.flat(this.bufFor(t), t, a, az - tw / 2, b, az + tw / 2, y0 + m(0.03), (xx, zz) => [xx / m(4), -zz / m(4)], 0, [0.85, 0.82, 0.75]);
+      }
+    };
+    for (const st of L.sts) trail(x0, (st.z0 + st.z1) / 2, x1, (st.z0 + st.z1) / 2);
+    trail(xm, z0, xm, z1);
+    const nearTrail = (x, z, d) => trails.some(([ax, az, bx, bz]) => (ax === bx ? Math.abs(x - ax) < d && z > az - d && z < bz + d : Math.abs(z - az) < d && x > ax - d && x < bx + d));
+    // Stands: a smooth field picks broadleaf or conifer woods, with groves of redwoods
+    const field = (x, z) => Math.sin(x / m(83) + 1.3) * Math.cos(z / m(127) - 0.4) + 0.5 * Math.sin((x + z) / m(61));
+    const grove = (x, z) => Math.sin(x / m(37) - 2.1) * Math.sin(z / m(53) + 0.7);
+    const S = m(10);
+    for (let x = x0 + S * 0.5; x < x1 - m(2); x += S) {
+      for (let z = z0 + S * 0.5; z < z1 - m(4); z += S) {
+        const tx = clamp(x + (r() - 0.5) * S * 0.9, x0 + m(3), x1 - m(3)), tz = z + (r() - 0.5) * S * 0.9;
+        if (nearTrail(tx, tz, m(3.2))) continue;
+        const f = field(tx, tz) + (r() - 0.5) * 0.8, g = grove(tx, tz);
+        // Woods grow taller than street trees: 15 to 30 m, the redwoods half again
+        let sp, sc = 1.25 + r() * 0.75;
+        if (f > 0.25) {
+          if (g > 0.5 && r() < 0.75) { sp = 'redwood'; sc = 1.9 + r() * 0.9; } else sp = pick(r, ['pine', 'pine', 'cedar', 'spruce', 'fir']);
+        } else sp = pick(r, ['oak', 'beech', 'maple', 'birch', 'elm', 'linden', 'poplar', 'oak']);
+        this.cur = this.chunkOf(tx, tz);
+        this.tree(tx, y0, tz, sc, sp, r);
+      }
+    }
+    // A few fallen logs and boulders along the trails
+    for (let i = 0; i < 70; i++) {
+      const x = x0 + m(6) + r() * (x1 - x0 - m(12)), z = z0 + r() * (z1 - z0);
+      if (!nearTrail(x, z, m(6))) continue;
+      this.cur = this.chunkOf(x, z);
+      if (r() < 0.5) this.prop('ico', x, y0 + m(0.4), z, m(1 + r()), m(0.7 + r() * 0.5), m(1 + r()), [0.42, 0.41, 0.38], r() * 6);
+      else this.prop('cyl6', x, y0 + m(0.4), z, m(0.4), m(5 + r() * 4), m(0.4), [0.3, 0.22, 0.15], r() * 6, 0, Math.PI / 2);
     }
   }
 
@@ -1977,7 +2222,7 @@ export class City {
     }
     // Barricade closing off the north edge of the playable area
     const zb = L.z0 + m(1);
-    for (let x = L.x0; x < L.x1; x += m(4)) {
+    for (let x = L.wx; x < L.x1; x += m(4)) {
       this.cur = this.chunkOf(x, zb);
       this.prop('box', x + m(2), m(0.55), zb, m(3.6), m(1.1), m(0.7), (Math.floor((x - L.x0) / m(4)) % 2) ? [1.1, 0.45, 0.1] : [1, 1, 1]);
     }
@@ -1995,14 +2240,31 @@ export class City {
     const R = STRUCTS.railway, T = STRUCTS.steeltruss;
     const track = pick(rs, R.track), girder = pick(rs, R.girder), col = pick(rs, R.column), bent = pick(rs, R.bent);
     const lattice = pick(rs, R.truss.concat(T.truss)), rail = pick(rs, R.rail);
-    const a = L.aves[3], cx = (a.r0 + a.r1) / 2, hw = m(5), cw = m(0.4), xc = hw - m(0.7);
+    const a = L.aves[6], cx = (a.r0 + a.r1) / 2, hw = m(5), cw = m(0.4), xc = hw - m(0.7);
     // Bents carry a cap beam (yb - 1 m to yb), lattice girders (yb to yl) and the deck slab (yl to yt)
     const yb = m(14.5), yl = m(16.5), yt = m(17), yr = yt + m(1.2);
     const z0 = L.zN + m(20), z1 = L.z1 - m(14), n = Math.round((z1 - z0) / m(15)), sp = (z1 - z0) / n;
     const tl = (2 * hw) / asp(track), plate = [girder, m(3), m(3)];
-    this.beginOwner('el');
-    this.sboxMat = 'steel';
-    for (let i = 0; i < n; i++) {
+    // Where the trains run (js/train.js): two tracks down the deck
+    this.el = { cx, hw, yt, z0, z1, tracks: [cx - m(2.4), cx + m(2.4)] };
+    // Destructible in stretches of a dozen spans, each standing on its own bents at both ends (the
+    // bent where two stretches meet belongs to both), so no one piece is too long to voxelize
+    const G = 12;
+    for (let g0 = 0; g0 < n; g0 += G) {
+      const g1 = Math.min(n, g0 + G);
+      this.beginOwner('el');
+      this.sboxMat = 'steel';
+      this.elSpans(g0, g1, { cx, hw, cw, xc, yb, yl, yt, yr, z0, sp, n, tl, plate, track, girder, col, bent, lattice, rail });
+      this.sboxMat = null;
+      this.endOwner();
+    }
+  }
+
+  /** Spans g0..g1 - 1 of the El and the bents g0..g1 under them */
+  elSpans(g0, g1, E) {
+    const m = (x) => this.m(x), asp = (t) => cell(t).aspect;
+    const { cx, hw, cw, xc, yb, yl, yt, yr, z0, sp, n, tl, plate, track, girder, col, bent, lattice, rail } = E;
+    for (let i = g0; i < g1; i++) {
       const za = z0 + i * sp, zb = za + sp;
       this.cur = this.chunkOf(cx, (za + zb) / 2);
       this.sbox(cx - hw, yl, za, cx + hw, yt, zb, {
@@ -2019,7 +2281,7 @@ export class City {
       this.collide(cx - hw, yb, za, cx + hw, yt, zb, { building: true });
     }
     // Bents: a pair of steel columns under a cap beam, braced by a steel frame
-    for (let i = 0; i <= n; i++) {
+    for (let i = g0; i <= g1; i++) {
       const z = z0 + i * sp;
       this.cur = this.chunkOf(cx, z);
       for (const s of [-1, 1]) {
@@ -2030,8 +2292,6 @@ export class City {
       this.sbox(cx - hw, yb - m(1), z - m(0.45), cx + hw, yb, z + m(0.45), { ns: [girder, m(1) * asp(girder), m(1)], ew: [girder, 0, 0], bottom: plate });
       this.card(bent, cx - hw, z, cx + hw, z, yb - (2 * hw) / asp(bent), yb);
     }
-    this.sboxMat = null;
-    this.endOwner();
   }
 
   /**
@@ -2051,7 +2311,6 @@ export class City {
     const zA = L.zN - m(300), zR = L.z1 - m(190), zG = L.z1 - m(40);
     this.ramp = { z0: zR, z1: zG, x0: cx - hw, x1: cx + hw };
     const n = Math.round((zR - zA) / m(32)), sp = (zR - zA) / n;
-    this.beginOwner('highway');
     const barriers = (za, zb, top) => {
       for (const s of [-1, 1]) {
         const x0 = s < 0 ? cx - hw : cx + hw - bw, x1 = x0 + bw;
@@ -2059,9 +2318,18 @@ export class City {
         this.collide(x0, top, za, x1, top + m(1.6), zb);
       }
     };
+    // Destructible in stretches of eight spans, each on its own piers at both ends
     for (let i = 0; i < n; i++) {
       const za = zA + i * sp, zb = za + sp;
+      if (i % 8 === 0) {
+        if (i) this.endOwner();
+        this.beginOwner('highway');
+      }
       this.cur = this.chunkOf(cx, (za + zb) / 2);
+      if (i % 8 === 7 || i === n - 1) {
+        this.solid(pier, slab, cx, y0, zb, m(17), yg - y0, m(2.6));
+        this.collide(cx - m(2), 0, zb - m(1.3), cx + m(2), yg, zb + m(1.3));
+      }
       this.sbox(cx - hw, ys, za, cx + hw, yt, zb, { ew: fs, bottom: fs, ns: i === 0 ? fs : null });
       this.flat(this.bufFor(deck), deck, cx - hw, za, cx + hw, zb, yt, (x, z) => [(x - cx + hw) / (2 * hw), -z / dl]);
       for (const s of [-1, 1]) this.sbox(cx + s * gx - gw, yg, za, cx + s * gx + gw, ys, zb, { ew: [girder, (ys - yg) * asp(girder), ys - yg] });
@@ -2072,7 +2340,9 @@ export class City {
       this.collide(cx - m(2), 0, za - m(1.3), cx + m(2), yg, za + m(1.3));
       if (i % 2 === 0) this.crossCard(lamp, cx + (i % 4 ? 1 : -1) * (hw - bw / 2), yt + bh, (za + zb) / 2, m(9));
     }
+    this.endOwner();
     // The ramp: a filled embankment between retaining walls, collided as a flight of shallow steps
+    this.beginOwner('highway');
     const yAt = (z) => y0 + (yt - y0) * (zG - z) / (zG - zR);
     const nr = Math.ceil((zG - zR) / m(2.5)), sr = (zG - zR) / nr;
     this.cur = this.chunkOf(cx, zR);
@@ -2109,16 +2379,17 @@ export class City {
     const P = L.prom, W = L.water;
     // Esplanade strips on the west, east and south, with a seawall down to the water
     const strips = [
-      [L.x0 - P, L.zN, L.x0 + L.aveWalk, L.z1 + P],
+      [L.wx - P, L.zN, L.wx, L.z1 + P],
+      [L.x0, L.zN, L.x0 + L.aveWalk, L.z1 - L.stWalk],
       [L.x1 - L.aveWalk, L.zN, L.x1 + P, L.z1 + P],
-      [L.x0 + L.aveWalk, L.z1 - L.stWalk, L.x1 - L.aveWalk, L.z1 + P],
+      [L.wx, L.z1 - L.stWalk, L.x1 - L.aveWalk, L.z1 + P],
     ];
     for (const [x0, z0, x1, z1] of strips) {
       this.flat(g, 'paveB30', x0, z0, x1, z1, y0, (x, z) => [x / m(6), -z / m(6)]);
       this.collide(x0, 0, z0, x1, y0, z1, { low: true });
     }
     const sb = this.buf('surface', 'shore');
-    const X0 = L.x0 - P, X1 = L.x1 + P, Z1 = L.z1 + P;
+    const X0 = L.wx - P, X1 = L.x1 + P, Z1 = L.z1 + P;
     this.wall(sb, 'walls51', X0, L.zN, X0, Z1, W, y0, m(2.8), m(2.8), { ao: false });
     this.wall(sb, 'walls51', X1, Z1, X1, L.zN, W, y0, m(2.8), m(2.8), { ao: false });
     this.wall(sb, 'walls51', X0, Z1, X1, Z1, W, y0, m(2.8), m(2.8), { ao: false });
@@ -2209,13 +2480,13 @@ export class City {
     const save = this.colliders.length;
     // Far shores: land, a seawall, and a skyline on top
     const fg = this.buf('ground', 'far'), fs = this.buf('surface', 'far');
-    for (const [x0, x1, z0, z1, edge] of [[L.x0 - m(2600), L.x0 - m(640), L.zN - m(2600), L.z1 + m(700), 'e'], [L.x1 + m(600), L.x1 + m(2600), L.zN - m(2600), L.z1 + m(500), 'w']]) {
+    for (const [x0, x1, z0, z1, edge] of [[L.wx - m(2600), L.wx - m(640), L.zN - m(2600), L.z1 + m(700), 'e'], [L.x1 + m(600), L.x1 + m(2600), L.zN - m(2600), L.z1 + m(500), 'w']]) {
       this.flat(fg, 'asphB01', x0, z0, x1, z1, 0, (x, z) => [x / m(60), -z / m(60)], 0, [0.62, 0.63, 0.62]);
       const xe = edge === 'e' ? x1 : x0;
       this.wall(fs, 'walls51', xe, edge === 'e' ? z1 : z0, xe, edge === 'e' ? z0 : z1, L.water, 0, m(3), m(3), { ao: false });
       this.wall(fs, 'walls51', x0, z1, x1, z1, L.water, 0, m(3), m(3), { ao: false });
     }
-    skyline(L.x0 - m(1150), L.x0 - m(700), L.zN - m(300), L.z1 + m(500), 45, 30, 230);
+    skyline(L.wx - m(1150), L.wx - m(700), L.zN - m(300), L.z1 + m(500), 45, 30, 230);
     skyline(L.x1 + m(650), L.x1 + m(1100), L.zN - m(200), L.z1 + m(300), 40, 15, 150);
     skyline(L.x0 + m(60), L.x1 - m(60), L.zN - m(500), L.zN - m(60), 60, 20, 120);
     skyline(L.x0 + m(100), L.x1 - m(100), L.zN - m(1500), L.zN - m(500), 70, 40, 280);
@@ -2383,7 +2654,7 @@ export class City {
   stayBridge(z) {
     const L = this.L, m = (x) => this.m(x), W = L.water, rs = this.rs, K = STRUCTS.cablestay, asp = (t) => cell(t).aspect;
     this.cur = 'bridge';
-    const xs = L.x0 - L.prom, xe = L.x0 - m(640), dY = W + m(30), hw = m(9), run = m(110);
+    const xs = L.wx - L.prom, xe = L.wx - m(640), dY = W + m(30), hw = m(9), run = m(110);
     const slab = K.slab[0], pylon = K.pylon.find((t) => OUTLINES[t].length > 1) || K.pylon[0];
     // Up from the city's seawall, level over the river, down to the far shore
     const yAt = (x) => (x > xs - run ? L.curb + (dY - L.curb) * (xs - x) / run : x < xe + run ? dY * (x - xe) / run : dY);
@@ -2457,71 +2728,13 @@ export class City {
   // ---- cars ------------------------------------------------------------------
 
   buildCars() {
-    const L = this.L, m = (x) => this.m(x), r = this.r;
-    // Car model along +x: body, cabin glass, roof, wheels. White body takes the instance color.
-    const parts = [];
-    const add = (sx, sy, sz, x, y, z, c) => { const g = new THREE.BoxGeometry(sx, sy, sz); g.translate(x, y, z); const n = g.attributes.position.count; g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(n).fill(c).flat(), 3)); parts.push(g); };
-    add(m(4.7), m(0.75), m(1.9), 0, m(0.72), 0, [1, 1, 1]);
-    add(m(2.5), m(0.5), m(1.7), -m(0.2), m(1.34), 0, [0.08, 0.09, 0.1]);
-    add(m(2.2), m(0.08), m(1.62), -m(0.2), m(1.62), 0, [1, 1, 1]);
-    for (const [x, z] of [[1.5, 0.82], [-1.5, 0.82], [1.5, -0.82], [-1.5, -0.82]]) add(m(0.75), m(0.75), m(0.3), m(x), m(0.38), m(z), [0.05, 0.05, 0.05]);
-    add(m(0.6), m(0.25), m(0.3), -m(0.2), m(1.78), 0, [1, 1, 1]);
-    const geo = mergeBoxes(parts);
-    const spots = [];
-    const curbGap = m(1.3);
-    for (const s of L.sts) {
-      if (s.k < 0) continue;
-      for (let i = 0; i < L.aves.length - 1; i++) {
-        const x0 = L.aves[i].x1 + m(10), x1 = L.aves[i + 1].x0 - m(10);
-        for (const z of [s.r0 + curbGap, s.r1 - curbGap]) {
-          for (let x = x0; x < x1; x += m(6.5)) if (r() < 0.085) spots.push([x + r() * m(0.6), z, 0]);
-        }
-      }
-    }
-    for (const a of L.aves) {
-      for (const s of L.sts) {
-        if (s.k < 0 || s.z1 + m(10) > L.z1) continue;
-        const z0 = s.z1 + m(10), z1 = s.z1 + L.blockD - m(10);
-        for (const x of [a.r0 + curbGap, a.r1 - curbGap]) {
-          for (let z = z0; z < z1; z += m(6.5)) if (r() < 0.07) spots.push([x, z + r() * m(0.6), Math.PI / 2]);
-        }
-      }
-    }
-    // Parked cars; the teal ones are taxis
-    const n = spots.length;
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.4 });
-    const mesh = new THREE.InstancedMesh(geo, mat, n);
-    mesh.castShadow = mesh.receiveShadow = true;
-    const palette = [[0.06, 0.52, 0.52], [0.06, 0.52, 0.52], [0.9, 0.9, 0.9], [0.06, 0.06, 0.07], [0.55, 0.57, 0.6], [0.12, 0.2, 0.42], [0.55, 0.06, 0.05], [0.85, 0.42, 0.1]];
-    const col = new THREE.Color();
-    spots.forEach(([x, z, yaw], i) => {
-      const c = pick(r, palette);
-      const car = { i, pos: new V3(x, 0, z), yaw, color: c, hp: 24, state: 0, kind: 'car', alive: true };
-      this.cars.push(car);
-      this.setCar(mesh, car, 1);
-      col.setRGB(c[0], c[1], c[2], THREE.SRGBColorSpace);
-      mesh.setColorAt(i, col);
-      const hx = yaw ? m(1.0) : m(2.4), hz = yaw ? m(2.4) : m(1.0);
-      car.collider = this.collide(x - hx, 0, z - hz, x + hx, m(1.8), z + hz, { walk: true, ref: car });
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    this.scene.add(mesh);
-    this.carMesh = mesh;
-  }
-
-  setCar(mesh, car, sy) {
-    _q.setFromAxisAngle(_n.set(0, 1, 0), car.yaw);
-    _m.compose(car.pos, _q, _s.set(1, sy, 1));
-    mesh.setMatrixAt(car.i, _m);
+    // Parked and driving cars, skinned from the car sheets (js/cars.js)
+    this.carSys = new Cars(this);
+    this.cars = this.carSys.list;
   }
 
   crushCar(car) {
-    if (car.state !== 0) return;
-    car.state = 1;
-    this.setCar(this.carMesh, car, 0.42);
-    this.carMesh.instanceMatrix.needsUpdate = true;
-    car.collider.max.y = this.m(0.8);
+    if (!this.carSys.crush(car)) return;
     this.fx.sparksBurst(_a.copy(car.pos).setY(this.m(1)), _b.set(0, 1, 0), 14, 0xffc070, 18);
     this.fx.dust(car.pos, 0.6, 6);
     this.sound.crunch(car.pos);
@@ -2539,10 +2752,7 @@ export class City {
 
   explodeCar(car) {
     const m = (x) => this.m(x);
-    this.setCar(this.carMesh, car, car.state === 1 ? 0.4 : 0.75);
-    this.carMesh.instanceMatrix.needsUpdate = true;
-    this.carMesh.setColorAt(car.i, new THREE.Color(0.07, 0.065, 0.06));
-    this.carMesh.instanceColor.needsUpdate = true;
+    this.carSys.wreck(car);
     const p = _a.copy(car.pos).setY(m(1));
     this.fx.explosion(p, 1.05);
     this.sound.explosion(p, 1.1);
@@ -2567,6 +2777,7 @@ export class City {
       }
     }
     this.trees.update(dt, ctx);
+    this.carSys.update(dt, ctx);
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const p = this.pending[i];
       p.t -= dt;

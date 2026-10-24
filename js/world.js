@@ -4,6 +4,8 @@ import { City } from './city.js';
 
 const V3 = THREE.Vector3;
 const _n = new V3();
+// Owners that are buildings, with floors to people
+const BUILDINGS = new Set(['building', 'tower', 'gate', 'twins', 'needle']);
 
 /** A ray o + d t (t in [0, max]) passes through a box, starting inside it or not */
 function rayEnters(o, d, mn, mx, max) {
@@ -138,8 +140,13 @@ export class World {
     this.buildGrid();
     this.city.query = (x0, z0, x1, z1, fn) => this.query(x0, z0, x1, z1, fn);
     this.destruct = null; // js/destruct, set up by main.js once the renderer exists
+    // Life in the city, set up by main.js with the destruction: people, furniture, the El's trains
+    this.people = null;
+    this.furniture = null;
+    this.train = null;
     this.vstamp = 0;
     this.trees.world = this;
+    this.city.carSys.world = this;
 
     // Test-site pad marking on the starting plaza
     const pad = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({
@@ -196,6 +203,31 @@ export class World {
     this.colliders.push(c);
     const [a, b, e, f] = this.cellRange(c.min.x, c.min.z, c.max.x, c.max.z);
     for (let j = b; j <= f; j++) for (let i = a; i <= e; i++) this.grid[j * this.gw + i].push(c);
+  }
+
+  /** File a collider that moves (a car driving) under the cells it covers now. Call whenever it moves. */
+  moveCollider(c) {
+    const r = this.cellRange(c.min.x, c.min.z, c.max.x, c.max.z), o = c.cells;
+    if (o && o[0] === r[0] && o[1] === r[1] && o[2] === r[2] && o[3] === r[3]) return;
+    if (o) this.unfile(c, o);
+    else c.stamp = 0;
+    for (let j = r[1]; j <= r[3]; j++) for (let i = r[0]; i <= r[2]; i++) this.grid[j * this.gw + i].push(c);
+    c.cells = r;
+  }
+
+  /** Take a moving collider off the grid */
+  removeCollider(c) {
+    if (c.cells) this.unfile(c, c.cells);
+    c.cells = null;
+  }
+
+  unfile(c, o) {
+    for (let j = o[1]; j <= o[3]; j++) {
+      for (let i = o[0]; i <= o[2]; i++) {
+        const cell = this.grid[j * this.gw + i], k = cell.indexOf(c);
+        if (k >= 0) cell.splice(k, 1);
+      }
+    }
   }
 
   /** Destructible structures (once each) and fallen pieces near an XZ box */
@@ -455,6 +487,8 @@ export class World {
   }
 
   damageRadius(point, radius, amount) {
+    if (this.people) this.people.blast(point, radius, amount);
+    if (this.furniture) this.furniture.blast(point, radius, amount);
     // A copy: kills drop targets from the list
     for (const t of [...this.targets]) {
       if (!t.alive) continue;
@@ -471,14 +505,41 @@ export class World {
     });
   }
 
+  /** Something heavy came down at p (a train car): what is under it is crushed */
+  crushAt(p, r, amount) {
+    if (this.people) for (const q of this.people.list) if (q.pos.distanceTo(p) < r && q.pos.y < p.y + r) this.people.squish(q);
+    this.damageRadius(p, r * 0.7, amount);
+  }
+
+  /**
+   * A structure was carved at (x, y, z), r across: the first time round there, a building's floors
+   * fill with people and furniture, offices or homes by its kind, some buildings far fuller than others
+   */
+  carved(s, x, y, z, r) {
+    const o = s.owner, P = this.people;
+    if (!P || !BUILDINGS.has(o.kind)) return;
+    if (o.crowd === undefined) {
+      const h = Math.sin((o.id + 1) * 12.9898) * 43758.5453, f = h - Math.floor(h);
+      o.crowd = (o.style === 'house' ? 0.35 : o.style === 'walkup' ? 0.7 : 1) * (0.2 + f * f * 2.4);
+    }
+    const spots = P.occupy(s, x, y, z, r, o.crowd);
+    if (!spots || !this.furniture) return;
+    const home = o.style === 'house' || o.style === 'walkup';
+    this.furniture.furnish(s, P.floorSpots(s, x, y, z, this.city.m(15), Math.round(8 + 12 * Math.min(1.6, o.crowd))), x, y, z, r, home);
+  }
+
   /** A blast that only trees feel (spider mortar shells, burning ground): knocks them loose and sets them burning */
   blastTrees(point, radius, amount) {
     this.trees.blast(point, radius, amount);
   }
 
   update(dt, player, ctx) {
-    this.city.update(dt, Object.assign({ player }, ctx));
+    const c = Object.assign({ player }, ctx);
+    this.city.update(dt, c);
     if (this.destruct) this.destruct.update(dt, ctx);
+    if (this.people) this.people.update(dt, c);
+    if (this.furniture) this.furniture.update(dt, c);
+    if (this.train) this.train.update(dt, c);
     // Keep the shadow frustum centered on the player, far enough back to catch the tall towers
     this.sun.position.copy(player).addScaledVector(SUN_DIR, 700);
     this.sun.target.position.copy(player);

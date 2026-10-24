@@ -10,6 +10,9 @@ import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
 import { Destruction } from './destruct/destruct.js';
+import { People } from './people.js';
+import { Furniture } from './furniture.js';
+import { Train } from './train.js';
 import { setCeilingTextures } from './destruct/ceilings.js';
 import { titleDone, portraitPhone } from './title/title.js';
 
@@ -266,6 +269,11 @@ async function init() {
   D.player = P;
   D.spiders = spiders;
   D.onPlayerHit = (amount, from, kind) => hurt(amount, from, kind);
+  // The people of Port Meridian, what their rooms hold, and the trains on the El
+  world.people = new People({ scene, world, fx, sound, mobile: isTouch });
+  world.furniture = new Furniture({ scene, world, mobile: isTouch });
+  world.train = new Train({ scene, world, fx, sound });
+  D.onCarve = (s, x, y, z, r) => world.carved(s, x, y, z, r);
   P.pos.copy(world.spawn);
   mech.root.position.copy(P.pos);
   mech.resetFeet();
@@ -908,7 +916,7 @@ function frame(now) {
     shake(null, (0.16 + gait * 0.12) * k);
   }
 
-  world.update(dt, P.pos, { grounded: P.grounded, vel: P.vel, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)] });
+  world.update(dt, P.pos, { grounded: P.grounded, vel: P.vel, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)], camera });
   fx.update(dt);
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {

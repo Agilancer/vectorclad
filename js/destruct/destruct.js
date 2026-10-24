@@ -164,7 +164,7 @@ export class Destruction {
     this.spiders = null;
     this.player = null;
     this.onPlayerHit = null;
-    this.frame = { chunks: 0, dust: 0, act: 0 };
+    this.frame = { chunks: 0, dust: 0, act: 0, big: 0 };
     this.actBudget = mobile ? 7 : 12; // ms of activations one frame may take before the rest wait a frame
     this.later = [];                  // blasts still to carve into structures not yet activated
     this.stats = { activated: 0, removed: 0, bodies: 0, fractures: 0, collapses: 0, activateMs: 0 };
@@ -407,6 +407,15 @@ export class Destruction {
     s.hp = new Uint8Array(g.N);
     const HP = MATS.map((m) => (m ? m.hp : 0)), gm = g.mat, hp = s.hp;
     for (let i = 0; i < g.N; i++) { const m = gm[i]; if (m >= SOLID) hp[i] = HP[m]; }
+    // Outer walls are built a little tougher than the rest: a quarter more hit points for every
+    // cell facing the outside
+    const { nx, ny, nz, nxz } = g;
+    for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      const i = x + nx * (z + nz * y);
+      if (gm[i] < SOLID) continue;
+      if ((x > 0 && gm[i - 1] === OUT) || (x < nx - 1 && gm[i + 1] === OUT) || (z > 0 && gm[i - nx] === OUT) || (z < nz - 1 && gm[i + nx] === OUT)
+        || x === 0 || z === 0 || x === nx - 1 || z === nz - 1) hp[i] = Math.min(255, Math.round(hp[i] * 1.25));
+    }
     s.skin = extractSkin(owner, g);
     this.buildSkin(s);
     this.lightUp(s, null);
@@ -662,7 +671,7 @@ export class Destruction {
     const y0 = lineIndexClamped(g.ys, cy - r), y1 = lineIndexClamped(g.ys, cy + r);
     const z0 = lineIndexClamped(g.zs, cz - r), z1 = lineIndexClamped(g.zs, cz + r);
     const md = s.mask.image.data, r2 = r * r * 1.69;
-    let removed = 0, spawned = 0, sx = 0, sy = 0, sz = 0, glass = 0, steel = 0, other = 0;
+    let removed = 0, spawned = 0, sx = 0, sy = 0, sz = 0, glass = 0, steel = 0, other = 0, lastMat = 0;
     const want = o.chunks ?? 10;
     for (let y = y0; y <= y1; y++) {
       const dy = g.cy(y) - cy;
@@ -687,6 +696,7 @@ export class Destruction {
           sx += wx; sy += wy; sz += wz;
           const name = MATS[m].name;
           if (name === 'glass' || name === 'light') glass++; else if (name === 'steel') steel++; else other++;
+          if (name !== 'light') lastMat = m;
           if (spawned < want && this.frame.chunks < 140 && (spawned < 3 || Math.random() < 0.5)) {
             spawned++;
             this.frame.chunks++;
@@ -702,9 +712,35 @@ export class Destruction {
       this.jolted(s, sx / removed, sy / removed, sz / removed, removed, r);
       const p = this.toWorld(s, sx / removed, sy / removed, sz / removed, _a);
       this.burstFx(p, removed, glass, steel, other, o);
+      // Explosions tear big chunks of wall and slab and twisted steel off with them, as many as
+      // the volume they blew away
+      if (o.big && lastMat) this.bigChunks(s, p, cx, cy, cz, removed, lastMat, steel, o);
+      if (this.onCarve && !s.body) this.onCarve(s, cx, cy, cz, r, removed);
     }
     if (s.body) { s.body.wake(); } else if (removed) this.wakeNear(s, cx, cy, cz, r);
     return removed;
+  }
+
+  /**
+   * Big debris: slabs of wall and floor a meter or more across and lengths of bent steel, thrown hard
+   * out of a blast crater at p (world) from the blast's middle (local cx, cy, cz). One for about
+   * every twelve cubic meters blown away.
+   */
+  bigChunks(s, p, cx, cy, cz, removed, mat, steel, o) {
+    const M = this.M, cs = s.cellSize, vol = removed * (cs / M) ** 3;
+    const n = Math.min(Math.max(0, 40 - this.frame.big), Math.round(vol / 12 + Math.random()));
+    this.frame.big += n;
+    const c = this.toWorld(s, cx, cy, cz, _c);
+    for (let k = 0; k < n; k++) {
+      // Out from the blast through the crater, fast
+      _b.set(p.x - c.x + rand(-1, 1) * cs * 3, p.y - c.y + rand(-0.5, 1.5) * cs * 3, p.z - c.z + rand(-1, 1) * cs * 3);
+      if (_b.lengthSq() < 1e-6) _b.set(rand(-1, 1), 0.5, rand(-1, 1));
+      _b.normalize();
+      const sp = (12 + Math.random() * 18) * M * (o.speedK || 1);
+      const m = steel && Math.random() < steel / removed + 0.1 ? 8 : mat;
+      this.debris.spawn(p.x + rand(-1, 1) * cs, p.y + rand(-1, 1) * cs, p.z + rand(-1, 1) * cs,
+        _b.x * sp, _b.y * sp + rand(2, 8) * M, _b.z * sp, M * rand(1.1, 2.8), m, rand(25, 45));
+    }
   }
 
   toWorld(s, x, y, z, out) { return s.body ? s.body.toWorld(x, y, z, out) : out.set(x, y, z); }
@@ -792,7 +828,7 @@ export class Destruction {
   blast(p, radiusM, power, o = {}) {
     const R = radiusM * this.M;
     let total = 0;
-    const opts = Object.assign({ speed: 10 + power * 0.04, chunks: Math.round(8 + radiusM * 6) }, o);
+    const opts = Object.assign({ speed: 10 + power * 0.04, chunks: Math.round(8 + radiusM * 6), big: true }, o);
     // What it reaches is turned into voxels, nearest first; past the frame's budget the rest are
     // carved a frame or two later
     const reach = [];
@@ -2028,7 +2064,7 @@ export class Destruction {
     this.time += dt;
     CEIL_SHARED.uTime.value = this.time;
     if (this.warm && (this.warm.t -= dt) <= 0) { this.scene.remove(this.warm.g); this.warm = null; }
-    this.frame.chunks = 0; this.frame.dust = 0;
+    this.frame.chunks = 0; this.frame.dust = 0; this.frame.big = 0;
     // Physics in steps of at most 1/90 s
     const n = Math.min(4, Math.ceil(dt / (1 / 90)));
     for (let k = 0; k < n; k++) {
@@ -2210,6 +2246,8 @@ export class Destruction {
       return k >= 0 && g.mat[k] >= SOLID;
     };
     if (this.spiders) for (const sp of this.spiders.list) if (sp.alive && inside(sp.pos)) this.spiders.damage(sp, 9999, sp.pos);
+    // People and furniture under it
+    if (this.world.people) this.world.people.crushIn(b, inside);
     // Trees in its way are torn out and carried along
     const T = this.world.trees;
     if (T) {
