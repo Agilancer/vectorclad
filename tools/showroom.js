@@ -1,6 +1,6 @@
 // Showroom: the frames and weapons on a turntable, without the city or the swarm.
 // Serve the repo root and open tools/showroom.html. URL parameters:
-//   frame=<id>|lineup   which frame, or all six side by side
+//   frame=<id>|lineup   which frame, or all six side by side; frame=<id>,<id>,... for a few side by side
 //   preset=<n>          which of the frame's presets to equip (default 0)
 //   pose=idle|walk|dash|air|aim|slash|shield
 //   paint=<paint id>    bare=1 (no weapons)    yaw=<radians> pitch=<radians> dist=<units>   rack=1 (every weapon), rack=new, rack=<weapon id>
@@ -100,12 +100,13 @@ function addFrame(frame, x, presetIdx = 0, M = mats) {
 
 function show(id, presetIdx = +(qs.get('preset') || 0)) {
   clear();
-  if (id === 'lineup') {
+  if (id === 'lineup' || id.includes(',')) {
     // Each frame in its own scheme (or all in paint=)
-    FRAMES.forEach((f, i) => {
+    const list = id === 'lineup' ? FRAMES : id.split(',').map(frameById);
+    list.forEach((f, i) => {
       const M = makeMaterials({ body, weapons });
       applyPaint(M, PAINTS.find((p) => p.id === (qs.get('paint') || f.paint)) || PAINTS[0]);
-      addFrame(f, (i - (FRAMES.length - 1) / 2) * 9.5, 0, M);
+      addFrame(f, (i - (list.length - 1) / 2) * 9.5, 0, M);
     });
   } else {
     const f = frameById(id);
