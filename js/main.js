@@ -43,6 +43,12 @@ const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second
 // the same time.
 const BOOST_DRAIN = 1 / 2.5;
 
+// Camera. Look pitch reaches to just short of straight up and straight down (exactly
+// vertical leaves lookAt without an up). The wheel zooms between CAM_DIST_MIN and
+// CAM_DIST_MAX; the game starts zoomed all the way in.
+const PITCH_MAX = 1.55;
+const CAM_DIST_MIN = 9, CAM_DIST_MAX = 26;
+
 // Saves live under vectorclad.* keys. Builds before the move to this repo saved under
 // fs07.*: read those when no vectorclad.* save exists yet; the next save writes the new key.
 const LEGACY_KEYS = { 'vectorclad.settings': 'fs07.settings', 'vectorclad.loadout': 'fs07.loadout.ac' };
@@ -157,7 +163,7 @@ const P = {
   ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, pullK: 0, pullFrom: new V3(),
   chest: new V3(),
 };
-const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
+const cam = { dist: CAM_DIST_MIN, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
 let mode = 'loading'; // loading | intro | play | hangar | over
 let time = 0;
 let deployed = false;
@@ -447,16 +453,16 @@ function updatePlayer(dt, c) {
   // Look
   const sens = 0.0022 * settings.sens;
   P.yaw -= c.lookX * sens;
-  P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -0.7, 1.0);
+  P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -PITCH_MAX, PITCH_MAX);
   // Lock-on steers the camera so the target stays in view; the mouse still adds on top
   if (playing && hard.target) {
     _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6.2, P.pos.z));
     const ty = Math.atan2(_t.x, _t.z);
-    const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -0.7, 1.0);
+    const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -PITCH_MAX, PITCH_MAX);
     P.yaw = dampAngle(P.yaw, ty, 3.5, dt);
     P.pitch = damp(P.pitch, tp, 3, dt);
   }
-  if (c.wheel) cam.dist = clamp(cam.dist + c.wheel * 1.5, 9, 26);
+  if (c.wheel) cam.dist = clamp(cam.dist + c.wheel * 1.5, CAM_DIST_MIN, CAM_DIST_MAX);
 
   _f.set(Math.sin(P.yaw), 0, Math.cos(P.yaw));
   _r.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
@@ -748,7 +754,7 @@ function leadPoint(out) {
   if (speed > 0) out.addScaledVector(t.vel, Math.min(2, d / speed));
   return out;
 }
-const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3();
+const camDir = new V3(), camRight = new V3(), camFwd = new V3(), pivot = new V3(), camPos = new V3();
 
 function updateCamera(dt, speed) {
   cam.pivotY = damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
@@ -761,6 +767,15 @@ function updateCamera(dt, speed) {
     const sideHit = world.raycast(pivot, camRight, side + 1.2, { targets: false });
     if (sideHit) side = Math.max(0, sideHit.dist - 1.2);
     const origin = _t.copy(pivot).addScaledVector(camRight, side);
+    // Looking steeply down, slide forward so the crosshair comes to rest on the ground just
+    // ahead of the feet, where the arms can reach, instead of passing beside the mech
+    let ahead = 4.5 - 7.4 / Math.tan(Math.max(0.01, -P.pitch));
+    if (ahead > 0) {
+      camFwd.set(Math.sin(P.yaw), 0, Math.cos(P.yaw));
+      const aheadHit = world.raycast(origin, camFwd, ahead + 1.2, { targets: false });
+      if (aheadHit) ahead = Math.max(0, aheadHit.dist - 1.2);
+      origin.addScaledVector(camFwd, ahead);
+    }
     // Pull in when something blocks the view
     const back = _t2.copy(camDir).negate();
     const hit = world.raycast(origin, back, cam.dist, { targets: false });
@@ -887,7 +902,7 @@ function frame(now) {
   _t.subVectors(aim.point, shoulder);
   const aimYawWorld = Math.atan2(_t.x, _t.z);
   const aiming = mode === 'play' && !cam.debugOrbit;
-  const aimPitch = aiming ? clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)), -0.8, 1.0) : 0;
+  const aimPitch = aiming ? Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) : 0;
   const aimYaw = aiming ? clamp(wrap(aimYawWorld - P.bodyYaw), -1.2, 1.2) : 0;
 
   // Weapons (input only while playing)
