@@ -126,8 +126,10 @@ const STONE_KITS = new Set(['limestone', 'masonry', 'travertine', 'ivory', 'sand
 function wallMat(tile, F) {
   if (F) return KIT_MATS[F.kit] || (GLASS_KITS.has(F.kit) ? 'glass' : F.kit === 'brick' ? 'brick' : STONE_KITS.has(F.kit) ? 'stone' : 'panel');
   if (!tile) return 'panel';
+  // A kit's tiles: its windows are what it is built of; its solid wall, piers and louvers are
+  // panels, even on a glass tower
   const kit = KIT_MATS[tile.split('_')[0]];
-  if (kit) return kit;
+  if (kit) return kit === 'glass' && !/_[01]\d$/.test(tile) ? 'panel' : kit;
   if (G.officeGlass.includes(tile) || G.officePanel.includes(tile) || G.modern.includes(tile) || G.mech.includes(tile) || tile === 'facade12') return 'glass';
   if (tile.startsWith('walls1')) return 'brick';
   if (tile.startsWith('shop') || tile.startsWith('walls5') || G.prewar.includes(tile) || G.officeStone.includes(tile)) return 'stone';
@@ -1020,7 +1022,8 @@ export class City {
     const F = this.kitFacade(pick(r, KIT_STYLE.house), Math.min(x1 - x0, z1 - z0));
     const [, bh] = tileMeters(F.bay);
     const n = Math.max(1, Math.round((3.5 + r() * 4) / bh));
-    const entry = this.storeEntry(r() < 0.6 ? pick(r, STORE_KITS) : null, true);
+    // Its windows round the ground floor too, a doorway (from a storefront kit) in the middle of the front
+    const entry = this.storeEntry(pick(r, STORE_KITS), true);
     const roof = pick(r, G.roofPitched), streets = { n: front === 'n', s: front === 's', e: true, w: true };
     const H = Math.min(x1 - x0, z1 - z0) * (0.28 + r() * 0.16);
     this.building({
@@ -1089,7 +1092,8 @@ export class City {
     const m = (x) => this.m(x), ov = m(0.6), [tw] = tileMeters(tile);
     const x0 = T.x0 - ov, x1 = T.x1 + ov, z0 = T.z0 - ov, z1 = T.z1 + ov;
     const b = this.bufFor(tile), c = cell(tile), ts = m(tw);
-    this.vol({ t: 'pyr', x0: T.x0, x1: T.x1, z0: T.z0, z1: T.z1, y0: T.y1, y1: T.y1 + h, mat: 'wood' });
+    // As drawn, eaves and all, for destruction: a hip, its sides all at the same pitch
+    this.vol({ t: 'pyr', hip: true, x0, x1, z0, z1, y0: T.y1, y1: T.y1 + h, mat: 'wood' });
     // A ridge along the long side: the slopes meet a line, not a point
     const alongX = x1 - x0 >= z1 - z0, half = (alongX ? z1 - z0 : x1 - x0) / 2, y1 = T.y1 + h;
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
@@ -1307,7 +1311,8 @@ export class City {
     if (rk && W > m(6) && D > m(6)) {
       for (let k = 1 + Math.floor(r() * 3); k > 0; k--) {
         const t = pick(r, rk.detail), q = m(1.4 + r() * 0.6), [x, z] = at(0.15 + r() * 0.7, 0.15 + r() * 0.7);
-        this.flat(this.bufFor(t), t, x - q / 2, z - q / 2, x + q / 2, z + q / 2, y + m(0.04), (xx, zz) => [(xx - x + q / 2) / q, (z + q / 2 - zz) / q]);
+        // Each a little above the last, so where two overlap neither flickers through
+        this.flat(this.bufFor(t), t, x - q / 2, z - q / 2, x + q / 2, z + q / 2, y + m(0.04 + 0.015 * k), (xx, zz) => [(xx - x + q / 2) / q, (z + q / 2 - zz) / q]);
       }
     }
     // Walk-ups and prewar buildings may carry an old timber water tower on a steel frame
@@ -2114,7 +2119,8 @@ export class City {
       for (let a = alongZ ? az : ax, e = alongZ ? bz : bx; a < e - 1e-3; a += m(40)) {
         const b = Math.min(e, a + m(40));
         this.cur = this.chunkOf(alongZ ? ax : (a + b) / 2, alongZ ? (a + b) / 2 : az);
-        if (alongZ) this.flat(this.bufFor(t), t, ax - tw / 2, a, ax + tw / 2, b, y0 + m(0.03), (xx, zz) => [xx / m(4), -zz / m(4)], 0, [0.85, 0.82, 0.75]);
+        // (the trail down the wood a little over those across it, where they cross)
+        if (alongZ) this.flat(this.bufFor(t), t, ax - tw / 2, a, ax + tw / 2, b, y0 + m(0.045), (xx, zz) => [xx / m(4), -zz / m(4)], 0, [0.85, 0.82, 0.75]);
         else this.flat(this.bufFor(t), t, a, az - tw / 2, b, az + tw / 2, y0 + m(0.03), (xx, zz) => [xx / m(4), -zz / m(4)], 0, [0.85, 0.82, 0.75]);
       }
     };
@@ -2250,25 +2256,41 @@ export class City {
     const tl = (2 * hw) / asp(track), plate = [girder, m(3), m(3)];
     // Where the trains run (js/train.js): two tracks down the deck
     this.el = { cx, hw, yt, z0, z1, tracks: [cx - m(2.4), cx + m(2.4)] };
+    // Bents about every 15 m, but none in a cross street's roadway, where the traffic passes under:
+    // those step back to the crosswalks either side
+    const Z = [];
+    for (let i = 0; i <= n; i++) {
+      let z = z0 + i * sp;
+      const prev = Z.length ? Z[Z.length - 1] : -Infinity;
+      for (const s of L.sts) {
+        if (z <= s.r0 - m(1.5) || z >= s.r1 + m(1.5)) continue;
+        // The nearer crosswalk, unless the last bent already stands there
+        const near = z - s.r0 < s.r1 - z ? s.r0 - m(1.5) : s.r1 + m(1.5), far = near < z ? s.r1 + m(1.5) : s.r0 - m(1.5);
+        z = near - prev > m(4) ? near : far;
+      }
+      if (z - prev > m(4)) Z.push(z);
+    }
+    // The line runs from the first bent to the last
+    this.el.z0 = Z[0]; this.el.z1 = Z[Z.length - 1];
     // Destructible in stretches of a dozen spans, each standing on its own bents at both ends (the
     // bent where two stretches meet belongs to both), so no one piece is too long to voxelize
-    const G = 12;
-    for (let g0 = 0; g0 < n; g0 += G) {
-      const g1 = Math.min(n, g0 + G);
+    const G = 12, N = Z.length - 1;
+    for (let g0 = 0; g0 < N; g0 += G) {
+      const g1 = Math.min(N, g0 + G);
       this.beginOwner('el');
       this.sboxMat = 'steel';
-      this.elSpans(g0, g1, { cx, hw, cw, xc, yb, yl, yt, yr, z0, sp, n, tl, plate, track, girder, col, bent, lattice, rail });
+      this.elSpans(g0, g1, { cx, hw, cw, xc, yb, yl, yt, yr, Z, n: N, tl, plate, track, girder, col, bent, lattice, rail });
       this.sboxMat = null;
       this.endOwner();
     }
   }
 
-  /** Spans g0..g1 - 1 of the El and the bents g0..g1 under them */
+  /** Spans g0..g1 - 1 of the El (between bents at E.Z) and the bents g0..g1 under them */
   elSpans(g0, g1, E) {
     const m = (x) => this.m(x), asp = (t) => cell(t).aspect;
-    const { cx, hw, cw, xc, yb, yl, yt, yr, z0, sp, n, tl, plate, track, girder, col, bent, lattice, rail } = E;
+    const { cx, hw, cw, xc, yb, yl, yt, yr, Z, n, tl, plate, track, girder, col, bent, lattice, rail } = E;
     for (let i = g0; i < g1; i++) {
-      const za = z0 + i * sp, zb = za + sp;
+      const za = Z[i], zb = Z[i + 1];
       this.cur = this.chunkOf(cx, (za + zb) / 2);
       this.sbox(cx - hw, yl, za, cx + hw, yt, zb, {
         ew: [girder, (yt - yl) * asp(girder), yt - yl], ns: i === 0 || i === n - 1 ? [girder, 0, 0] : null, bottom: plate,
@@ -2285,7 +2307,7 @@ export class City {
     }
     // Bents: a pair of steel columns under a cap beam, braced by a steel frame
     for (let i = g0; i <= g1; i++) {
-      const z = z0 + i * sp;
+      const z = Z[i];
       this.cur = this.chunkOf(cx, z);
       for (const s of [-1, 1]) {
         const x = cx + s * xc, face = [col, 0, (2 * cw) / asp(col)];
@@ -2773,7 +2795,7 @@ export class City {
     if (ctx.grounded && P.y < m(1.5)) {
       for (const f of ctx.feet) {
         this.query(f.x - m(1.4), f.z - m(1.4), f.x + m(1.4), f.z + m(1.4), (c) => {
-          if (!c.ref || c.ref.state !== 0) return;
+          if (!c.ref || c.ref.flat) return;
           const car = c.ref;
           if (f.x > c.min.x - m(0.4) && f.x < c.max.x + m(0.4) && f.z > c.min.z - m(0.4) && f.z < c.max.z + m(0.4)) this.crushCar(car);
         });

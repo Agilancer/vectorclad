@@ -639,8 +639,8 @@ export class WeaponSystem {
       }
       if (Math.random() < 0.5) this.fx.smoke.emit(p.x, p.y, p.z, rand(-2, 2), rand(3, 7), rand(-2, 2), rand(2, 3.5), 2, 9, 0.25, 0.24, 0.22, 0.6, 0.45, 0.45, 0.45, 0, 0.8, 0.5);
       if (Math.random() < 0.4) this.fx.sparksBurst(p, hit.normal, 4, 0xffc070, 40);
-      if (hit.target) this.world.damage(hit.target, def.dps * dt, p);
       if (this.world.people) this.world.people.hit(p, 2);
+      if (hit.target) this.world.damage(hit.target, def.dps * dt, p);
       // It cuts through whatever it touches: walls, floors, whole buildings
       else if (this.world.destruct) this.world.destruct.beam(hit, dir, dt);
       if (hit.normal.y > 0.9 && !hit.target && !hit.struct && Math.random() < 0.15) this.fx.scorch(p.x, p.z, rand(3, 5), p.y + 0.03);

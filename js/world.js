@@ -486,9 +486,10 @@ export class World {
     return this.spiders.damage(t, amount, point, from);
   }
 
-  damageRadius(point, radius, amount) {
-    if (this.people) this.people.blast(point, radius, amount);
-    if (this.furniture) this.furniture.blast(point, radius, amount);
+  /** o.crush: something came down there rather than went off, so people and furniture are crushed, not thrown */
+  damageRadius(point, radius, amount, o = {}) {
+    if (this.people && !o.crush) this.people.blast(point, radius, amount);
+    if (this.furniture && !o.crush) this.furniture.blast(point, radius, amount);
     // A copy: kills drop targets from the list
     for (const t of [...this.targets]) {
       if (!t.alive) continue;
@@ -508,7 +509,8 @@ export class World {
   /** Something heavy came down at p (a train car): what is under it is crushed */
   crushAt(p, r, amount) {
     if (this.people) for (const q of this.people.list) if (q.pos.distanceTo(p) < r && q.pos.y < p.y + r) this.people.squish(q);
-    this.damageRadius(p, r * 0.7, amount);
+    if (this.furniture) for (const it of [...this.furniture.items]) if (it.pos.distanceTo(p) < r * 0.8) this.furniture.remove(it);
+    this.damageRadius(p, r * 0.7, amount, { crush: true });
   }
 
   /**

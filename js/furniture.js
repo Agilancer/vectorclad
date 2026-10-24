@@ -106,7 +106,10 @@ export class Furniture {
       mesh.frustumCulled = false;
       mesh.castShadow = mesh.receiveShadow = true;
       scene.add(mesh);
-      this.kinds[k] = { mesh, slots: [], free: [], dirty: false };
+      // The box round the piece, to set it down on its lowest corner whichever way up it lands
+      const bb = mesh.geometry.boundingBox, corners = [];
+      for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) corners.push(new V3(x, y, z));
+      this.kinds[k] = { mesh, slots: [], free: [], dirty: false, corners, top: bb.max.y };
     }
     this.office = KINDS.filter((k) => FURNITURE[k].office);
     this.home = KINDS.filter((k) => FURNITURE[k].home);
@@ -171,14 +174,14 @@ export class Furniture {
     _w.normalize();
     for (const p of spots) {
       const kind = this.kind(home);
-      // Offices: a desk comes with its chair and a monitor on it
+      // Offices: a desk comes with a monitor on it, facing the chair drawn up to its front
       const yaw = Math.floor(Math.random() * 4) * Math.PI / 2 + rand(-0.15, 0.15);
       const it = this.add(kind, p, yaw, s);
       if (!it) continue;
       if (kind === 'desk') {
-        this.add('monitor', _v.set(p.x, p.y + this.m(0.76), p.z), yaw + rand(-0.3, 0.3), s);
-        const c = this.add('officeChair', _v.set(p.x - Math.sin(yaw) * this.m(0.7), p.y, p.z - Math.cos(yaw) * this.m(0.7)), yaw + rand(-0.6, 0.6), s);
-        if (c) c.on = it;
+        const mon = this.add('monitor', _v.set(p.x, p.y + this.m(0.76), p.z), yaw + rand(-0.2, 0.2), s);
+        if (mon) mon.on = it;
+        this.add('officeChair', _v.set(p.x + Math.sin(yaw) * this.m(0.75), p.y, p.z + Math.cos(yaw) * this.m(0.75)), yaw + Math.PI + rand(-0.5, 0.5), s);
       }
       const d = Math.hypot(p.x - x, p.y - y, p.z - z);
       if (d < r * 1.8) this.throw(it, _w.x * this.m(rand(3, 10)), this.m(rand(1, 5)), _w.z * this.m(rand(3, 10)));
@@ -187,6 +190,7 @@ export class Furniture {
 
   throw(it, vx, vy, vz) {
     it.air = true;
+    it.on = null;
     it.rest = 0;
     it.vel.set(vx, vy, vz);
     it.spin.set(rand(-6, 6), rand(-4, 4), rand(-6, 6));
@@ -206,41 +210,67 @@ export class Furniture {
     }
   }
 
+  /** What a piece at (x, z) comes down on: floors and streets, or the river outside the city */
+  floor(x, z, y) {
+    const g = this.world.groundHeight(x, z, y, this.m(0.3)), D = this.world.destruct;
+    return g <= 0 && D && D.ground(x, z) < 0 ? D.ground(x, z) : g;
+  }
+
+  /** How far below its origin a piece reaches, turned as it is (its lowest corner) */
+  low(it) {
+    let lo = 0;
+    for (const c of this.kinds[it.kind].corners) lo = Math.min(lo, _w.copy(c).applyQuaternion(it.q).y);
+    return lo * this.M;
+  }
+
+  /** Pieces inside a falling slab are crushed: gone in a puff */
+  crushIn(b, inside) {
+    for (let n = this.items.length - 1; n >= 0; n--) {
+      const it = this.items[n];
+      _v.copy(it.pos); _v.y += this.m(0.4);
+      if (inside(_v)) this.remove(it);
+    }
+  }
+
   update(dt, ctx) {
     const D = this.world.destruct, m = (x) => this.m(x), G = 9.81 * this.M * 1.3;
     const solid = (x, y, z) => (D ? D.solidAt(x, y, z) : false);
     for (let n = this.items.length - 1; n >= 0; n--) {
       const it = this.items[n];
       if (!it.air) {
-        // At rest: does the floor still hold it?
+        // At rest: does what it stands on still hold it? (A monitor goes with its desk.)
         it.check -= dt;
         if (it.check > 0) continue;
         it.check = 0.4;
-        if (it.pos.y > m(0.5) && !solid(it.pos.x, it.pos.y - m(0.2), it.pos.z)) this.throw(it, rand(-1, 1), 0, rand(-1, 1));
+        if (it.on) { if (it.on.air || this.items.indexOf(it.on) < 0) this.throw(it, it.on.vel.x, it.on.vel.y, it.on.vel.z); else continue; }
+        else if (this.floor(it.pos.x, it.pos.z, it.pos.y + m(0.3)) < it.pos.y - this.low(it) - m(0.4)) this.throw(it, rand(-1, 1), 0, rand(-1, 1));
         else continue;
       }
       it.vel.y -= G * dt;
       const nx = it.pos.x + it.vel.x * dt, ny = it.pos.y + it.vel.y * dt, nz = it.pos.z + it.vel.z * dt;
       if (solid(nx, ny + m(0.4), nz)) { it.vel.x *= -0.25; it.vel.z *= -0.25; it.spin.multiplyScalar(0.6); } else { it.pos.x = nx; it.pos.z = nz; }
-      it.pos.y = ny;
+      // Not up through a ceiling
+      if (it.vel.y > 0 && solid(it.pos.x, ny + m(1), it.pos.z)) it.vel.y = -it.vel.y * 0.2;
+      else it.pos.y = ny;
       _q.setFromEuler(_e.set(it.spin.x * dt, it.spin.y * dt, it.spin.z * dt));
       it.q.multiply(_q);
-      const g = this.world.groundHeight(it.pos.x, it.pos.z, it.pos.y + m(0.5), m(0.3));
-      if (it.pos.y <= g) {
-        it.pos.y = g;
+      const lo = this.low(it), g = it.vel.y > 0 ? -Infinity : this.floor(it.pos.x, it.pos.z, it.pos.y + lo + m(0.5));
+      if (g < 0 && it.pos.y + lo <= g) { this.remove(it); continue; } // into the river
+      if (it.pos.y + lo <= g) {
+        it.pos.y = g - lo;
         if (it.vel.y < -m(3)) {
           // Bounce and tumble on
           it.vel.y *= -0.28; it.vel.x *= 0.55; it.vel.z *= 0.55; it.spin.multiplyScalar(0.55);
         } else {
           it.vel.set(0, 0, 0);
           it.air = false;
-          // Settle on a side: snap the tumble to the nearest face down
+          // Settle on a side: snap the tumble to the nearest face down, then set it down on its lowest corner
           _e.setFromQuaternion(it.q);
           const snap = (a) => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
           it.q.setFromEuler(_e.set(snap(_e.x), _e.y, snap(_e.z)));
+          it.pos.y = g - this.low(it);
         }
       }
-      if (it.pos.y < this.world.city.L.water - m(4)) { this.remove(it); continue; }
       this.place(it);
     }
     for (const k in this.kinds) {

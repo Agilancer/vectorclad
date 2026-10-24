@@ -126,12 +126,13 @@ const SHAPE = /* glsl */`
       vec4 R = carSk(NS + 1);
       uv = R.xy + vec2(0.5 + 0.5 * a * clamp(P.z / (0.5 * wid), 0.0, 1.0), 1.0 - fs) * R.zw;
     } else if (f == 3) {
-      p = vec3(x, P.x + 0.002 * len, aRef.y * P.z);
+      // Flat underneath at the sills, not down to where the tires touch
+      p = vec3(x, max(P.x, 0.045 * len), aRef.y * P.z);
       n = vec3(0.0, -1.0, 0.0);
       uv = carSk(NS + 1).xy;
       dark = 0.12;
     } else {
-      float a = aRef.y, b = aRef.z, y = mix(P.x, P.y, b);
+      float a = aRef.y, b = aRef.z, y = mix(P.x, P.y, b) + (b > 0.99 ? (1.0 - a * a) * 0.03 * wid : 0.0);
       p = vec3(x, y, a * P.z * (b > 0.6 ? 1.0 - (b - 0.6) * 0.45 : 1.0));
       n = vec3(f == 4 ? 1.0 : -1.0, 0.0, 0.0);
       vec4 R = carSk(f == 4 ? NS : NS + 2);
@@ -156,7 +157,6 @@ function carMaterials(atlas, skin) {
       .replace('#include <common>', '#include <common>\nuniform sampler2D uCars;\nvarying vec2 vCarUv;\nvarying float vCarDark;\nvarying float vCarCut;')
       .replace('#include <map_fragment>', `
         vec4 carC = texture2D(uCars, vCarUv);
-        if (vCarCut > 0.5 && carC.a < 0.5) discard;
         diffuseColor.rgb *= carC.rgb * vCarDark;
         float carLum = dot(carC.rgb, vec3(0.2126, 0.7152, 0.0722));`)
       // Glass and dark trim glossy, paint a little less
@@ -257,7 +257,7 @@ export class Cars {
 
   place(car) {
     _q.setFromAxisAngle(_up, car.yaw);
-    _m.compose(car.pos, _q, _s.set(1, car.state === 1 ? 0.42 : car.state === 2 ? 0.75 : 1, 1));
+    _m.compose(car.pos, _q, _s.set(1, car.flat ? 0.42 : car.state === 2 ? 0.75 : 1, 1));
     this.mesh.setMatrixAt(car.i, _m);
     this.dirty = true;
   }
@@ -270,11 +270,16 @@ export class Cars {
    * the roads it meets, to turn there.
    */
   buildLanes() {
-    const L = this.city.L;
-    const aveLane = (a, ai, l) => ({ ave: true, idx: ai, c: a.r0 + (l + 0.5) * (a.r1 - a.r0) / 4, dir: a.dir, lo: L.sts[0].z0, hi: L.z1, cars: [] });
-    L.aves.forEach((a, ai) => { for (const l of [1, 2]) this.lanes.push(aveLane(a, ai, l)); });
+    const L = this.city.L, nA = L.aves.length - 1, last = L.sts[L.sts.length - 1].k;
+    // Traffic keeps to the city proper (not the filler rows north of the barricade). The roads round
+    // its edge carry it both ways, so wherever a car comes to the edge it has somewhere to turn.
+    L.aves.forEach((a, ai) => {
+      const edge = ai === 0 || ai === nA;
+      for (const l of [1, 2]) this.lanes.push({ ave: true, idx: ai, c: a.r0 + (l + 0.5) * (a.r1 - a.r0) / 4, dir: edge ? (l === 2 ? -1 : 1) : a.dir, lo: L.z0, hi: L.z1, cars: [] });
+    });
     L.sts.forEach((s, si) => {
-      const two = (s.k + 20) % 3 === 0;
+      if (s.k < 0) return;
+      const two = (s.k + 20) % 3 === 0 || s.k === 0 || s.k === last;
       for (const l of [1, 2]) {
         const dir = two ? (l === 2 ? 1 : -1) : s.dir;
         this.lanes.push({ ave: false, idx: si, c: s.r0 + (l + 0.5) * (s.r1 - s.r0) / 4, dir, lo: L.aves[0].x0, hi: L.x1, cars: [] });
@@ -287,7 +292,7 @@ export class Cars {
   /** Where lane l crosses the other roads: their middles along it, in its direction of travel */
   crossings(l) {
     const L = this.city.L;
-    if (!l.cross) l.cross = l.ave ? L.sts.map((s, i) => ({ at: (s.r0 + s.r1) / 2, idx: i })) : L.aves.map((a, i) => ({ at: (a.r0 + a.r1) / 2, idx: i }));
+    if (!l.cross) l.cross = l.ave ? L.sts.map((s, i) => ({ at: (s.r0 + s.r1) / 2, idx: i })).filter((c) => L.sts[c.idx].k >= 0) : L.aves.map((a, i) => ({ at: (a.r0 + a.r1) / 2, idx: i }));
     return l.cross;
   }
 
@@ -302,7 +307,7 @@ export class Cars {
     const yaw = l.ave ? (l.dir > 0 ? -Math.PI / 2 : Math.PI / 2) : (l.dir > 0 ? 0 : Math.PI);
     const car = this.make(i, Math.floor(Math.random() * CAR_SKINS.length), x, z, yaw);
     car.moving = true;
-    car.lane = l; car.along = along; car.speed = 0; car.vmax = this.city.m(rand(10, 15)); car.stuck = 0; car.look = Math.random();
+    car.lane = l; car.along = along; car.speed = 0; car.vmax = this.city.m(rand(10, 15)); car.stuck = 0; car.look = 0; car.odo = 0; car.block = Infinity; car.blockOdo = 0;
     car.collider = { min: car.min.clone(), max: car.max.clone().setY(this.city.m(1.8)), walk: true, ref: car };
     this.world.moveCollider(car.collider);
     l.cars.push(car);
@@ -409,16 +414,18 @@ export class Cars {
       const ahead = dx * fx + dz * fz, side = Math.abs(dx * fz - dz * fx);
       if (ahead > 0 && side < m(6) && P.y < m(8)) gap = Math.min(gap, ahead - m(9));
     }
-    // Wrecks, rubble, fallen pieces and trees: a look down the road now and then
+    // Wrecks, rubble, fallen pieces and trees: a look down the road now and then, low enough to
+    // see a flattened car. What it saw comes nearer as the car drives on.
     car.look -= 1;
     if (car.look <= 0) {
       car.look = 12 + Math.random() * 8;
       const fx = Math.cos(car.yaw), fz = -Math.sin(car.yaw);
-      _p.set(car.pos.x + fx * car.len * 0.5, m(1), car.pos.z + fz * car.len * 0.5);
+      _p.set(car.pos.x + fx * car.len * 0.5, m(0.6), car.pos.z + fz * car.len * 0.5);
       const h = this.world.raycast(_p, _d.set(fx, 0, fz), m(26), { targets: false, trees: true });
       car.block = h && !(h.collider && h.collider.ref && h.collider.ref === car) && h.normal.y < 0.7 ? h.dist : Infinity;
+      car.blockOdo = car.odo;
     }
-    if (car.block < Infinity) gap = Math.min(gap, car.block - m(3));
+    if (car.block < Infinity) gap = Math.min(gap, car.block - (car.odo - car.blockOdo) - m(3));
     return gap;
   }
 
@@ -437,6 +444,9 @@ export class Cars {
       car.speed += Math.sign(want - car.speed) * Math.min(Math.abs(want - car.speed), acc * dt);
       car.stuck = car.speed < m(0.3) ? car.stuck + dt : 0;
       const step = car.speed * dt;
+      car.odo += step;
+      // A turn ends in a new lane: look down it straight away
+      if (car.curve && car.curve.u === 0) car.look = 0;
       if (car.curve) {
         const C = car.curve;
         C.u = Math.min(1, C.u + step / C.len);
@@ -470,9 +480,11 @@ export class Cars {
 
   // ---- damage --------------------------------------------------------------------
 
+  /** Flattened, by the mech's foot or a piece of building: it stays flat, whatever happens to it after */
   crush(car) {
-    if (car.state !== 0) return false;
-    car.state = 1;
+    if (car.flat) return false;
+    car.flat = true;
+    if (car.state === 0) car.state = 1;
     car.speed = 0;
     this.place(car);
     car.collider.max.y = this.city.m(0.8);

@@ -147,7 +147,13 @@ export function voxelizeOwner(owner, M, ground) {
       for (let z = z0; z <= z1; z++) {
         const zz = Z[z];
         if (v.t === 'box') fillRow(y, z, b[0], b[3], k);
-        else if (v.t === 'pyr') {
+        else if (v.t === 'pyr' && v.hip) {
+          // A hip roof: every side comes in by the same amount, up to a ridge along the long side.
+          // Taken at the layer's foot and half a cell out, so the cells hold all of the slope
+          const cx = (v.x0 + v.x1) / 2, cz = (v.z0 + v.z1) / 2, hx = (v.x1 - v.x0) / 2, hz = (v.z1 - v.z0) / 2;
+          const d = Math.min(hx, hz) * Math.max(0, (g.ys[y] - v.y0) / (v.y1 - v.y0)) - h * 0.5;
+          if (Math.abs(zz - cz) <= hz - d) fillRow(y, z, cx - (hx - d), cx + (hx - d), k);
+        } else if (v.t === 'pyr') {
           const kk = 1 - t, cx = (v.x0 + v.x1) / 2, hw = ((v.x1 - v.x0) / 2) * kk;
           if (Math.abs(zz - (v.z0 + v.z1) / 2) <= ((v.z1 - v.z0) / 2) * kk) fillRow(y, z, cx - hw, cx + hw, k);
         } else {

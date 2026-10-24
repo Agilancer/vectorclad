@@ -226,6 +226,9 @@ class Splats {
 
 // ---- the crowd ------------------------------------------------------------------
 
+// How a dead body lies: position, sink, squash, heading and tilt (see People.still)
+const SIG = new Float64Array(11);
+
 export class People {
   /** opts: { scene, world, fx, sound, mobile } */
   constructor({ scene, world, fx, sound, mobile = false }) {
@@ -277,7 +280,10 @@ export class People {
     return (B.loop = { c, len, total: len.reduce((a, b) => a + b, 0) });
   }
 
-  /** Position on a block's loop at distance s, offset sideways (positive: toward the street) */
+  /**
+   * Position on a block's loop at distance s, offset sideways (positive: out toward the street).
+   * The offset loop is the loop grown by off all round, so it turns its corners without a jump.
+   */
   onLoop(B, s, off, out) {
     const lp = this.loop(B);
     s = ((s % lp.total) + lp.total) % lp.total;
@@ -285,8 +291,10 @@ export class People {
     while (e < 3 && s > lp.len[e]) { s -= lp.len[e]; e++; }
     const a = lp.c[e], b = lp.c[(e + 1) % 4], f = s / lp.len[e];
     const dx = (b[0] - a[0]) / lp.len[e], dz = (b[1] - a[1]) / lp.len[e];
-    // Clockwise round the block, so out to the street is to the left of the way along
-    out.set(a[0] + (b[0] - a[0]) * f + dz * off, this.city.L.curb, a[1] + (b[1] - a[1]) * f - dx * off);
+    // Corners NW, NE, SE, SW: out is -x or +x, and -z or +z
+    const ox = (k) => (k === 0 || k === 3 ? -off : off), oz = (k) => (k < 2 ? -off : off), e1 = (e + 1) % 4;
+    const x0 = a[0] + ox(e), z0 = a[1] + oz(e), x1 = b[0] + ox(e1), z1 = b[1] + oz(e1);
+    out.set(x0 + (x1 - x0) * f, this.city.L.curb, z0 + (z1 - z0) * f);
     return { e, dx, dz, f };
   }
 
@@ -295,12 +303,13 @@ export class People {
   /** A new person of model md at p: state idle; mode path (on B's loop), free, inside or air */
   add(md, p) {
     if (this.list.length >= this.cap) {
-      // Make room: the dead first, then walkers far away
+      // Make room: the dead first, then whoever is farthest from the mech (walkers, people in
+      // buildings, people wandering off), never someone in mid-fall
       const P = this.player;
-      let k = this.list.findIndex((q) => q.state === 'dead');
+      let k = this.list.findIndex((q) => q.state === 'dead' && q.mode === 'dead');
       if (k < 0 && P) {
         let far = -1, best = 0;
-        this.list.forEach((q, i) => { if (q.mode === 'path') { const d = q.pos.distanceToSquared(P); if (d > best) { best = d; far = i; } } });
+        this.list.forEach((q, i) => { if (q.mode !== 'air' && q.mode !== 'slide') { const d = q.pos.distanceToSquared(P); if (d > best) { best = d; far = i; } } });
         k = far;
       }
       if (k < 0) return null;
@@ -321,7 +330,7 @@ export class People {
     const q = this.add(Math.floor(Math.random() * MODELS.length), _v.set(0, 0, 0));
     if (!q) return null;
     q.mode = 'path'; q.B = B; q.s = s; q.dir = Math.random() < 0.5 ? 1 : -1;
-    q.off = (q.dir > 0 ? -1 : 1) * this.m(rand(0.3, 1.1));
+    q.off = (q.dir > 0 ? -1 : 1) * this.m(rand(0.25, 0.7));
     q.pace = this.m(rand(1.15, 1.6));
     q.state = 'walk';
     this.onLoop(B, s, q.off, q.pos);
@@ -356,25 +365,34 @@ export class People {
     q.state = 'run';
   }
 
-  /** Throw a person: off their feet, tumbling, flailing */
+  /** Throw a person (or a body): off their feet, tumbling, the living flailing */
   thrown(q, vx, vy, vz) {
     q.mode = 'air';
-    q.state = 'fall';
+    if (q.state !== 'dead') q.state = 'fall';
     q.vel.set(vx, vy, vz);
     q.spin.set(rand(-4, 4), rand(-2, 2), rand(-4, 4));
     q.maxY = q.pos.y;
     q.B = null;
+    q.cross = null;
   }
 
+  /**
+   * Killed. splat: on the spot (a round, a hard landing), lying down at once with a red splat;
+   * otherwise they topple over. Killed in mid-air, or over a drop, the body falls on.
+   */
   die(q, splat = false) {
     if (q.state === 'dead') return;
+    const air = q.mode === 'air';
     q.state = 'dead';
     q.mode = 'dead';
     q.dead = 0;
-    q.vel.set(0, 0, 0);
-    // Fall over backward or forward, unless already lying from a fall
-    if (!splat) { q.fallDir = Math.random() < 0.5 ? 1 : -1; q.dieT = 0; }
+    if (splat) {
+      q.tilt.setFromAxisAngle(_v.set(1, 0, 0), Math.random() < 0.5 ? -Math.PI / 2 : Math.PI / 2);
+      q.dieT = 9;
+    } else if (!air) { q.fallDir = Math.random() < 0.5 ? 1 : -1; q.dieT = 0; }
     q.tilt0 = q.tilt.clone();
+    if (air || q.pos.y > this.groundAt(q.pos.x, q.pos.z, q.pos.y + this.m(0.3)) + this.m(0.3)) { q.mode = 'air'; q.maxY = q.pos.y; return; }
+    q.vel.set(0, 0, 0);
     if (splat) this.splat(q);
   }
 
@@ -388,16 +406,19 @@ export class People {
     }
   }
 
-  /** The mech's foot came down on them */
+  /** Something heavy came down on them (the mech's foot, a slab, a train car). Returns whether it did. */
   squish(q) {
-    if (q.state === 'dead' && q.flat < 1) return;
-    this.die(q, true);
+    if (q.state === 'dead' && q.flat < 1) return false;
+    q.state = 'dead'; q.mode = 'dead'; q.dead = 0;
     q.flat = 0.18;
     q.tilt.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2);
     q.tilt0 = q.tilt.clone();
     q.dieT = 9;
+    q.vel.set(0, 0, 0);
+    q.cross = null;
     q.pos.y = this.groundAt(q.pos.x, q.pos.z, q.pos.y + this.m(0.5));
     this.splat(q, 1.4);
+    return true;
   }
 
   /** An explosion: thrown and killed near it, sent running further out */
@@ -438,8 +459,10 @@ export class People {
     }
   }
 
+  /** What a person standing or falling at (x, z), feet at y, comes to rest on: floors, streets, or the river */
   groundAt(x, z, y) {
-    return this.world.groundHeight(x, z, y, this.m(0.25));
+    const g = this.world.groundHeight(x, z, y, this.m(0.25)), D = this.world.destruct;
+    return g <= 0 && D && D.ground(x, z) < 0 ? D.ground(x, z) : g;
   }
 
   // ---- people in buildings -----------------------------------------------------------
@@ -465,7 +488,7 @@ export class People {
       if (Math.random() > 0.55 + crowd * 0.15) continue;
       const q = this.add(Math.floor(Math.random() * MODELS.length), sp);
       if (!q) break;
-      q.mode = 'inside'; q.s = s; q.state = Math.random() < 0.6 ? 'idle' : 'walk';
+      q.mode = 'inside'; q.s = s; q.state = Math.random() < 0.6 ? 'idle' : 'walk'; q.walkT = rand(1, 4);
       q.pace = this.m(rand(0.6, 1.1));
       q.yaw = Math.random() * TAU;
       const d = Math.hypot(sp.x - x, sp.y - y, sp.z - z);
@@ -517,9 +540,12 @@ export class People {
     if (this.spawnT <= 0) {
       this.spawnT = 0.4;
       this.repopulate(P);
-      // Walkers left far behind are moved on
-      const R2 = (this.radius * 1.15) ** 2;
-      this.list = this.list.filter((q) => !(q.mode === 'path' && (q.pos.x - P.x) ** 2 + (q.pos.z - P.z) ** 2 > R2));
+      // Walkers left far behind are moved on; the dead and the people in buildings far behind go too
+      const R2 = (this.radius * 1.15) ** 2, R3 = R2 * 2.25;
+      this.list = this.list.filter((q) => {
+        const d2 = (q.pos.x - P.x) ** 2 + (q.pos.z - P.z) ** 2;
+        return !(q.mode === 'path' ? d2 > R2 : q.mode !== 'air' && q.mode !== 'slide' && d2 > R3);
+      });
     }
     // The mech's feet
     const m = (x) => this.m(x);
@@ -527,7 +553,7 @@ export class People {
       for (const f of ctx.feet) {
         for (const q of this.list) {
           if (Math.abs(q.pos.x - f.x) > m(1.8) || Math.abs(q.pos.z - f.z) > m(1.8) || q.pos.y > f.y + m(1.5) || q.pos.y < f.y - m(2)) continue;
-          if (Math.hypot(q.pos.x - f.x, q.pos.z - f.z) < m(1.6)) { this.squish(q); this.sound.crunch(q.pos); }
+          if (Math.hypot(q.pos.x - f.x, q.pos.z - f.z) < m(1.6) && this.squish(q)) this.sound.crunch(q.pos);
         }
       }
     }
@@ -564,9 +590,9 @@ export class People {
         if (q.dead > 45) { q.sink += dt * m(0.25); if (q.sink > q.H * 0.5) q.gone = true; }
         // The floor under a body goes: it falls again
         q.check -= dt;
-        if (q.check <= 0 && q.flat === 1) {
+        if (q.check <= 0) {
           q.check = 0.5;
-          if (q.pos.y > this.city.L.curb + m(1) && !this.solid(q.pos.x, q.pos.y - m(0.25), q.pos.z)) { q.mode = 'air'; q.maxY = q.pos.y; }
+          if (q.pos.y > this.city.L.curb + m(0.5) && this.groundAt(q.pos.x, q.pos.z, q.pos.y + m(0.3)) < q.pos.y - m(0.5)) { q.mode = 'air'; q.maxY = q.pos.y; q.vel.set(0, 0, 0); }
         }
         break;
       }
@@ -585,6 +611,8 @@ export class People {
       const c = q.cross, v = (q.state === 'run' ? q.pace * 3 : q.pace) * dt;
       c.u = Math.min(1, c.u + v / c.len);
       q.pos.lerpVectors(c.a, c.b, c.u);
+      // Down off the curb onto the road, and up again at the far side
+      if (c.road) { const e = this.m(2.5) / c.len; if (c.u > e && c.u < 1 - e) q.pos.y = 0; }
       q.yaw = Math.atan2(c.b.x - c.a.x, c.b.z - c.a.z);
       if (c.u >= 1) { q.B = c.B; q.s = c.s; q.cross = null; }
       return;
@@ -627,12 +655,12 @@ export class People {
           if (d < bd) { bd = d; best = acc; }
           acc += lp2.len[k];
         }
-        const a = new V3(corner[0], this.city.L.curb, corner[1]), b = new V3();
-        this.onLoop(N, best, 0, b);
+        // From where it stands to the same place on the far side, keeping to its side of the walk
+        const a = q.pos.clone(), b = new V3();
+        this.onLoop(N, best, q.off, b);
         const len = a.distanceTo(b);
         if (len < m(45)) {
-          q.cross = { a, b, len, u: 0, B: N, s: best };
-          q.pos.copy(a);
+          q.cross = { a, b, len, u: 0, B: N, s: best, road: true };
         }
       }
     }
@@ -646,26 +674,38 @@ export class People {
       q.idleT -= dt;
       if (q.idleT <= 0) { q.state = 'walk'; }
     }
-    if (q.from && q.state === 'run') {
+    q.dodge = (q.dodge || 0) - dt;
+    if (q.from && q.state === 'run' && q.dodge <= 0) {
+      // Turn (the short way round) to run away from the trouble
       const a = Math.atan2(q.pos.x - q.from.x, q.pos.z - q.from.z);
-      q.yaw += clamp(((a - q.yaw + Math.PI * 3) % TAU) - Math.PI, -dt * 4, dt * 4);
+      let d = (a - q.yaw) % TAU;
+      if (d > Math.PI) d -= TAU; else if (d < -Math.PI) d += TAU;
+      q.yaw += clamp(d, -dt * 4, dt * 4);
     }
     if (v > 0) {
       q.pos.x += Math.sin(q.yaw) * v * dt;
       q.pos.z += Math.cos(q.yaw) * v * dt;
-      if (this.world.resolve(q.pos, m(0.3), q.H, q.pos.y + m(0.3))) q.yaw += rand(1, 2.5);
+      if (this.world.resolve(q.pos, m(0.3), q.H, q.pos.y + m(0.3))) { q.yaw += rand(1, 2.5); q.dodge = 0.8; }
       const g = this.groundAt(q.pos.x, q.pos.z, q.pos.y + m(0.5));
-      if (g < q.pos.y - m(0.8)) { q.mode = 'air'; q.maxY = q.pos.y; q.vel.set(Math.sin(q.yaw) * v, 0, Math.cos(q.yaw) * v); }
-      else q.pos.y = g;
+      if (g < q.pos.y - m(0.8)) { q.mode = 'air'; q.state = 'fall'; q.maxY = q.pos.y; q.vel.set(Math.sin(q.yaw) * v, 0, Math.cos(q.yaw) * v); return; }
+      q.pos.y = g;
     }
-    // Calmed down at street level: join the nearest block's sidewalk
-    if (q.state === 'walk' && q.fear <= 0 && q.pos.y < this.city.L.curb + m(0.5)) {
+    // Calmed down at street level: walk over to the nearest block's sidewalk and carry on round it
+    q.check -= dt;
+    if (q.check <= 0 && q.state === 'walk' && q.fear <= 0 && q.pos.y < this.city.L.curb + m(0.5)) {
+      q.check = 1;
       const B = this.nearestBlock(q.pos);
       if (B) {
         const lp = this.loop(B);
         let best = 0, bd = Infinity;
         for (let s = 0; s < lp.total; s += m(2)) { this.onLoop(B, s, 0, _a); const d = _a.distanceToSquared(q.pos); if (d < bd) { bd = d; best = s; } }
-        if (bd < m(8) ** 2) { q.mode = 'path'; q.B = B; q.s = best; q.dir = Math.random() < 0.5 ? 1 : -1; q.off = 0; q.pace = q.pace || m(1.3); }
+        if (bd < m(40) ** 2) {
+          const b = new V3();
+          this.onLoop(B, best, 0, b);
+          const len = Math.max(1e-3, b.distanceTo(q.pos));
+          q.mode = 'path'; q.B = B; q.s = best; q.dir = Math.random() < 0.5 ? 1 : -1; q.off = 0; q.pace = q.pace || m(1.3);
+          q.cross = { a: q.pos.clone(), b, len, u: 0, B, s: best };
+        }
       }
     }
   }
@@ -694,10 +734,11 @@ export class People {
     }
     const v = q.state === 'run' ? q.pace * 3.5 : q.pace;
     if (q.state === 'walk') { q.walkT -= dt; if (q.walkT <= 0) { q.state = 'idle'; q.idleT = rand(2, 8); return; } }
-    if (q.state === 'run' && q.from) q.yaw = Math.atan2(q.pos.x - q.from.x, q.pos.z - q.from.z) + Math.sin(q.t * 2) * 0.4;
+    q.dodge = (q.dodge || 0) - dt;
+    if (q.state === 'run' && q.from && q.dodge <= 0) q.yaw = Math.atan2(q.pos.x - q.from.x, q.pos.z - q.from.z) + Math.sin(q.t * 2) * 0.4;
     const nx = q.pos.x + Math.sin(q.yaw) * v * dt, nz = q.pos.z + Math.cos(q.yaw) * v * dt;
-    // Keep to the room: no walking into walls, nor (mostly) off the edge of the floor
-    if (this.solid(nx, q.pos.y + m(0.9), nz)) { q.yaw += rand(1.5, 3); return; }
+    // Keep to the room: no walking into walls (turning off along them a while), nor (mostly) off the edge of the floor
+    if (this.solid(nx, q.pos.y + m(0.9), nz)) { q.yaw += rand(1.5, 3); q.dodge = rand(0.6, 1.4); return; }
     if (!this.solid(nx, q.pos.y - m(0.25), nz)) {
       if (q.state === 'run' && Math.random() < 0.25) { this.edge(q, nx, nz); return; }
       q.yaw += rand(2, 3.5); return;
@@ -744,16 +785,31 @@ export class People {
       q.tilt.multiply(_q);
     }
     q.maxY = Math.max(q.maxY, q.pos.y);
+    // Rising (thrown up), nothing to land on yet: but not up through a ceiling
+    if (q.vel.y > 0) {
+      if (this.solid(q.pos.x, q.pos.y + q.H, q.pos.z)) q.vel.y = -q.vel.y * 0.2;
+      return;
+    }
     const g = this.groundAt(q.pos.x, q.pos.z, q.pos.y + m(0.6));
     if (q.pos.y <= g) {
       q.pos.y = g;
-      const impact = -q.vel.y;
-      if (q.state === 'dead') { q.mode = 'dead'; q.vel.set(0, 0, 0); q.tilt.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2); q.tilt0 = q.tilt.clone(); q.dieT = 9; return; }
-      if (q.doomed || impact > m(8.5) || q.maxY - g > m(5)) {
-        this.die(q, true);
-        q.tilt.setFromAxisAngle(_v.set(1, 0, 0), Math.random() < 0.5 ? -Math.PI / 2 : Math.PI / 2);
+      const impact = -q.vel.y, hard = q.doomed || impact > m(8.5) || q.maxY - g > m(5);
+      // Into the river: gone under
+      if (g < 0) {
+        q.gone = true;
+        this.fx.smoke.emit(q.pos.x, g + m(0.2), q.pos.z, 0, m(3), 0, 0.6, m(0.3), m(1.4), 0.85, 0.9, 0.95, 0.7, 0.85, 0.9, 0.95, 0, 0.5, -6);
+        return;
+      }
+      if (q.state === 'dead') {
+        q.mode = 'dead'; q.vel.set(0, 0, 0);
+        if (q.dieT === undefined || q.dieT < 9) { q.tilt.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2); q.dieT = 9; }
         q.tilt0 = q.tilt.clone();
-        q.dieT = 9;
+        if (hard && q.flat === 1) { q.flat = 0.55; this.splat(q); }
+        return;
+      }
+      if (hard) {
+        q.mode = 'free';
+        this.die(q, true);
         q.flat = 0.55;
         this.sound.crunch(q.pos);
       } else {
@@ -823,20 +879,38 @@ export class People {
   /** Every visible person's parts into the instanced meshes, nearest ones first */
   draw(cam) {
     for (const k in this.parts) this.parts[k].n = 0;
-    // Out past 400 m a person is a few pixels: not drawn. Past 110 m their pose is worked out every
-    // third frame (each on its own frame), and drawn from the last one in between.
-    const far2 = this.m(400) ** 2, mid2 = this.m(110) ** 2, o = {}, f = (this.frameN = (this.frameN || 0) + 1);
+    // Out past 400 m a person is a few pixels: not drawn. Past 40 m their pose is worked out every
+    // other frame, past 110 m every third (each on its own frame), and drawn from the last one in
+    // between. The dead lying still are drawn from the last one for as long as they lie there.
+    const far2 = this.m(400) ** 2, mid2 = this.m(110) ** 2, near2 = this.m(40) ** 2, o = {}, f = (this.frameN = (this.frameN || 0) + 1);
     for (const q of this.list) {
       const dx = q.pos.x - cam.x, dz = q.pos.z - cam.z, d2 = dx * dx + dz * dz;
       if (d2 > far2) continue;
-      if (d2 > mid2 && q.cache && (f + q.id) % 3) { this.replay(q); continue; }
+      // (a pose from frames ago, from before they went out of sight, won't do)
+      const fresh = q.cache && q.cacheF > f - 4;
+      if (q.cache && (q.state === 'dead' ? q.dieT >= 1 && this.still(q) : fresh && (d2 > mid2 ? (f + q.id) % 3 : d2 > near2 && (f + q.id) % 2))) { this.replay(q); continue; }
       this.body(q, this.pose(q, o));
+      q.cacheF = f;
     }
+    // Only what was written goes up to the GPU
     for (const k in this.parts) {
       const P = this.parts[k];
       P.mesh.count = P.n;
-      if (P.n) { P.mesh.instanceMatrix.needsUpdate = true; P.mesh.instanceColor.needsUpdate = true; }
+      if (!P.n) continue;
+      const A = P.mesh.instanceMatrix, C = P.mesh.instanceColor;
+      A.clearUpdateRanges(); A.addUpdateRange(0, P.n * 16); A.needsUpdate = true;
+      C.clearUpdateRanges(); C.addUpdateRange(0, P.n * 3); C.needsUpdate = true;
     }
+  }
+
+  /** Whether a body lies just as it did when its parts were last laid out (and note how it lies now) */
+  still(q) {
+    const s = q.sig || (q.sig = new Float64Array(SIG.length)), p = q.pos, t = q.tilt;
+    SIG[0] = p.x; SIG[1] = p.y; SIG[2] = p.z; SIG[3] = q.sink; SIG[4] = q.flat; SIG[5] = q.yaw; SIG[6] = q.headYaw;
+    SIG[7] = t.x; SIG[8] = t.y; SIG[9] = t.z; SIG[10] = t.w;
+    let same = true;
+    for (let i = 0; i < SIG.length; i++) if (s[i] !== SIG[i]) { s[i] = SIG[i]; same = false; }
+    return same;
   }
 
   /** Draw a person from the parts laid out last time (see body) */
@@ -878,53 +952,55 @@ export class People {
     M.head.copy(M.tor).multiply(_t.makeTranslation(0, 0.56, 0)).multiply(_t.makeRotationY(o.head * 0.8));
     const cache = q.cache || (q.cache = { n: 0, parts: [], cols: [], mats: new Float32Array(16 * 24) });
     cache.n = 0;
-    const put = (part, mat, sx = 1, sy = 1, sz = 1, color) => {
-      const P = this.parts[part];
-      if (!P) return;
-      const i = P.n++;
-      if (sx !== 1 || sy !== 1 || sz !== 1) mat = M.tmp.copy(mat).multiply(_t.makeScale(sx, sy, sz));
-      mat.toArray(P.mesh.instanceMatrix.array, i * 16);
-      const C = P.mesh.instanceColor.array;
-      C[i * 3] = color[0]; C[i * 3 + 1] = color[1]; C[i * 3 + 2] = color[2];
-      const k = cache.n++;
-      mat.toArray(cache.mats, k * 16);
-      cache.parts[k] = P; cache.cols[k] = color;
-    };
     for (const it of W) {
       switch (it.part) {
-        case 'pelvis': put('pelvis', M.pel, w, 1, w, it.color); break;
-        case 'torso': case 'pack': put(it.part, M.tor, w, 1, w, it.color); break;
-        case 'purse': put('purse', M.pel, w, 1, w, it.color); break;
-        case 'skirt': put('skirt', M.pel, w, 1, w, it.color); break;
+        case 'pelvis': this.put(cache, 'pelvis', M.pel, w, 1, w, it.color); break;
+        case 'torso': case 'pack': this.put(cache, it.part, M.tor, w, 1, w, it.color); break;
+        case 'purse': this.put(cache, 'purse', M.pel, w, 1, w, it.color); break;
+        case 'skirt': this.put(cache, 'skirt', M.pel, w, 1, w, it.color); break;
         case 'head': case 'hair': case 'hairBack': case 'bun': case 'hatTop': case 'hatBrim': case 'visor': {
           const afro = it.part === 'hair' && MODELS[q.md].hair.style === 'afro' ? 1.35 : 1;
-          put(it.part, M.head, afro, afro, afro, it.color);
+          this.put(cache, it.part, M.head, afro, afro, afro, it.color);
           break;
         }
         case 'uarm': {
-          for (const side of [-1, 1]) {
+          for (let side = -1; side <= 1; side += 2) {
             const swing = side < 0 ? o.armL : o.armR, elbow = side < 0 ? o.elbowL : o.elbowR;
             M.ua.copy(M.tor).multiply(_t.makeTranslation(side * 0.215 * w, 0.5, 0)).multiply(_t.makeRotationZ(side * o.armOut)).multiply(_t.makeRotationX(swing));
-            put('uarm', M.ua, 1, 1, 1, it.color);
+            this.put(cache, 'uarm', M.ua, 1, 1, 1, it.color);
             M.fa.copy(M.ua).multiply(_t.makeTranslation(0, -0.3, 0)).multiply(_t.makeRotationX(-elbow));
-            put('farm', M.fa, 1, 1, 1, W.farm);
+            this.put(cache, 'farm', M.fa, 1, 1, 1, W.farm);
           }
           break;
         }
         case 'thigh': {
-          for (const side of [-1, 1]) {
+          for (let side = -1; side <= 1; side += 2) {
             const swing = side < 0 ? o.legL : o.legR, knee = side < 0 ? o.kneeL : o.kneeR;
             M.th.copy(M.pel).multiply(_t.makeTranslation(side * 0.095 * w, -0.04, 0)).multiply(_t.makeRotationZ(side * o.legOut)).multiply(_t.makeRotationX(swing));
-            put('thigh', M.th, w, 1, w, it.color);
+            this.put(cache, 'thigh', M.th, w, 1, w, it.color);
             M.sh.copy(M.th).multiply(_t.makeTranslation(0, -0.43, 0)).multiply(_t.makeRotationX(knee));
-            put('shin', M.sh, 1, 1, 1, W.shin);
+            this.put(cache, 'shin', M.sh, 1, 1, 1, W.shin);
             M.tmp.copy(M.sh).multiply(_t.makeTranslation(0, -0.43, 0)).multiply(_t.makeRotationX(-knee * 0.5));
-            put('shoe', M.tmp, 1, 1, 1, W.shoe);
+            this.put(cache, 'shoe', M.tmp, 1, 1, 1, W.shoe);
           }
           break;
         }
         default: break; // farm, shin and shoe go with their limbs
       }
     }
+  }
+
+  /** One part of a person into its instanced mesh (scaled by sx, sy, sz in its own frame), and into their cache */
+  put(cache, part, mat, sx, sy, sz, color) {
+    const P = this.parts[part];
+    if (!P) return;
+    const i = P.n++;
+    if (sx !== 1 || sy !== 1 || sz !== 1) mat = this.mats.tmp.copy(mat).multiply(_t.makeScale(sx, sy, sz));
+    mat.toArray(P.mesh.instanceMatrix.array, i * 16);
+    const C = P.mesh.instanceColor.array;
+    C[i * 3] = color[0]; C[i * 3 + 1] = color[1]; C[i * 3 + 2] = color[2];
+    const k = cache.n++;
+    mat.toArray(cache.mats, k * 16);
+    cache.parts[k] = P; cache.cols[k] = color;
   }
 }

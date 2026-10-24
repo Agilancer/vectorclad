@@ -696,7 +696,8 @@ export class Destruction {
           sx += wx; sy += wy; sz += wz;
           const name = MATS[m].name;
           if (name === 'glass' || name === 'light') glass++; else if (name === 'steel') steel++; else other++;
-          if (name !== 'light') lastMat = m;
+          // The big chunks are of what the wall and slab are built of: glass only if there was nothing else
+          if (name !== 'light' && name !== 'leaf' && (name !== 'glass' || !lastMat)) lastMat = m;
           if (spawned < want && this.frame.chunks < 140 && (spawned < 3 || Math.random() < 0.5)) {
             spawned++;
             this.frame.chunks++;
@@ -2248,6 +2249,7 @@ export class Destruction {
     if (this.spiders) for (const sp of this.spiders.list) if (sp.alive && inside(sp.pos)) this.spiders.damage(sp, 9999, sp.pos);
     // People and furniture under it
     if (this.world.people) this.world.people.crushIn(b, inside);
+    if (this.world.furniture) this.world.furniture.crushIn(b, inside);
     // Trees in its way are torn out and carried along
     const T = this.world.trees;
     if (T) {

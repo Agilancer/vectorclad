@@ -196,29 +196,61 @@ def cut_net(A):
     return ny0 + (j + k) // 2
   gt, gb = gap(0.04, 0.3), gap(0.7, 0.96)
 
-  # Each row is split where it really breaks: the run through the middle column is the plan
-  # strip (or a fascia), what lies left and right of it the side strips. Where a side strip's
-  # windows curve in and touch the plan strip the row is one run; there it is cut at the gap
-  # columns found above.
+  # The gap columns row by row: where a row's side strips stand apart from the middle run, the
+  # middle of each gap; between those rows, interpolated. So where a side strip's windows curve
+  # in and touch the plan strip, it is cut along the plan strip's edge as it runs there, not at
+  # one column for the whole sheet (that one may sit at the hood, inside the cabin's side strip).
+  # The fascias, above and below the plan strip, keep the sheet-wide columns.
   cx = (cl + cr) // 2
+  ys_l, gl, ys_r, gr = [], [], [], []
+  for y in range(gt, gb):
+    if not A[y, cx]: continue
+    rs = runs(A[y])
+    i = next(i for i, (s0, e0) in enumerate(rs) if s0 <= cx < e0)
+    s0, e0 = rs[i]
+    # a side strip's run, not a speck of the sheet's halo
+    big = [k for k, (u, v) in enumerate(rs) if v - u >= W * 0.05]
+    lft, rgt = [k for k in big if k < i], [k for k in big if k > i]
+    if lft and nx0 + W * 0.18 <= s0 <= nx0 + W * 0.44 and rs[lft[-1]][1] > nx0 + W * 0.08:
+      ys_l.append(y); gl.append((rs[lft[-1]][1] + s0) / 2)
+    if rgt and nx0 + W * 0.56 <= e0 <= nx0 + W * 0.82 and rs[rgt[0]][0] < nx1 - W * 0.08:
+      ys_r.append(y); gr.append((e0 + rs[rgt[0]][0]) / 2)
+  def follow(ys, g, c):
+    out = np.full(h, c)
+    if len(ys) < 12: return out
+    g = ndimage.median_filter(np.array(g), size=9, mode='nearest')
+    # Beyond the first and last such rows (the fascias) the sheet-wide columns stand
+    out[ys[0]:ys[-1] + 1] = np.round(np.interp(np.arange(ys[0], ys[-1] + 1), ys, g))
+    return out
+  CL, CR = follow(ys_l, gl, cl), follow(ys_r, gr, cr)
+
+  # Each row is split where it really breaks: the run through the middle column is the plan
+  # strip (or a fascia), what lies left and right of it the side strips. Where a side strip ran
+  # into the plan strip the row is one run; there it is cut at that row's gap columns.
   part = np.zeros(A.shape, np.int8)  # 1 front, 2 top, 3 rear, 4 left, 5 right
   fused = np.zeros((h, 2), bool)  # rows where a side strip ran into the plan strip and was cut
   for y in range(ny0, ny1):
-    row = A[y]
-    a, b = cx, cx
-    if row[cx]:
-      for s0, e0 in runs(row):
-        if s0 <= cx < e0: a, b = s0, e0
-      fused[y] = (a < cl, b > cr)
-      a, b = max(a, cl), min(b, cr)
-    else:
-      a, b = cl, cr
+    row, l, r = A[y], CL[y], CR[y]
+    c = (l + r) // 2
+    a, b = c, c
     mid = 1 if y < gt else 3 if y >= gb else 2
+    if row[c]:
+      for s0, e0 in runs(row):
+        if s0 <= c < e0: a, b = s0, e0
+      # A fascia may be wider than the gap columns: it is cut there only where it runs on into a side strip
+      if mid == 2 or a < nx0 + W * 0.12 or b > nx1 - W * 0.12:
+        fused[y] = (a < l, b > r)
+        a, b = max(a, l), min(b, r)
+    else:
+      a, b = l, r
     part[y, :a] = 4; part[y, a:b] = mid; part[y, b:] = 5
   part[~A] = 0
   masks, boxes = {}, {}
   for k, name in ((1, 'front'), (2, 'top'), (3, 'rear'), (4, 'left'), (5, 'right')):
     M = part == k
+    # The plan strip loses the thin stalks (mirror arms) that reach out of it sideways, so its
+    # rectangle is the body's own width
+    if name == 'top': M = ndimage.binary_opening(M, structure=np.ones((9, 1), bool))
     # Keep the piece's main body: drop specks cut off from it (mirrors, bits of a neighbor)
     lab, nl = ndimage.label(M)
     if nl > 1:
@@ -243,8 +275,8 @@ def stations(side, sbox, outer_left, fused, top_mask, tbox, length, width, n=28)
 
   side: the side strip's mask, lying with the wheels on its outer edge (outer_left: on its left),
   so height above the ground runs inward; fused: per row of the sheet, whether it ran into the
-  plan strip and was cut from it there. Those rows lost their windows to the plan strip, so the
-  body there is raised to the roof line of the rows that didn't. top_mask: the plan strip.
+  plan strip and was cut from it there. Should such a row still have come out low, the body there
+  is raised to the line of the rows that weren't cut. top_mask: the plan strip.
   """
   x0, y0, x1, y1 = sbox
   sub = side[y0:y1, x0:x1]
@@ -264,9 +296,9 @@ def stations(side, sbox, outer_left, fused, top_mask, tbox, length, width, n=28)
     bot = np.interp(idx, idx[ok], bot[ok]); top = np.interp(idx, idx[ok], top[ok])
   tex = top / W  # where the strip's pixels end, across it
   geo_top = top.copy()
-  roof = np.max(top[3:n - 3]) if n > 8 else top.max()
-  if clamped[3:n - 3].sum() > n // 4:
-    geo_top = np.where(clamped, np.maximum(top, roof * 0.97), top)
+  # A station cut from the plan strip is never lower than its uncut neighbors make it
+  if clamped.any() and (~clamped).sum() >= 2:
+    geo_top = np.where(clamped, np.maximum(top, np.interp(idx, idx[~clamped], top[~clamped])), top)
   geo_top = ndimage.median_filter(geo_top, size=3, mode='nearest')
   # Front and rear faces: as tall as the hood and the trunk lid, from the bumpers' feet
   geo_top[0] = geo_top[1] = max(geo_top[2], geo_top[1]); geo_top[-1] = geo_top[-2] = max(geo_top[-3], geo_top[-2])
@@ -283,8 +315,10 @@ def stations(side, sbox, outer_left, fused, top_mask, tbox, length, width, n=28)
     r0, r1 = int(k * TL / n), max(int(k * TL / n) + 1, int((k + 1) * TL / n))
     xs = np.nonzero(tsub[r0:r1].any(0))[0]
     half[k] = (xs.max() + 1 - xs.min()) if len(xs) else 0
+  # Mirrors and stalks reach out of the plan strip at a station or two: filter them off before
+  # taking the widest station as the body's full width
+  half = ndimage.median_filter(half, size=5, mode='nearest')
   frac = np.clip(half / max(1, half.max()), 0.7, 1)
-  frac = ndimage.median_filter(frac, size=3, mode='nearest')
   out = []
   for k in range(n):
     out.append([round(float(bot[k] * scale), 3), round(float(geo_top[k]), 3), round(float(width / 2 * frac[k]), 3), round(float(min(1, tex[k])), 3)])
@@ -333,8 +367,12 @@ def build_cars(review=None):
           piece = cell[y0:y1, x0:x1].copy()
           piece[..., 3] = np.where(masks[part][y0:y1, x0:x1], 255, 0)
           piece = bleed(piece)
-          im = Image.fromarray(piece, 'RGBA')
-          im = im.resize((max(4, round(im.size[0] * scale)), max(4, round(im.size[1] * scale))), Image.LANCZOS)
+          # Colors and mask scaled apart (an RGBA resize would blacken the bled colors under alpha 0),
+          # then bled again at the new size
+          size = (max(4, round(piece.shape[1] * scale)), max(4, round(piece.shape[0] * scale)))
+          rgb = np.asarray(Image.fromarray(piece[..., :3], 'RGB').resize(size, Image.LANCZOS))
+          al = np.asarray(Image.fromarray(piece[..., 3], 'L').resize(size, Image.LANCZOS))
+          im = Image.fromarray(bleed(np.dstack([rgb, al])), 'RGBA')
           pk.add(f'{name}.{part}', im, 'clear')
           if dr: dr.rectangle((cx0 + x0, cy0 + y0, cx0 + x1 - 1, cy0 + y1 - 1), outline=(255, 0, 255) if part in ('left', 'right') else (0, 255, 255), width=2)
         cars.append(rec)
@@ -343,7 +381,8 @@ def build_cars(review=None):
   for rec in cars:
     for part in ('front', 'top', 'rear', 'left', 'right'):
       rec['parts'][part] = rects[f"{rec['name']}.{part}"]
-  img.save(os.path.join(OUT, 'cars.webp'), quality=88, method=6)
+  # exact: keep the colors under alpha 0, which filtering at the pieces' edges reads
+  img.save(os.path.join(OUT, 'cars.webp'), quality=88, method=6, exact=True)
   return {'url': 'textures/cars.webp', 'w': img.size[0], 'h': img.size[1]}, cars
 
 
@@ -366,7 +405,8 @@ def build_trees():
     for r, row in enumerate(rows):
       for c, im in enumerate(row):
         n = f'{kind}{r}{c}'
-        pk.add(n, im.resize((px, px), Image.LANCZOS))
+        # Mirrored gutters: js/trees.js samples the tiles mirrored, so at an edge it wants the edge again
+        pk.add(n, im.resize((px, px), Image.LANCZOS), 'symmetric')
         S['leaf' if is_leaf(im) else 'bark'].append(n)
   img, rects = pk.render()
   img.save(os.path.join(OUT, 'trees.jpg'), quality=86)

@@ -36,6 +36,7 @@ const mix = (a, b, t) => a + (b - a) * t;
 
 const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _e = new V3(), _j = new V3(), _n = new V3(), _p = new V3(), _r = new V3(), _s = new V3();
 const _q = new THREE.Quaternion(), _qi = new THREE.Quaternion(), _m = new THREE.Matrix4(), _w = new THREE.Matrix4(), _col = new THREE.Color();
+const _sph = new THREE.Sphere();
 const ID_Q = new THREE.Quaternion();
 
 /** Distance along a unit ray to where it enters a sphere, or -1 (a ray starting inside misses) */
@@ -68,6 +69,13 @@ function rayCapsule(o, d, a, b, r) {
   // Past the ends of the body: the end caps
   const ta = raySphere(o, d, a, r), tb = raySphere(o, d, b, r);
   return ta < 0 ? tb : tb < 0 ? ta : Math.min(ta, tb);
+}
+
+/** Contact spheres up a crown: [height above the base, radius], about a radius apart */
+function crownSpheres(S) {
+  const n = 1 + Math.ceil((S.crownB - S.crownA) / S.crownR - 1e-6), out = [];
+  for (let i = 0; i < n; i++) out.push([n > 1 ? S.crownA + (S.crownB - S.crownA) * i / (n - 1) : S.crownA, S.crownR]);
+  return out;
 }
 
 /** Closest point to p on segment ab */
@@ -145,7 +153,8 @@ function blobGeometry(detail = 1) {
 
 /** A needled cone: wide at its foot, its rim drooping in ragged points */
 function coneGeometry() {
-  const g = new THREE.ConeGeometry(1, 1, 14, 3, true);
+  // Closed: the underside of a tier shows from below
+  const g = new THREE.ConeGeometry(1, 1, 14, 3);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -218,7 +227,7 @@ export class Trees {
       for (const b of shapes[i].blobs) { if (b.cone) c.nCone++; else c.nBlob++; }
     });
     const base = {
-      trunk: (() => { const g = new THREE.CylinderGeometry(0.62, 1, 1, 9, 2, true); g.translate(0, 0.5, 0); return g; })(),
+      trunk: (() => { const g = new THREE.CylinderGeometry(0.62, 1, 1, 9, 2); g.translate(0, 0.5, 0); return g; })(),
       stump: (() => { const g = new THREE.CylinderGeometry(0.85, 1, 1, 9, 1); g.translate(0, 0.5, 0); return g; })(),
       blob: blobGeometry(1), blobHi: blobGeometry(2), cone: coneGeometry(),
     };
@@ -281,22 +290,29 @@ export class Trees {
         barkTint: S.barkTint, leafTint: S.leafTint, leafRGB: S.leafRGB, barkTile: S.bark,
         blobs: S.blobs,
         trunkR: S.trunkR, trunkH: S.trunkH, canopyY: S.canopyY, canopyR: S.canopyR,
+        crownR: S.crownR, crownA: S.crownA, crownB: S.crownB, crownLo: S.crownLo,
         com: (S.trunkH * 0.5 + S.canopyY) * 0.5, // center of mass, above the base
-        // Contact spheres: [height above the base, radius]
-        spheres: [[0.35 * u, Math.max(0.35 * u, S.trunkR)], [S.trunkH * 0.6, Math.max(0.35 * u, S.trunkR)], [S.canopyY, S.canopyR]],
+        // Contact spheres: [height above the base, radius]: root ball, trunk, and the crown's
+        // width all the way up it (a column or a spire takes several)
+        spheres: [[0.35 * u, Math.max(0.35 * u, S.trunkR)], [S.trunkH * 0.6, Math.max(0.35 * u, S.trunkR)], ...crownSpheres(S)],
         // Inverse inertia (unit mass) across the trunk and about it
         iIp: 1 / (H * H / 7.5), iIa: 1 / (2.2 * u * u),
         loose: false, asleep: false, rest: 0,
         pos: new V3(), vel: new V3(), w: new V3(), q: new THREE.Quaternion(),
         burn: 0, char: 0, smolder: 0, leaf: 1, recolor: true,
-        // World points for rays and blasts: trunk base and top, canopy center
-        A: new V3(), B: new V3(), C: new V3(), box: { x0: 0, z0: 0, x1: 0, z1: 0 },
+        // World points for rays and blasts: trunk base and top, canopy center, the crown capsule's ends
+        A: new V3(), B: new V3(), C: new V3(), C0: new V3(), C1: new V3(), box: { x0: 0, z0: 0, x1: 0, z1: 0 },
         cells: null, stamp: 0,
       };
       this.points(t);
       this.draw(t);
       this.list.push(t);
     });
+    // Each chunk's trees, standing: where the fine clumps are worth drawing (lod())
+    for (const t of this.list) {
+      const B = t.ch.box || (t.ch.box = new THREE.Box3()), R = t.canopyR;
+      B.expandByPoint(_a.set(t.base.x - R, t.base.y, t.base.z - R)).expandByPoint(_a.set(t.base.x + R, t.base.y + t.canopyY + R, t.base.z + R));
+    }
     for (const ch of this.chunks) {
       for (const m of [ch.trunk, ch.leaf, ch.cone]) {
         m.geometry.attributes.aTile.needsUpdate = true;
@@ -352,6 +368,14 @@ export class Trees {
       blob(0, trunkH + H * 0.5, 0, R * 0.55, H * 0.5, R * 0.55, true);
       cy = trunkH + H * 0.4; cr = Math.max(R, H * 0.5);
     }
+    // The crown as drawn: how far out from the trunk its blobs reach, its foot and its top
+    let cw = 0, lo = Infinity, hi = -Infinity;
+    for (const b of blobs) {
+      const e = b.cone ? b.sx : Math.max(b.sx, b.sy, b.sz);
+      cw = Math.max(cw, Math.hypot(b.x, b.z) + e);
+      lo = Math.min(lo, b.cone ? b.y : b.y - e); hi = Math.max(hi, b.cone ? b.y + b.sy : b.y + e);
+    }
+    cr = Math.max(cw, (hi - lo) / 2);
     const T = TREE_TILES[Sp.bark] || TREE_TILES.oak, Lf = TREE_TILES[Sp.leaf] || TREE_TILES.oak;
     const barkName = T.bark[Math.floor(r() * T.bark.length)];
     // One or two of the sheet's leaf tiles per tree, so a crown isn't patched from every one of them
@@ -359,6 +383,8 @@ export class Trees {
     const g = 0.88 + r() * 0.2;
     return {
       u, trunkH, trunkR: Sp.trunkR * u * k, canopyY: cy, canopyR: cr, blobs,
+      // The crown as a capsule up the trunk's axis (a ball for a round one): radius, ends, foot
+      crownR: cw, crownA: Math.min(lo + cw, (lo + hi) / 2), crownB: Math.max(hi - cw, (lo + hi) / 2), crownLo: lo,
       bark: tileRect(barkName), leafTiles: [tileRect(l0), tileRect(l1)],
       leafTint: Sp.tint.map((c) => c * g), barkTint: Sp.barkTint || [1, 1, 1], leafRGB: Sp.leafRGB,
     };
@@ -377,6 +403,8 @@ export class Trees {
     this.axisPoint(t, 0, t.A);
     this.axisPoint(t, t.trunkH, t.B);
     this.axisPoint(t, t.canopyY, t.C);
+    this.axisPoint(t, t.crownA, t.C0);
+    this.axisPoint(t, t.crownB, t.C1);
     const R = t.canopyR * 1.3, b = t.box;
     b.x0 = Math.min(t.A.x, t.C.x) - R; b.x1 = Math.max(t.A.x, t.C.x) + R;
     b.z0 = Math.min(t.A.z, t.C.z) - R; b.z1 = Math.max(t.A.z, t.C.z) + R;
@@ -385,13 +413,13 @@ export class Trees {
   /** Ray hit distance under `best`, or -1. Sets hitN. */
   rayHit(t, o, d, best, pad = 0) {
     let tt = best, part = 0;
-    const ts = raySphere(o, d, t.C, t.canopyR * t.leaf + pad);
+    const ts = rayCapsule(o, d, t.C0, t.C1, t.crownR * t.leaf + pad);
     if (ts >= 0 && ts < tt) { tt = ts; part = 1; }
     const tc = rayCapsule(o, d, t.A, t.B, t.trunkR * 1.5 + pad);
     if (tc >= 0 && tc < tt) { tt = tc; part = 2; }
     if (!part) return -1;
     _p.copy(o).addScaledVector(d, tt);
-    if (part === 1) this.hitN.subVectors(_p, t.C);
+    if (part === 1) this.hitN.subVectors(_p, closestOnSegment(_p, t.C0, t.C1, _a));
     else this.hitN.subVectors(_p, closestOnSegment(_p, t.A, t.B, _a));
     if (this.hitN.lengthSq() < 1e-9) this.hitN.copy(d).negate();
     this.hitN.normalize();
@@ -400,7 +428,7 @@ export class Trees {
 
   /** Distance from p to the tree's surface (0 inside it) */
   distTo(t, p) {
-    const dc = p.distanceTo(t.C) - t.canopyR * t.leaf;
+    const dc = p.distanceTo(closestOnSegment(p, t.C0, t.C1, _a)) - t.crownR * t.leaf;
     const dt = p.distanceTo(closestOnSegment(p, t.A, t.B, _a)) - t.trunkR;
     return Math.max(0, Math.min(dc, dt));
   }
@@ -688,11 +716,11 @@ export class Trees {
   // ---- per frame ------------------------------------------------------------------
 
   /** ctx: { player: V3 (feet), vel: V3 } */
-  /** Fine clumps for the chunks near the camera, coarse ones further out */
+  /** Fine clumps for the chunks whose trees come near the camera, coarse ones further out */
   lod(cam) {
-    const near = this.city.m(260);
+    const near = this.city.m(120);
     for (const ch of this.chunks) {
-      const S = ch.leaf.boundingSphere, hi = S.center.distanceTo(cam) - S.radius < near;
+      const hi = !!ch.box && ch.box.distanceToPoint(cam) < near;
       ch.leafHi.visible = hi; ch.leaf.visible = !hi;
     }
   }
@@ -710,8 +738,9 @@ export class Trees {
           if (t.asleep && this.touchesMech(t, P)) this.wake(t);
           return;
         }
-        const d = Math.hypot(t.base.x - P.x, t.base.z - P.z);
-        if (d > MECH_R + t.trunkR + t.canopyR * 0.5) return;
+        // It walks into the trunk, or into the crown where that comes down to its height
+        const d = Math.hypot(t.base.x - P.x, t.base.z - P.z), low = t.base.y + t.crownLo < P.y + MECH_H;
+        if (d > MECH_R + t.trunkR + (low ? t.crownR * 0.5 : 0)) return;
         if (P.y > t.base.y + t.canopyY + t.canopyR * 0.7 || P.y + MECH_H < t.base.y) return;
         struck.push(t);
       });
@@ -798,8 +827,13 @@ export class Trees {
 
   draw(t) {
     // Tree frame: origin at the base of the trunk
-    if (t.loose) _w.compose(this.axisPoint(t, 0, _a), t.q, _s.set(1, 1, 1));
-    else _w.compose(t.base, ID_Q, _s.set(1, 1, 1));
+    if (t.loose) {
+      _w.compose(this.axisPoint(t, 0, _a), t.q, _s.set(1, 1, 1));
+      // Rolled or pushed off: its chunk's bounds take it in, so it isn't culled where it lies now
+      _sph.set(t.C, t.canopyR + t.canopyY);
+      const ch = t.ch;
+      for (const m of [ch.trunk, ch.leaf, ch.leafHi, ch.cone]) if (m.boundingSphere && !m.boundingSphere.containsPoint(t.C)) m.boundingSphere.union(_sph);
+    } else _w.compose(t.base, ID_Q, _s.set(1, 1, 1));
     // The trunk runs on up into the crown
     _m.compose(_b.set(0, 0, 0), ID_Q, _s.set(t.trunkR, t.trunkH + (t.canopyY - t.trunkH) * 0.9, t.trunkR));
     t.ch.trunk.setMatrixAt(t.ti, _m.premultiply(_w));

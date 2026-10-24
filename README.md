@@ -173,7 +173,7 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
 - **The forest:** a belt of woods 190 m deep runs the length of the city between its westernmost avenue and the west esplanade. Gravel trails carry every cross street through it and one runs its length; boulders and fallen logs lie along them. A smooth field drifts the stands from oak, beech, maple, birch, elm, linden and poplar woods into pines, spruces, firs and cedars, with groves of redwoods twice their height.
 - **Open spaces:** a starting plaza with an armillary of steel rings and planters, two parks with fountains, three small greens, and the plaza under the gate building.
 - **Elevated structures:** built from ten structure kits (railway, steel truss, overpass, viaduct, interchange, footing, suspension, cable-stay, stonework and industrial).
-  - An elevated railway runs down the avenue beside the starting plaza: double track on a deck carried by lattice girders, on steel bents every 15 m. Trains run on it (see **Trains** below).
+  - An elevated railway runs down the avenue beside the starting plaza: double track on a deck carried by lattice girders, on steel bents about every 15 m (never in a cross street's roadway: there they step back to the crosswalks, and the traffic passes under). Trains run on it (see **Trains** below).
   - An elevated expressway runs along the east waterfront: four lanes on girders and hammerhead piers, with lamps along its barriers. At the south end a ramp brings it down to the esplanade.
   - Both decks clear the mech (17 m up), so it can walk under them, and both are solid: jump up onto either, or walk up the highway ramp, and walk along the top. Railings and barriers keep it on unless it jumps them. Spiders perch on them like roofs.
 - **Waterfront:** an esplanade with railings on the east and west (past the forest) and a stone balustrade with lamp pedestals along the south shore. North of the playable area the city carries on past a barricade.
@@ -194,16 +194,18 @@ wagons and rally cars), and its body is built to fit its skin. Each sheet holds 
 car nets: a plan strip (hood, roof, trunk) between two full-length side profiles, the
 front fascia above and the rear below. `tools/build_asset_atlas.py` cuts every net into its
 five pieces (where pieces touch, the fascias hang off the plan strip like tabs; they are
-cut free along the narrowest gap, row by row, and each piece is trimmed to its opaque
-pixels, which drops the sheets' soft fringes) and measures the side profile and plan at 28
-stations from bumper to bumper. The car's sides follow the painted silhouette, wheels,
+cut free along the narrowest gap, row by row, and where a side's windows run into the plan
+strip, along the plan strip's edge as it runs there; each piece is trimmed to its opaque
+pixels, which drops the sheets' soft fringes, and the plan strip loses its mirror arms) and
+measures the side profile and plan at 28 stations from bumper to bumper. The car's sides follow the painted silhouette, wheels,
 arches, windshield and roof line included, its top wears the plan strip and its ends the
 fascias. All cars share one topology and one draw call: the vertex shader reads each
 instance's skin from a data texture and moves the vertices to fit it.
 
 - **Parked cars** line the curb lanes of every street.
 - **Traffic** keeps to the middle lanes, one way along the avenues and one way or two way
-  on the cross streets. Cars follow the car ahead, turn at intersections where the streets
+  on the cross streets; the roads round the edge of the city run both ways, so a car that
+  comes to the edge always has somewhere to turn. Cars follow the car ahead, turn at intersections where the streets
   allow, and stop for the mech, for wrecks, rubble and pieces of building in the road, and
   for fallen trees. Up to 180 drive at once; new ones keep coming in out of the mech's
   sight to replace those lost, and wrecks are cleared away once nobody is near.
@@ -246,13 +248,14 @@ and come to rest on the street, on the rubble or on the floors below.
 
 ### Trains
 
-A train sets out down the elevated railway about once a minute from the north, beyond the
-barricade (`js/train.js`): cab cars at both ends and four coaches between, stainless steel
+A train comes in on the elevated railway about once a minute, out of the north end of the
+line beyond the barricade (`js/train.js`): cab cars at both ends and four coaches between, stainless steel
 from the silver aluminum facade sheet with ribbed titanium roofs, on bogies. It runs south
 down the line, stops at the end of it by the water, crosses over to the other track and
 runs back north out of the city.
 
-It brakes to a stop for the mech standing on the track. But wherever the deck has been shot
+It brakes to a stop for the mech standing on the track, and for a train stopped ahead of it,
+so trains held up queue behind each other (and the next one waits to come in). But wherever the deck has been shot
 away under it, or a wreck is lying on the line, it derails: the cars stay coupled while it
 brakes, and each one leaves the rails as it runs off the broken end of the track (the
 leading one as it runs into the wreck ahead), going on as a rigid body with the train's
@@ -260,7 +263,8 @@ speed. It tumbles off and crashes down onto whatever is below, crushing cars, pe
 trees. Whatever is left when the train stops lies on the deck for the next one to plough
 into. The trains keep coming whether or not the line is still there, so the wrecks pile up
 in and under the gap, each settled car becoming something solid for the next ones to land
-on and for the mech to climb.
+on and for the mech to climb. A settled wreck stays put only while something holds it up:
+shoot the deck out from under one, or the wreck it lies on, and it comes down.
 
 ### Atlases
 
