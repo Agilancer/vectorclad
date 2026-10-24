@@ -3,6 +3,7 @@
 //   frame=<id>|lineup   which frame, or all six side by side; frame=<id>,<id>,... for a few side by side
 //   preset=<n>          which of the frame's presets to equip (default 0)
 //   pose=idle|walk|dash|air|aim|slash|shield
+//   w=<slot>:<weapon>[:<skin>],...   swap weapons into the preset (weapon "none" empties the slot)
 //   paint=<paint id>    bare=1 (no weapons)    yaw=<radians> pitch=<radians> dist=<units>   rack=1 (every weapon), rack=new, rack=<weapon id>
 // window.__show drives it from a test.
 import * as THREE from '../js/three.js';
@@ -78,12 +79,18 @@ function clear() {
   units.length = 0;
 }
 
+const swaps = Object.fromEntries((qs.get('w') || '').split(',').filter(Boolean).map((e) => {
+  const [slot, wid, skin] = e.split(':');
+  return [slot, [wid === 'none' ? null : wid, skin || 'gunmetal']];
+}));
+
 function addFrame(frame, x, presetIdx = 0, M = mats) {
   const mech = frame.make(M, glowTex);
   mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   const preset = frame.presets[presetIdx] || frame.presets[0];
+  const loadout = { ...preset.slots, ...swaps };
   for (const slot of qs.get('bare') ? [] : slotsFor(frame)) {
-    const [wid, skin] = preset.slots[slot.id] || [null];
+    const [wid, skin] = loadout[slot.id] || [null];
     if (!wid || !WEAPONS[wid] || !allowedFor(slot, frame).includes(wid)) continue;
     const { model, mount } = mountWeapon(slot, wid, skin, M);
     addOutline(model.group, 0.022);
@@ -92,7 +99,7 @@ function addFrame(frame, x, presetIdx = 0, M = mats) {
   mech.root.position.set(x, 0, 0);
   scene.add(mech.root);
   const gun = (id) => !!id && id !== 'shield' && id !== 'blade' && !!WEAPONS[id];
-  const [R, L] = qs.get('bare') ? [] : [(preset.slots.rightHand || [])[0], (preset.slots.leftHand || [])[0]];
+  const [R, L] = qs.get('bare') ? [] : [(loadout.rightHand || [])[0], (loadout.leftHand || [])[0]];
   const u = { frame, mech, x, z: 0, hasShield: L === 'shield', armed: [gun(R), gun(L)], support: gun(R) && !L };
   units.push(u);
   return u;
