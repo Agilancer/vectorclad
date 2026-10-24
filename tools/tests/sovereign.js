@@ -1,8 +1,8 @@
 // Screenshots of the BK-09 Sovereign from several angles (tools/sovereign.html). Serve the repo root first:
 //   python -m http.server 8217 --bind 127.0.0.1
 //   node tools/tests/sovereign.js [view...]
-// Views: ref front three side back rear (default: all), plus "armed" for the sidearm held low,
-// "aim" for it raised, and the close-ups head and legs. Writes tools/tests/out/sovereign-<view>.png.
+// Views: ref front three side back rear (default: all), plus "armed" for the rifle at low ready
+// and "aim" for it raised. Writes tools/tests/out/sovereign-<view>.png.
 // Env: BASE_URL (default http://127.0.0.1:8217), THREE_DIR (a local copy of the three@0.170.0 npm
 // package, served in place of the CDN), VIEWPORT (default 600x900), OUTLINE=1.
 const path = require('path');
@@ -34,8 +34,8 @@ const shots = want.length ? want : VIEWS;
   await page.waitForFunction(() => window.__viewer && window.__viewer.ready, null, { timeout: 120000 }).catch((e) => { console.log(errors.join('\n')); throw e; });
   // [azimuth, elevation, distance, look-at height]; head* are close-ups
   const presets = {
-    ref: [-18, -7], front: [0, 6], three: [35, 10], side: [90, 4], back: [180, 8], rear: [-140, 12], armed: [-30, 4], aim: [-50, 6],
-    head: [-18, 2, 9, 6.1], legs: [-18, -4, 11, 1.8],
+    ref: [58, 4], front: [0, 6], three: [35, 10], side: [90, 4], back: [180, 8], rear: [-140, 12], armed: [35, 8], aim: [50, 8],
+    head: [30, 8, 10, 6.6], headref: [58, 4, 10, 6.4], legs: [58, 4, 9, 1.6],
   };
   for (const v of shots) {
     const [az, el, dist, ty] = presets[v] || presets.ref;

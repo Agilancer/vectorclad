@@ -132,24 +132,20 @@ Weapons, from the weapon sheet:
 
 ## The Sovereign (work in progress)
 
-BK-09 Sovereign is a second mech, black and gold, modeled after the Blueflow concept art
-with its palette swapped: blue plate becomes matte black, its light-blue edge lines become
-gold, white becomes champagne and the gray frame becomes gunmetal. It isn't in the game
-yet; look at it on its own turntable at `tools/sovereign.html` (serve the repository root as
-above, then open `/tools/sovereign.html`). The buttons switch camera presets (`ref` matches
-the art's low front angle), spin it, put the HG-4 Warden sidearm in its left hand and raise
-it to aim. URL parameters are listed at the top of `tools/sovereign-viewer.js`.
+BK-09 Sovereign is a second mech, black and gold, modeled after a piece of reference art.
+It isn't in the game yet; look at it on its own turntable at `tools/sovereign.html`
+(serve the repository root as above, then open `/tools/sovereign.html`). The buttons
+switch camera presets (`ref` matches the reference art's angle), spin it, put the SR-9
+Regalia rifle in its hands and raise it to aim. URL parameters are listed at the top of
+`tools/sovereign-viewer.js`.
 
-It is built on the Vanguard's rig (`js/sovereign.js` extends `Mech` and replaces its part
-builders), so it walks, dashes and jumps the same way, but stands wider and hunches lower.
-Two great crescent pauldrons lean out over its shoulders, banded in champagne and traced
-in gold, with its small beaked head sunk between them over rounded champagne chest
-plates. Its legs are the heaviest part of it: bulbous thigh drums ringed in champagne at
-the hip, thick rounded shins with a gold channel down the front and long curved greaves
-outside, round ankle discs with spurs, and heavy feet. Its armor is lofted through
-superellipse sections (`sloft`) for the rounded, smooth-shaded plate. Its arms aim with IK:
-a two-handed gun sits at low ready across the body with the free hand on its foregrip, a
-sidearm hangs at the side, and either swings up along the line of sight to aim.
+It is built on the Vanguard's rig (`js/sovereign.js` extends `Mech` and replaces its
+part builders), so it walks, dashes and jumps the same way. Two great binders stand off
+its back, their tops swept forward over the shoulders and their lower leaves trailing to
+the hips, each ending in a cannon port. Long blade skirts hang to its shins, its legs end
+in spikes with saw-toothed champagne heel fins, and champagne plates cover its shoulders
+and outer arms over brass machinery. Its arms aim with IK: the gun arm points the forearm
+down the line of sight, the free hand takes the foregrip, and an idle gun sits at a low ready.
 
 Its textures come from the black-and-gold pack in `assets/black-gold-mech-textures`.
 `python3 tools/build_mech_textures.py` turns them into the 1024 px WebPs in
@@ -676,7 +672,7 @@ in the hangar settings.
 | `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
-| `js/sovereign.js` | The BK-09 Sovereign on the Vanguard's rig, its materials, smooth lofts, arm IK and HG-4 sidearm |
+| `js/sovereign.js` | The BK-09 Sovereign on the Vanguard's rig, its materials, arm IK and SR-9 rifle |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
