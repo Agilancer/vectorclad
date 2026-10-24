@@ -255,16 +255,22 @@ down the line, stops at the end of it by the water, crosses over to the other tr
 runs back north out of the city.
 
 It brakes to a stop for the mech standing on the track, and for a train stopped ahead of it,
-so trains held up queue behind each other (and the next one waits to come in). But wherever the deck has been shot
-away under it, or a wreck is lying on the line, it derails: the cars stay coupled while it
-brakes, and each one leaves the rails as it runs off the broken end of the track (the
-leading one as it runs into the wreck ahead), going on as a rigid body with the train's
-speed. It tumbles off and crashes down onto whatever is below, crushing cars, people and
-trees. Whatever is left when the train stops lies on the deck for the next one to plough
-into. The trains keep coming whether or not the line is still there, so the wrecks pile up
-in and under the gap, each settled car becoming something solid for the next ones to land
-on and for the mech to climb. A settled wreck stays put only while something holds it up:
-shoot the deck out from under one, or the wreck it lies on, and it comes down.
+so trains held up queue behind each other (and the next one waits to come in; one coming to
+the end of the line stops clear of the crossover while another turns back over it). Running,
+its cars are solid: shots strike them, and the mech can stand on them.
+
+Wherever the deck has been shot away under it, or a wreck is lying on the line, it derails,
+and a blast that reaches the train throws the cars it hits off the rails. The cars stay
+coupled while it brakes, and each one leaves the rails as it runs off the broken end of the
+track (the leading one as it runs into the wreck ahead), going on as a rigid body with the
+train's speed, slewed aside and rolling, each the other way from the one before, so the
+train jackknifes. It tumbles off and crashes down onto whatever is below, crushing cars,
+people and trees. Whatever is left when the train stops lies on the deck for the next one to
+plough into. The trains keep coming whether or not the line is still there, so the wrecks
+pile up in and under the gap, each settled car becoming something solid for the next ones to
+land on and for the mech to climb. A settled wreck stays put only while something holds it
+up: shoot the deck out from under one, or the wreck it lies on, and it comes down. Up to 130
+wrecks stay; past that the ones with nothing on them, farthest from the mech, are cleared.
 
 ### Atlases
 
