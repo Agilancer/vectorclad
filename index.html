@@ -72,9 +72,12 @@
     </div>
     <div class="tally">
       <div class="score"><span class="label">KILLS</span><b id="score" class="mono">0</b></div>
-      <div class="score wave"><span class="label">WAVE</span><b id="wave" class="mono">–</b><small id="hostiles" class="mono"></small></div>
+      <div class="score wave"><span class="label">HOSTILES</span><b id="hostiles" class="mono">0</b></div>
     </div>
-    <button id="btn-hangar" class="chip-btn" type="button">Hangar <kbd>Tab</kbd></button>
+    <div class="hud-btns">
+      <button id="btn-summon" class="chip-btn" type="button">Summon <kbd>`</kbd></button>
+      <button id="btn-hangar" class="chip-btn" type="button">Hangar <kbd>Tab</kbd></button>
+    </div>
   </div>
 
   <div id="boss-bar" hidden><span class="label">BROODMOTHER</span><i><b></b></i></div>
@@ -108,7 +111,7 @@
 
   <div class="hud-right" id="weapons"></div>
   <div id="toast"></div>
-  <div id="help-hint" class="mono">WASD move · Mouse aim · LMB/RMB fire · T lock on · F cannon · Q missile · E salvo · Space jump · Shift dash</div>
+  <div id="help-hint" class="mono">WASD move · Mouse aim · LMB/RMB fire · T lock on · F cannon · Q missile · E salvo · Space jump · Shift dash · ` summon</div>
 </div>
 
 <div id="touch" hidden>
@@ -127,6 +130,7 @@
   </div>
   <button id="t-menu" class="chip-btn t-menu" type="button">Hangar</button>
   <button id="t-reload" class="chip-btn t-reload" type="button">Reload</button>
+  <button id="t-summon" class="chip-btn t-summon" type="button">Summon</button>
 </div>
 
 <section id="intro" hidden>
@@ -134,7 +138,7 @@
     <div class="stripe"></div>
     <div class="eyebrow">PORT MERIDIAN · FIELD TRIAL</div>
     <h1>VECTOR<span>CLAD</span></h1>
-    <p class="lede">Pick a 40-foot frame, the FS-07A Vanguard or the HV-02 Obsidian heavy, and ride a Kestrel H lifter in from the harbor to a Financial District overrun by spider-frames: six-legged machines that crawl the towers, leap from roof to roof and come at you with plasma, lasers, webs, mortars and suicide pounces. Scorpion-frames dig up out of the streets to claw and sting, but none can climb more than 100 feet up a wall. Heavier frames bridge the gaps between roofs, and every tenth wave a black millipede hundreds of feet long drapes itself over the city blocks. Kestrels set Bastion tanks down in the streets to hunt them with you. There are always more.</p>
+    <p class="lede">Pick a 40-foot frame, the FS-07A Vanguard or the HV-02 Obsidian heavy, and ride a Kestrel H lifter in from the harbor to a Financial District overrun by spider-frames: six-legged machines that crawl the towers, leap from roof to roof and come at you with plasma, lasers, webs, mortars and suicide pounces. Scorpion-frames dig up out of the streets to claw and sting, but none can climb more than 100 feet up a wall. Heavier frames bridge the gaps between roofs, and a black millipede hundreds of feet long can crawl out of a portal and drape itself over the city blocks. Kestrels set Bastion tanks down in the streets to hunt them with you. This is a tech demo: nothing attacks until you summon it, so press <kbd>`</kbd> in the fight to call in any monster, from a single spider to two hundred riftlings, through portals in the sky.</p>
     <div class="controls">
       <div class="ctl-group">
         <h3>Move</h3>
@@ -151,6 +155,7 @@
         <p><kbd>F</kbd> shoulder cannons</p>
         <p><kbd>Q</kbd> single missile · <kbd>E</kbd> full salvo</p>
         <p><kbd>R</kbd> reload · <kbd>Tab</kbd> hangar</p>
+        <p><kbd>`</kbd> summon monsters</p>
       </div>
     </div>
     <p class="touch-note">On a touchscreen: left thumb moves, drag the right side to aim, and use the buttons to lock on, fire, jump and dash.</p>
@@ -190,7 +195,7 @@
     <div class="eyebrow">SIGNAL LOST</div>
     <h2>Frame destroyed</h2>
     <div class="over-stats mono">
-      <div><span class="label">WAVE</span><b id="over-wave">1</b></div>
+      <div><span class="label">SUMMONED</span><b id="over-summoned">0</b></div>
       <div><span class="label">KILLS</span><b id="over-kills">0</b></div>
       <div><span class="label">TIME</span><b id="over-time">0:00</b></div>
     </div>
@@ -201,6 +206,35 @@
   </div>
 </section>
 
+<section id="brief" hidden role="dialog" aria-modal="true" aria-labelledby="brief-title">
+  <div class="brief-card">
+    <div class="stripe"></div>
+    <div class="eyebrow">TECH DEMO · BEFORE YOU DROP</div>
+    <h2 id="brief-title">You call the monsters</h2>
+    <p class="brief-text">VECTORCLAD is still a tech demo, so nothing will attack on its own. Press <kbd>`</kbd> (the key left of <kbd>1</kbd>) at any time to open the summon menu: pick a monster, set how many, and hit Summon. Each one drops out of its own portal about 800 ft ahead of where you're looking.</p>
+    <p class="brief-text touch-note">On a touchscreen, tap <b>Summon</b> at the top right.</p>
+    <div class="intro-actions">
+      <button id="btn-brief-ok" class="btn primary" type="button">Okay</button>
+    </div>
+  </div>
+</section>
+
+<aside id="summon" hidden aria-labelledby="summon-title">
+  <header class="summon-head">
+    <div class="stripe"></div>
+    <div class="hh-row">
+      <div>
+        <div class="eyebrow">TECH DEMO · DEBUG MENU</div>
+        <h2 id="summon-title">Summon</h2>
+      </div>
+      <button id="btn-summon-close" class="btn" type="button">Close <kbd>`</kbd></button>
+    </div>
+    <p class="summon-note">Each monster drops through a portal of its own about 800 ft ahead of where you're looking. A kind can be summoned again a minute after it was last called.</p>
+    <p class="summon-note queue-note">You're in the loadout: what you summon here is queued and comes through as soon as the fight starts. Press Queued again to take it back.</p>
+  </header>
+  <div id="summon-list" class="summon-body"></div>
+</aside>
+
 <aside id="hangar" hidden>
   <header class="hangar-head">
     <div class="stripe"></div>
@@ -210,6 +244,7 @@
         <h2>Loadout</h2>
       </div>
       <div class="hh-actions">
+        <button id="btn-hangar-debug" class="btn debug-btn" type="button">Debug</button>
         <button id="btn-hangar-back" class="btn" type="button" hidden>Frames</button>
         <button id="btn-close-hangar" class="btn primary" type="button">Launch</button>
       </div>

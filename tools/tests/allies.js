@@ -6,7 +6,8 @@
 // Scenarios: frames (both frames on the select and loadout screens, desktop and a landscape
 // phone), drop (the insertion: shots along the flight, the release, the landing on the plaza),
 // tanks (a pack forced in: Kestrels in, tanks down, then a fight with the swarm: prints how many
-// tanks landed, what they killed and what the swarm destroyed), all (default).
+// tanks landed, what they killed and what the swarm destroyed), all (default). The tanks' fight
+// summons a swarm through the summon menu's code (there are no waves).
 // Writes screenshots to tools/tests/out/allies-*.png.
 //
 // Env: BASE_URL (default http://127.0.0.1:8233), CHROMIUM_ARGS (default: the real GPU on Windows),
@@ -101,6 +102,11 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `allies-${na
       const s = await page.evaluate(() => { const D = window.__mech.allies.drop, P = window.__mech.P; return D && { t: D.t.toFixed(2), alt: (D.pos.y * window.__mech.METERS).toFixed(0), feet: (P.pos.y * window.__mech.METERS).toFixed(0), z: D.pos.z.toFixed(0), mode: window.__mech.mode }; });
       console.log('   ', JSON.stringify(s));
     }
+    // The drop holds at the release on the tech-demo notice until OKAY
+    await page.waitForFunction(() => window.__mech.mode === 'brief', null, { timeout: 120000, polling: 'raf' });
+    await shot(page, 'drop-brief');
+    check(!(await page.$eval('#brief', (e) => e.hidden)), 'held at the release on the tech-demo notice');
+    await page.click('#btn-brief-ok');
     await advance(page, 0.4);
     const rel = await page.evaluate(() => ({ mode: window.__mech.mode, drop: !document.querySelector('#drop').hidden, hud: !document.querySelector('#hud').hidden }));
     check(rel.mode === 'play' && !rel.drop && rel.hud, `released into play: mode ${rel.mode}, HUD up`);
@@ -121,7 +127,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `allies-${na
     const SECS = parseFloat(process.env.SECS || '60');
     await page.evaluate(() => {
       const m = window.__mech;
-      // The mech watches; the tanks and the swarm fight (pinned: a wave clear would cap it)
+      // The mech watches, unkillable; the tanks and the swarm fight
       Object.defineProperty(m.P, 'ap', { get: () => 1e9, set() {}, configurable: true });
       m.allies.schedule(0);
     });
@@ -182,8 +188,8 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `allies-${na
     await page.evaluate(() => { window.__mech.cam.free = null; });
     // The fight: the swarm and the tanks, for SECS seconds of game time
     const before = await page.evaluate(() => window.__mech.allies.kills);
-    // A harder wave, so the swarm has the numbers to wreck tanks (WAVE=n)
-    await page.evaluate((w) => { const S = window.__mech.spiders; if (w > S.wave) { S.wave = w - 1; S.phase = 'lull'; S.phaseT = 0; } }, parseInt(process.env.WAVE || '4', 10));
+    // Summon a swarm with the numbers to wreck tanks (there are no waves)
+    await page.evaluate(() => { const m = window.__mech; for (const id of ['stalker', 'skitter', 'bombard', 'burrower', 'berserker', 'bulwark', 'riftling']) m.summoner.summon(id, id === 'riftling' ? 60 : id === 'bulwark' ? 2 : 6, m.P); });
     let maxFoes = 0;
     for (let t = 0; t < SECS; t += 5) {
       await advance(page, 5);
@@ -191,12 +197,12 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `allies-${na
         const m = window.__mech, A = m.allies;
         const live = A.tanks.filter((x) => x.alive);
         return {
-          wave: m.spiders.wave, bugs: m.spiders.hostiles, tanks: live.length, wrecks: A.tanks.filter((x) => !x.alive).length, kills: A.kills,
+          bugs: m.spiders.hostiles, tanks: live.length, wrecks: A.tanks.filter((x) => !x.alive).length, kills: A.kills,
           foes: m.spiders.list.filter((s) => s.foe && s.foe.tank).length, hurt: Math.round(live.reduce((s, x) => s + x.maxHp - x.hp, 0)),
         };
       });
       maxFoes = Math.max(maxFoes, st.foes);
-      process.stdout.write(`\r    t=${t + 5}s wave ${st.wave} bugs ${st.bugs} tanks ${st.tanks} (armor lost ${st.hurt}) wrecks ${st.wrecks} tank kills ${st.kills} bugs on tanks ${st.foes}      `);
+      process.stdout.write(`\r    t=${t + 5}s bugs ${st.bugs} tanks ${st.tanks} (armor lost ${st.hurt}) wrecks ${st.wrecks} tank kills ${st.kills} bugs on tanks ${st.foes}      `);
       if (t === 15 || t === 35) {
         await page.evaluate(() => {
           const A = window.__mech.allies, t = A.tanks.find((x) => x.alive && x.target) || A.tanks.find((x) => x.alive);
@@ -232,9 +238,9 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `allies-${na
       await s.page.waitForTimeout(10000);
       const st = await s.page.evaluate(() => {
         const m = window.__mech, A = m.allies, f = window.__fps.splice(0);
-        return { wave: m.spiders.wave, tanks: A.tanks.filter((x) => x.alive).length, ships: A.ships.length, kills: A.kills, fps: f.length ? Math.min(...f).toFixed(0) + '-' + Math.max(...f).toFixed(0) : '-', next: A.packT.toFixed(0), mode: m.mode };
+        return { tanks: A.tanks.filter((x) => x.alive).length, ships: A.ships.length, kills: A.kills, fps: f.length ? Math.min(...f).toFixed(0) + '-' + Math.max(...f).toFixed(0) : '-', next: A.packT.toFixed(0), mode: m.mode };
       });
-      console.log(`    ${t + 10}s ${st.mode} wave ${st.wave} tanks ${st.tanks} ships ${st.ships} (next pack in ${st.next}s) tank kills ${st.kills} fps ${st.fps}`);
+      console.log(`    ${t + 10}s ${st.mode} tanks ${st.tanks} ships ${st.ships} (next pack in ${st.next}s) tank kills ${st.kills} fps ${st.fps}`);
     }
     const end = await s.page.evaluate(() => window.__mech.allies.tanks.length);
     check(end > 0, `packs came on their own (${end} tanks on the streets after two minutes)`);
