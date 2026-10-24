@@ -310,7 +310,7 @@ export class People {
     const q = {
       md, H, pos: p.clone(), vel: new V3(), yaw: Math.random() * TAU, state: 'idle', mode: 'free', t: 0, phase: Math.random() * TAU,
       speed: 0, tilt: new THREE.Quaternion(), spin: new V3(), flat: 1, look: 0, fear: 0, life: 0, idleT: rand(0, 6), headYaw: 0,
-      dead: 0, sink: 0, check: Math.random() * 0.3, maxY: p.y, flail: Math.random() * TAU,
+      dead: 0, sink: 0, check: Math.random() * 0.3, maxY: p.y, flail: Math.random() * TAU, id: this.ids = (this.ids || 0) + 1, cache: null,
     };
     this.list.push(q);
     return q;
@@ -823,10 +823,13 @@ export class People {
   /** Every visible person's parts into the instanced meshes, nearest ones first */
   draw(cam) {
     for (const k in this.parts) this.parts[k].n = 0;
-    const far2 = this.m(520) ** 2, o = {};
+    // Out past 400 m a person is a few pixels: not drawn. Past 110 m their pose is worked out every
+    // third frame (each on its own frame), and drawn from the last one in between.
+    const far2 = this.m(400) ** 2, mid2 = this.m(110) ** 2, o = {}, f = (this.frameN = (this.frameN || 0) + 1);
     for (const q of this.list) {
-      const dx = q.pos.x - cam.x, dz = q.pos.z - cam.z;
-      if (dx * dx + dz * dz > far2) continue;
+      const dx = q.pos.x - cam.x, dz = q.pos.z - cam.z, d2 = dx * dx + dz * dz;
+      if (d2 > far2) continue;
+      if (d2 > mid2 && q.cache && (f + q.id) % 3) { this.replay(q); continue; }
       this.body(q, this.pose(q, o));
     }
     for (const k in this.parts) {
@@ -836,7 +839,18 @@ export class People {
     }
   }
 
-  /** Lay out one person's parts with the rig */
+  /** Draw a person from the parts laid out last time (see body) */
+  replay(q) {
+    const c = q.cache;
+    for (let k = 0; k < c.n; k++) {
+      const P = c.parts[k], i = P.n++;
+      P.mesh.instanceMatrix.array.set(c.mats.subarray(k * 16, k * 16 + 16), i * 16);
+      const C = P.mesh.instanceColor.array, col = c.cols[k];
+      C[i * 3] = col[0]; C[i * 3 + 1] = col[1]; C[i * 3 + 2] = col[2];
+    }
+  }
+
+  /** Lay out one person's parts with the rig, keeping them for replay() */
   body(q, o) {
     const md = MODELS[q.md], k = this.M * md.h / 1.75, w = md.w;
     const hipY = 0.92;
@@ -862,6 +876,8 @@ export class People {
     M.pel.copy(root).multiply(_t.makeTranslation(0, hipY + o.bob, 0)).multiply(_t.makeRotationY(-o.twist * 0.5));
     M.tor.copy(M.pel).multiply(_t.makeTranslation(0, 0.06, 0)).multiply(_t.makeRotationX(o.lean)).multiply(_t.makeRotationY(o.twist));
     M.head.copy(M.tor).multiply(_t.makeTranslation(0, 0.56, 0)).multiply(_t.makeRotationY(o.head * 0.8));
+    const cache = q.cache || (q.cache = { n: 0, parts: [], cols: [], mats: new Float32Array(16 * 24) });
+    cache.n = 0;
     const put = (part, mat, sx = 1, sy = 1, sz = 1, color) => {
       const P = this.parts[part];
       if (!P) return;
@@ -870,6 +886,9 @@ export class People {
       mat.toArray(P.mesh.instanceMatrix.array, i * 16);
       const C = P.mesh.instanceColor.array;
       C[i * 3] = color[0]; C[i * 3 + 1] = color[1]; C[i * 3 + 2] = color[2];
+      const k = cache.n++;
+      mat.toArray(cache.mats, k * 16);
+      cache.parts[k] = P; cache.cols[k] = color;
     };
     for (const it of W) {
       switch (it.part) {
