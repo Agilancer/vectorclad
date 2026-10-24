@@ -179,23 +179,29 @@ export class Kestrel extends Mech {
     waist.add(chest);
     // Cockpit pod: an angular hull, deep and wide, sloping down to a blunt nose
     place(chest, P(loft([
-      { y: 0.0, w: 1.28, d: 1.44, c: 0.24, z: 0.0 },
-      { y: 0.42, w: 1.68, d: 2.0, c: 0.32, z: 0.08 },
-      { y: 1.0, w: 1.64, d: 1.92, c: 0.32, z: -0.06 },
-      { y: 1.3, w: 1.2, d: 1.32, c: 0.26, z: -0.2 },
+      { y: 0.0, w: 1.3, d: 1.4, c: 0.16, z: 0.0 },
+      { y: 0.4, w: 1.8, d: 1.9, c: 0.2, z: 0.08 },
+      { y: 1.02, w: 1.8, d: 1.86, c: 0.2, z: -0.04 },
+      { y: 1.26, w: 1.42, d: 1.5, c: 0.16, z: -0.12 },
     ]), M.armor, { all: B.plainA, x: B.plainA }));
     // Prow: the pod's front comes to a blunt point in three layers, a roof lip, an armored band and a dark chin
     const prow = (w, tip, h, y, z, mat, faces) => place(chest, P(topPrism([[-w, 0], [w, 0], [w * 0.72, tip * 0.6], [w * 0.22, tip], [-w * 0.22, tip], [-w * 0.72, tip * 0.6]], h, 0.03), mat, faces), 0, y, z);
-    prow(0.84, 0.5, 0.12, 1.06, 0.62, M.armor, PA).rotation.x = 0.1;
-    prow(0.8, 0.42, 0.42, 0.74, 0.7, M.armor, PA);
-    prow(0.62, 0.3, 0.26, 0.38, 0.66, M.second, { all: B.mechA });
-    place(chest, P(chamferBox(1.2, 0.05, 0.05, 0.02), M.accent, PA), 0, 0.98, 1.2);
-    strip(chest, M.eye, 0.3, 0.035, 0.02, 0.3, 0.84, 1.2);
-    slats(chest, M.joint, 3, -0.16, 0.38, 0.98, [0.16, 0, 0], 0.05, 0.16, 0.04);
-    // Round sensor disc ringed in white on the front right corner
-    place(chest, P(cylX(0.24, 0.1, 18), M.accent, PA), -0.84, 0.72, 0.68);
-    place(chest, P(cylX(0.19, 0.08, 18), M.second, PB), -0.88, 0.72, 0.68);
-    place(chest, P(cylX(0.1, 0.04, 14), M.lens), -0.92, 0.72, 0.68);
+    prow(0.9, 0.56, 0.16, 1.08, 0.6, M.armor, PA).rotation.x = 0.08;
+    prow(0.84, 0.44, 0.3, 0.82, 0.62, M.second, { all: B.mechA });
+    prow(0.86, 0.5, 0.3, 0.5, 0.64, M.armor, PA);
+    place(chest, P(chamferBox(1.3, 0.05, 0.05, 0.02), M.accent, PA), 0, 1.0, 1.2);
+    strip(chest, M.eye, 0.34, 0.035, 0.02, 0.3, 0.74, 1.08);
+    slats(chest, M.joint, 2, 0.5, 0.74, 1.0, [0.12, 0, -0.04], 0.04, 0.16, 0.04);
+    place(chest, P(chamferBox(0.5, 0.04, 0.05, 0.01), M.accent, PA), 0.2, 0.46, 1.16);
+    // Big round sensor disc ringed in white on the front right corner, facing forward and out
+    const disc = new THREE.Group();
+    disc.position.set(-0.84, 0.7, 0.96);
+    disc.rotation.y = -0.7;
+    chest.add(disc);
+    place(disc, P(cylZ(0.34, 0.34, 0.14, 22), M.accent, PA));
+    place(disc, P(cylZ(0.27, 0.27, 0.06, 22), M.armor, PA), 0, 0, 0.08);
+    place(disc, P(chamferBox(0.42, 0.04, 0.04, 0.01), M.joint), 0, 0, 0.12, 0, 0, 0.6);
+    place(disc, P(cylZ(0.08, 0.08, 0.04, 14), M.joint), 0, 0, 0.12);
     // Side armor, each side with a round sensor housing ringed in white
     for (const sd of [-1, 1]) {
       const side = place(chest, P(chamferBox(0.08, 0.66, 1.3, 0.05), M.armor, PA), sd * 0.86, 0.66, 0.04);
@@ -225,7 +231,8 @@ export class Kestrel extends Mech {
     const M = this.mats;
     // Canopy hump on the right of the roof: an angular hood with a light along its brow, a sensor drum and an antenna
     const head = (this.head = new THREE.Group());
-    head.position.set(-0.22, 1.26, 0.22);
+    head.position.set(-0.22, 1.24, 0.24);
+    head.scale.setScalar(1.22);
     head.rotation.order = 'YXZ';
     this.chest.add(head);
     place(head, P(new THREE.CylinderGeometry(0.24, 0.3, 0.16, 12), M.joint), 0, 0.02, 0);
@@ -252,12 +259,14 @@ export class Kestrel extends Mech {
   buildArm(s) {
     const M = this.mats;
     const sh = new THREE.Group();
-    sh.position.set(s * 1.06, 0.92, -0.12);
+    sh.position.set(s * 1.12, 0.92, -0.1);
     sh.rotation.order = 'YXZ';
     this.chest.add(sh);
-    // Shoulder: a long drum on the side of the pod, capped with a dial, a light down the upper arm
-    place(sh, P(cylX(0.27, 0.42, 18), M.armor, PA), s * 0.06, 0, 0);
-    this.dial(sh, 0.22, s * 0.28, 0, 0, s);
+    // Shoulder: a long drum standing out from the pod's corner, white-ringed, with a light along its top
+    place(sh, P(cylX(0.32, 0.74, 20), M.armor, PA), s * 0.02, 0, 0);
+    for (const x of [-0.3, 0.3]) place(sh, P(cylX(0.335, 0.06, 20), M.accent, PA), s * x, 0, 0);
+    this.dial(sh, 0.26, s * 0.4, 0, 0, s);
+    strip(sh, M.eye, 0.26, 0.04, 0.04, s * 0.06, 0.24, 0.2, -0.6, 0, 0);
     const pauldron = new THREE.Group();
     pauldron.position.set(s * 0.08, 0.1, 0);
     sh.add(pauldron);

@@ -230,29 +230,23 @@ export class Goliath extends Mech {
     head.rotation.order = 'YXZ';
     this.chest.add(head);
     place(head, P(new THREE.CylinderGeometry(0.22, 0.28, 0.4, 10), M.joint), 0, 0.02, -0.2);
-    place(head, P(loftZ([
-      { z: -0.34, w: 0.7, h: 0.58, y: 0.26, c: 0.16 },
-      { z: 0.16, w: 0.76, h: 0.56, y: 0.24, c: 0.16 },
-      { z: 0.46, w: 0.54, h: 0.38, y: 0.18, c: 0.1 },
-    ]), M.armor, PA));
-    // A sharp brow over a dark visor holding four blue eyes
-    place(head, P(blade([[0.62, 0.44], [0.24, 0.62], [-0.3, 0.66], [-0.38, 0.46], [0.1, 0.4]], 0.72, [1, 0.5]), M.armor, PA));
-    place(head, P(frontPrism([[-0.32, 0.08], [0.32, 0.08], [0.24, -0.08], [-0.24, -0.08]], 0.08, 0.015), M.joint), 0, 0.3, 0.48, -0.1).userData.noOutline = true;
+    // A long hood pushed forward like a snout, its brow over a dark face of four blue eyes
+    place(head, P(dome(0.78, 0.52, 1.1, { e: 2.4, back: 0.8 }), M.armor, PA), 0, 0.36, 0.12, 0.12);
+    place(head, P(blade([[0.66, 0.42], [0.3, 0.6], [-0.3, 0.66], [-0.4, 0.46], [0.1, 0.38]], 0.6, [1, 0.5]), M.armor, PA), 0, 0, 0.04);
+    place(head, P(dome(0.56, 0.3, 0.5, { back: 0.3, e: 2.2 }), M.second, PB), 0, 0.24, 0.42);
     for (const sd of [-1, 1]) {
-      for (const [x, y, w] of [[0.08, 0.32, 0.1], [0.2, 0.3, 0.08]]) {
-        place(head, new THREE.Mesh(new THREE.BoxGeometry(w, 0.035, 0.02), M.eye), sd * x, y, 0.53, -0.1, -sd * 0.2, -sd * 0.12).userData.noOutline = true;
+      for (const [x, y, w] of [[0.08, 0.3, 0.1], [0.2, 0.28, 0.08]]) {
+        place(head, new THREE.Mesh(new THREE.BoxGeometry(w, 0.035, 0.02), M.eye), sd * x, y, 0.64, -0.1, -sd * 0.3, -sd * 0.12).userData.noOutline = true;
       }
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x4fc6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.55 }));
       glow.scale.setScalar(0.32);
       glow.renderOrder = 6;
-      place(head, glow, sd * 0.14, 0.31, 0.56);
+      place(head, glow, sd * 0.14, 0.29, 0.68);
     }
-    // Layered jaw guard and cheek plates, a red crest blade over the crown
-    place(head, P(loftZ([
-      { z: -0.1, w: 0.64, h: 0.24, y: 0.0, c: 0.07 },
-      { z: 0.52, w: 0.44, h: 0.2, y: 0.04, c: 0.06 },
-    ]), M.second, PB));
-    place(head, P(frontPrism([[-0.2, 0.06], [0.2, 0.06], [0.12, -0.08], [-0.12, -0.08]], 0.06, 0.01), M.accent, PA), 0, 0.06, 0.52);
+    // Lower jaw with bared teeth of light grey slats, cheek plates, a red crest blade over the crown
+    place(head, P(dome(0.56, 0.24, 0.66, { back: 0.5, e: 2.4 }), M.second, PB), 0, 0.04, 0.3);
+    for (let i = -3; i <= 3; i++) place(head, P(chamferBox(0.035, 0.12, 0.04, 0.01), M.frame, PB), i * 0.055, 0.13, 0.6 - Math.abs(i) * 0.03);
+    place(head, P(frontPrism([[-0.16, 0.04], [0.16, 0.04], [0.1, -0.06], [-0.1, -0.06]], 0.05, 0.01), M.accent, PA), 0, 0.0, 0.6);
     for (const sd of [-1, 1]) {
       place(head, P(blade([[0.36, 0.06], [0.1, 0.28], [-0.32, 0.38], [-0.4, 0.0], [0.0, -0.12]], 0.07, [1, 0.6]), M.armor, PA), sd * 0.4, 0.12, 0.0, 0, -sd * 0.14, 0);
     }
@@ -304,7 +298,12 @@ export class Goliath extends Mech {
     }
     place(pauldron, P(chamferBox(1.0, 0.12, 1.36, 0.04), M.second, PB), s * 0.3, -0.36, 0.02);
     port(this, pauldron, 0.14, s * 0.3, -0.44, -0.3, Math.PI / 2, 0, 0);
-    this.plate(pauldron, 'danger', 0.36, s * 0.82, 0.12, 0.2, 0, s * Math.PI / 2, -s * 0.5);
+    const mark = new THREE.Group();
+    mark.position.set(s * 0.82, 0.14, 0.1);
+    mark.rotation.set(0, s * Math.PI / 2, 0);
+    pauldron.add(mark);
+    place(mark, P(frontPrism([[-0.2, 0.16], [0.16, 0.16], [0.22, 0.1], [0.22, -0.16], [0.12, -0.16], [0.12, 0.06], [-0.2, 0.06]], 0.03, 0.006), M.white));
+    place(mark, P(frontPrism([[-0.12, -0.06], [0.02, 0.0], [-0.12, 0.06]], 0.03, 0.006), M.white), -0.1, -0.08, 0);
 
     // Thick upper arm
     place(sh, P(new THREE.CylinderGeometry(0.26, 0.26, 1.1, 12), M.joint), 0, -0.62, 0);
