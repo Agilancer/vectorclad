@@ -524,7 +524,8 @@ export class People {
     if (fresh) {
       list.push(new V3(x, y, z));
       spots = this.floorSpots(s, x, y, z, this.m(16), Math.round(10 + 22 * crowd));
-      const by = this.floorSpots(s, x, y, z, r * 1.6, n, 0.45);
+      // The crowd by the hole, on the floors it broke into
+      const by = this.floorSpots(s, x, y + r * 0.2, z, r * 1.6, n, 0.35);
       for (let k = 0; k < by.length + spots.length; k++) {
         if (k >= by.length && Math.random() > 0.55 + crowd * 0.15) continue;
         const q = this.add(Math.floor(Math.random() * MODELS.length), k < by.length ? by[k] : spots[k - by.length]);

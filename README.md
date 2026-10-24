@@ -251,7 +251,7 @@ cylinders: desks with monitors and office chairs, filing cabinets, bookshelves f
 books, water coolers and potted plants for the offices; sofas, armchairs, beds, tables
 and chairs, televisions, fridges, wardrobes and floor lamps for the homes. A fresh hole
 throws the pieces right by it on the floors it broke into out through it, one for about
-every eight cubic meters it blew away, and later blasts throw the pieces still indoors out
+every six cubic meters it blew away, and later blasts throw the pieces still indoors out
 through the hole too, tumbling and skidding across the floor; a piece whose floor is shot
 away falls; they bounce, skid and come to rest on the street, on the rubble or on the
 floors below.

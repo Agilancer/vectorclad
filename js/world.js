@@ -530,8 +530,9 @@ export class World {
     const spots = P.occupy(s, x, y, z, r, o.crowd, vol);
     if (!spots || !this.furniture) return;
     const home = o.style === 'house' || o.style === 'walkup';
-    // And right by the hole, to be thrown out of it, a piece for about every eight cubic meters it blew away
-    const by = P.floorSpots(s, x, y, z, r * 1.6, Math.floor(vol / 8 + Math.random()), 0.45);
+    // And right by the hole, on the floors it broke into, to be thrown out of it: a piece for about
+    // every six cubic meters it blew away
+    const by = P.floorSpots(s, x, y + r * 0.2, z, r * 1.6, Math.floor(vol / 6 + Math.random()), 0.35);
     this.furniture.furnish(s, P.floorSpots(s, x, y, z, this.city.m(15), Math.round(8 + 12 * Math.min(1.6, o.crowd))), x, y, z, r, home, by);
   }
 
