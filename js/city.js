@@ -2,6 +2,7 @@ import * as THREE from './three.js';
 import { ATLASES, TILES, PANELS, KITS, GROUND, PARTS, STRUCTS, OUTLINES } from './cityTiles.js';
 import { KIT_MATS, ROOF_KITS } from './kitTiles.js';
 import { canvasTexture } from './atlas.js';
+import { BILLBOARDS } from './billboards.js';
 import { Trees } from './trees.js';
 import { Cars } from './cars.js';
 
@@ -151,48 +152,17 @@ const GROUND_WEAR = [
   ['ruin', 'grime', 'hazard', 'faded'],
 ];
 
-/**
- * The sign atlas: 2 x 4 cells of 2:1. Cell 0 is a helipad marking (drawn squeezed, so it shows
- * round on a square pad); cells 1-7 are screens for made-up brands.
- */
-function signTexture() {
-  return canvasTexture(1024, (g, S) => {
-    const cw = S / 2, ch = S / 4;
-    const ads = [
-      ['VOLTA', 'CHARGE IN 4 MIN', '#ff2d6f', '#3a0ca3'], ['KAIRO', 'SKY LOUNGE 88F', '#00e5ff', '#032b5a'],
-      ['NEON/9', 'NIGHT MARKET', '#ffd400', '#d1003f'], ['HALCYON', 'AIR · RAIL · SEA', '#7cff4f', '#003b2f'],
-      ['ZERO-G', 'ENERGY DRINK', '#ff7a00', '#2b0057'], ['PULSE', 'LIVE AT THE DOME', '#f0f0ff', '#0050ff'],
-      ['ORBIT', 'MERIDIAN TOWER', '#ff4fd8', '#00a6a6'],
-    ];
-    for (let i = 0; i < 8; i++) {
-      g.save();
-      g.translate((i % 2) * cw, Math.floor(i / 2) * ch);
-      g.beginPath(); g.rect(0, 0, cw, ch); g.clip();
-      if (i === 0) {
-        g.fillStyle = '#2c2e31'; g.fillRect(0, 0, cw, ch);
-        g.scale(2, 1);
-        g.strokeStyle = '#f2c230'; g.lineWidth = 9;
-        g.beginPath(); g.arc(128, 128, 104, 0, Math.PI * 2); g.stroke();
-        g.fillStyle = '#eceae4';
-        g.fillRect(84, 66, 22, 124); g.fillRect(150, 66, 22, 124); g.fillRect(84, 117, 88, 22);
-      } else {
-        const [word, sub, a, b] = ads[i - 1];
-        const gr = g.createLinearGradient(0, 0, cw, ch);
-        gr.addColorStop(0, b); gr.addColorStop(1, '#05060a');
-        g.fillStyle = gr; g.fillRect(0, 0, cw, ch);
-        // Shapes behind the type
-        g.globalAlpha = 0.35; g.fillStyle = a;
-        for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(60 + k * 105, 40 + (k % 2) * 170, 30 + k * 12, 0, Math.PI * 2); g.fill(); }
-        g.globalAlpha = 1;
-        g.fillStyle = a; g.fillRect(24, ch - 46, cw - 48, 6);
-        g.font = 'bold 104px "Chakra Petch", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.shadowColor = a; g.shadowBlur = 24; g.fillStyle = '#ffffff';
-        g.fillText(word, cw / 2, ch * 0.42);
-        g.shadowBlur = 0; g.font = 'bold 30px "Chakra Petch", sans-serif'; g.fillStyle = a;
-        g.fillText(sub, cw / 2, ch * 0.78);
-      }
-      g.restore();
-    }
+// Billboards are 16:9, like the ads in assets/billboards
+const AD_ASPECT = 9 / 16;
+
+/** The helipad marking: a yellow ring around a white H on dark concrete */
+function helipadTexture() {
+  return canvasTexture(256, (g) => {
+    g.fillStyle = '#2c2e31'; g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = '#f2c230'; g.lineWidth = 9;
+    g.beginPath(); g.arc(128, 128, 104, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#eceae4';
+    g.fillRect(84, 66, 22, 124); g.fillRect(150, 66, 22, 124); g.fillRect(84, 117, 88, 22);
   });
 }
 
@@ -333,6 +303,8 @@ export class City {
     this.fountains = [];
     this.signs = { screen: { pos: [], nor: [], uv: [], idx: [] }, mark: { pos: [], nor: [], uv: [], idx: [] } };
     this.rd = mulberry(1988); // decorations: screens and kiosks, apart from the layout
+    this.ra = mulberry(2061); // the order the billboard ads go up in, apart from the decorations
+    this.ads = []; // the billboard ads still to go up this round: every one is up before any repeats
     this.cars = [];
     this.pending = [];
     this.burning = [];
@@ -1384,7 +1356,7 @@ export class City {
       for (const dx of [-0.35, 0.35]) this.prop('box', x + dx * w, y + m(1.5), zf, m(0.3), m(3), m(0.3), [0.18, 0.18, 0.2]);
       const ax = x - (dir * w) / 2, bx = x + (dir * w) / 2;
       this.screen(ax, zf, bx, zf, yb, w, 0);
-      this.collide(x - w / 2, y, zf - m(0.5), x + w / 2, yb + w * 0.5, zf + m(0.5));
+      this.collide(x - w / 2, y, zf - m(0.5), x + w / 2, yb + w * AD_ASPECT, zf + m(0.5));
     }
   }
 
@@ -1457,34 +1429,50 @@ export class City {
   }
 
   /**
-   * A glowing screen in a dark housing on the face of a wall from a to b (seen from outside),
-   * centered on it, w wide and half as tall, its bottom at y, standing out from the wall.
+   * A glowing billboard in a dark housing on the face of a wall from a to b (seen from outside),
+   * centered on it, w wide and 16:9, its bottom at y, standing out from the wall.
    */
   screen(ax, az, bx, bz, y, w, out) {
     const m = (v) => this.m(v), dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
-    const h = w * 0.5, d = m(0.35), cx = (ax + bx) / 2 + nx * out, cz = (az + bz) / 2 + nz * out, fx = cx + nx * (d / 2 + m(0.03)), fz = cz + nz * (d / 2 + m(0.03));
+    const h = w * AD_ASPECT, d = m(0.35), cx = (ax + bx) / 2 + nx * out, cz = (az + bz) / 2 + nz * out, fx = cx + nx * (d / 2 + m(0.03)), fz = cz + nz * (d / 2 + m(0.03));
     this.prop('box', cx, y + h / 2, cz, w + m(0.6), h + m(0.6), d, [0.07, 0.07, 0.08], Math.atan2(-uz, ux));
     const p = (sd, yy) => [fx + (ux * sd * w) / 2, yy, fz + (uz * sd * w) / 2];
-    this.sign('screen', 1 + Math.floor(this.rd() * 7), [p(-1, y), p(1, y), p(1, y + h), p(-1, y + h)], [nx, 0, nz]);
+    this.sign('screen', this.nextAd(), [p(-1, y), p(1, y), p(1, y + h), p(-1, y + h)], [nx, 0, nz]);
   }
 
-  /** A quad on the sign atlas (2 x 4 cells: 0 a helipad, 1-7 screens): corners [BL, BR, TR, TL] */
+  /** The next billboard ad: the pack is dealt out in a shuffled order, all of it before any repeats */
+  nextAd() {
+    if (!this.ads.length) {
+      this.ads = BILLBOARDS.map((_, i) => i);
+      for (let i = this.ads.length - 1; i > 0; i--) {
+        const j = Math.floor(this.ra() * (i + 1));
+        [this.ads[i], this.ads[j]] = [this.ads[j], this.ads[i]];
+      }
+    }
+    return this.ads.pop();
+  }
+
+  /** A quad showing billboard ad idx (screen) or the helipad marking (mark): corners [BL, BR, TR, TL] */
   sign(kind, idx, P, n) {
     if (this.owner && kind === 'screen') this.vol({ t: 'plate', ax: P[0][0], az: P[0][2], bx: P[1][0], bz: P[1][2], y0: P[0][1], y1: P[2][1], mat: 'light' });
-    const S = this.signs[kind], i0 = S.pos.length / 3, e = 0.004;
-    const u0 = (idx % 2) / 2 + e, u1 = u0 + 0.5 - 2 * e, v1 = 1 - Math.floor(idx / 2) / 4 - e, v0 = v1 - 0.25 + 2 * e;
+    const S = this.signs[kind], i0 = S.pos.length / 3;
+    let u0 = 0, u1 = 1, v0 = 0, v1 = 1;
+    if (kind === 'screen') {
+      const [x, y, w, h] = BILLBOARDS[idx], A = ATLASES.billboards;
+      u0 = x / A.w; u1 = (x + w) / A.w; v0 = 1 - (y + h) / A.h; v1 = 1 - y / A.h;
+    }
     const uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
     P.forEach((q, k) => { S.pos.push(...q); S.nor.push(...n); S.uv.push(...uv[k]); });
     S.idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
   }
 
-  /** Meshes for the screens (unlit, glowing) and the helipad markings */
+  /** Meshes for the billboards (unlit, glowing) and the helipad markings */
   flushSigns() {
-    const tex = signTexture();
-    tex.anisotropy = 4;
+    const pad = helipadTexture();
+    pad.anisotropy = 4;
     const mats = {
-      screen: new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.15, 1.15, 1.15) }),
-      mark: new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }),
+      screen: new THREE.MeshBasicMaterial({ map: this.tex.billboards, color: new THREE.Color(1.15, 1.15, 1.15) }),
+      mark: new THREE.MeshStandardMaterial({ map: pad, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }),
     };
     for (const [k, S] of Object.entries(this.signs)) {
       if (!S.idx.length) continue;
@@ -2222,9 +2210,9 @@ export class City {
       this.prop('box', x, y0 + m(1.2), z, m(2.8), m(2.4), m(1), [0.12, 0.13, 0.15]);
       this.prop('box', x, y0 + m(2.5), z, m(3.2), m(0.2), m(1.4), [0.2, 0.21, 0.23]);
       for (const d of [-1, 1]) {
-        const zf = z + d * m(0.53), hw = m(1.15), yb = y0 + m(0.9);
+        const zf = z + d * m(0.53), hw = m(1.15), sh = 2 * hw * AD_ASPECT, yb = y0 + m(0.9);
         const a = d > 0 ? x - hw : x + hw, b = d > 0 ? x + hw : x - hw;
-        this.sign('screen', 1 + Math.floor(rd() * 7), [[a, yb, zf], [b, yb, zf], [b, yb + hw, zf], [a, yb + hw, zf]], [0, 0, d]);
+        this.sign('screen', this.nextAd(), [[a, yb, zf], [b, yb, zf], [b, yb + sh, zf], [a, yb + sh, zf]], [0, 0, d]);
       }
       this.collide(x - m(1.4), 0, z - m(0.5), x + m(1.4), y0 + m(2.6), z + m(0.5));
       this.endOwner();

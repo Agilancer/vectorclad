@@ -3,6 +3,7 @@ import { BODY_SHEET, WEAPON_SHEET } from './regions.js';
 import { PIECES } from './pieces.js';
 import { ATLASES } from './cityTiles.js';
 import './kitTiles.js'; // adds the facade, storefront, roof, tree and car pages to ATLASES
+import './billboards.js'; // adds the billboard ads page to ATLASES
 
 export { B, W, BODY_SHEET, WEAPON_SHEET } from './regions.js';
 
