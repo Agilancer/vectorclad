@@ -150,7 +150,7 @@ const P = {
   phase: 0, gaitDir: 1, legYaw: 0,
   dashing: false, ascending: false, onLip: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
-  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0,
+  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, pullK: 0, pullFrom: new V3(),
   chest: new V3(),
 };
 const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
@@ -205,7 +205,7 @@ async function init() {
     cb: {
       onWave: (n, fresh, boss) => {
         // Name what is new this wave: a boss, or the variants joining the fight
-        const extra = boss ? ' · BROODMOTHER INBOUND' : fresh.length ? ` · ${fresh.join(', ')} SIGHTED` : '';
+        const extra = boss ? ` · ${boss} INBOUND` : fresh.length ? ` · ${fresh.join(', ')} SIGHTED` : '';
         hud.toast(`WAVE ${n}${extra}`, boss || fresh.length ? 3.4 : 2.4);
         sound.warning();
       },
@@ -244,6 +244,16 @@ async function init() {
         if (P.pinT <= 0) hud.toast('SEIZED · DASH TO BREAK FREE', 1.6);
         P.pinT = dur;
         return true;
+      },
+      // Boss news: cores going down, the millipede's head breaking loose
+      onAlert: (text, dur) => hud.toast(text, dur),
+      // A Magnetar's tractor beam, called every frame it holds the mech
+      onPull: (from, k) => {
+        if (!P.alive || mode !== 'play') return;
+        if (P.pullT <= 0) hud.toast('TRACTOR BEAM · DASH TO RESIST', 1.6);
+        P.pullT = 0.2;
+        P.pullK = k;
+        P.pullFrom.copy(from);
       },
     },
   });
@@ -340,7 +350,7 @@ function startPlay() {
 /** Fresh frame on the starting plaza, fresh waves */
 function redeploy() {
   deployed = true;
-  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
+  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
   P.vel.set(0, 0, 0);
   if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
@@ -521,6 +531,14 @@ function updatePlayer(dt, c) {
   // Integrate
   const prevY = P.pos.y;
   P.pos.addScaledVector(P.vel, dt);
+  // Held in a tractor beam: dragged toward the Magnetar a little faster than the mech walks;
+  // dashing pulls away
+  if (P.pullT > 0) {
+    P.pullT -= dt;
+    _t2.set(P.pullFrom.x - P.pos.x, 0, P.pullFrom.z - P.pos.z);
+    const d = _t2.length();
+    if (d > 6) P.pos.addScaledVector(_t2.divideScalar(d), 9.5 * P.pullK * (P.dashing ? 0.25 : 1) * dt);
+  }
   // Feet that were within a step of a top last frame can still land on it, however far they fell since
   const stepY = Math.max(prevY, P.pos.y);
   // Blocked by a wall: stop the motion into it and slide along it. The push-out never adds
@@ -531,6 +549,8 @@ function updatePlayer(dt, c) {
     const into = n > 1e-6 ? (P.vel.x * nx + P.vel.z * nz) / n : 0;
     if (into < 0) { P.vel.x -= (nx / n) * into; P.vel.z -= (nz / n) * into; }
   }
+  // Nor through the millipede's body
+  spiders.mill.pushOut(P.pos, 1.5, 7);
   let ground = world.groundHeight(P.pos.x, P.pos.z, stepY, 0.9);
   // Feet just short of a roof with the body over its edge: step up onto the lip, or slip
   // off it when moving away, instead of dropping past it into the wall

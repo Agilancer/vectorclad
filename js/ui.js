@@ -11,7 +11,7 @@ export class HUD {
     this.el = {
       score: $('#score'), boostBar: $('#boost-bar'), boostTxt: $('#boost-txt'), gauge: $('.gauge.boost'),
       armor: $('.gauge.armor'), apBar: $('#ap-bar'), apTxt: $('#ap-txt'), wave: $('#wave'), hostiles: $('#hostiles'),
-      vignette: $('#dmg-vignette'), dirs: $('#dmg-dirs'), boss: $('#boss-bar'), bossHp: $('#boss-bar b'),
+      vignette: $('#dmg-vignette'), dirs: $('#dmg-dirs'), boss: $('#boss-bar'), bossHp: $('#boss-bar b'), bossName: $('#boss-bar .label'),
       spd: $('#spd'), alt: $('#alt'), lockct: $('#lockct'), mslct: $('#mslct'),
       weapons: $('#weapons'), toast: $('#toast'), hit: $('#hitmark'), locks: $('#locks'), zone: $('#lock-zone'),
       hint: $('#help-hint'), hard: $('#hardlock'), hardInfo: $('#hardlock span'), hardHp: $('#hardlock .hp b'), arrow: $('#lock-arrow'),
@@ -115,7 +115,10 @@ export class HUD {
     this.set('hostiles', e.hostiles, d.wave ? `${d.hostiles} HOSTILE${d.hostiles === 1 ? '' : 'S'}` : '');
     if (this.struckT > 0 && (this.struckT -= dt) <= 0) e.armor.classList.remove('struck');
     e.boss.hidden = !d.boss;
-    if (d.boss) e.bossHp.style.width = `${Math.max(0, d.boss.hp / d.boss.maxHp) * 100}%`;
+    if (d.boss) {
+      e.bossHp.style.width = `${Math.max(0, d.boss.hp / d.boss.maxHp) * 100}%`;
+      this.set('bossName', e.bossName, d.boss.bossLabel || d.boss.name);
+    }
     const low = ap > 0 && ap < d.apMax * 0.25 ? 0.22 + 0.1 * Math.sin(performance.now() / 160) : 0;
     this.pain = Math.max(0, this.pain - dt * 1.6);
     const v = Math.min(1, Math.max(this.pain, low));
