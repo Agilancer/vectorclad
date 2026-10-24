@@ -139,10 +139,11 @@ let world, fx, mech, weapons, hud, hangar, picker, mats, spiders;
 // doesn't lose one. A save from before there were frames is the Vanguard's loadout.
 let frame = frameById(store.get('vectorclad.frame', 'vanguard'));
 const loadouts = store.get('vectorclad.loadouts', null) || {};
-if (!loadouts.vanguard) { const old = store.get('vectorclad.loadout', null); if (old && old.slots) loadouts.vanguard = old; }
+if (!loadouts.vanguard) { const old = store.get('vectorclad.loadout', null); if (old && old.slots) loadouts.vanguard = { ...old, painted: true }; }
 function loadoutFor(f) {
   const L = (loadouts[f.id] = loadouts[f.id] || defaultLoadout(f));
-  if (!PAINTS.some((p) => p.id === L.paint)) L.paint = f.paint;
+  // A scheme the player didn't pick follows the frame's own
+  if (!L.painted || !PAINTS.some((p) => p.id === L.paint)) L.paint = f.paint;
   for (const id of f.slots) if (!L.slots[id]) L.slots[id] = [null, 'gunmetal'];
   return L;
 }

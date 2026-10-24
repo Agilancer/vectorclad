@@ -311,6 +311,7 @@ export class Hangar {
     for (const p of F.presets) {
       pc.appendChild(chip(p.name, false, () => {
         L.paint = p.paint || F.paint;
+        L.painted = !!p.paint;
         for (const id of F.slots) L.slots[id] = [...(p.slots[id] || [null, (L.slots[id] || [])[1] || 'gunmetal'])];
         this.click();
         this.onChange();
@@ -326,6 +327,7 @@ export class Hangar {
     for (const p of PAINTS) {
       const s = swatch(p.name, p.armor, p.second, L.paint === p.id, () => {
         L.paint = p.id;
+        L.painted = true;
         this.click();
         this.onChange();
         this.render();

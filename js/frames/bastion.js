@@ -1,5 +1,5 @@
 import * as THREE from '../three.js';
-import { B, frontPrism, chamferBox, cylX, place } from '../atlas.js';
+import { B, frontPrism, chamferBox, cylX, cylZ, place } from '../atlas.js';
 import { Mech, Thruster, Piston, P, blade, mirror } from '../mech.js';
 import { shell, dome, port, strip, slats } from './kit.js';
 
@@ -28,6 +28,7 @@ const RIG = {
 
 /** A white band hugging a rounded part at height y: w × d around, h tall. */
 const band = (w, d, h, e = 2.8) => shell([{ y: -h / 2, w, d, e }, { y: h / 2, w, d, e }], { n: 24 });
+const PA = { all: B.plainA }, PB = { all: B.plainB };
 
 export class Bastion extends Mech {
   constructor(mats, glowTex) { super(mats, glowTex, RIG); }
@@ -65,8 +66,8 @@ export class Bastion extends Mech {
         { y: -0.3, w: 0.8, d: 0.26 },
         { y: 0.06, w: 0.76, d: 0.22 },
       ], { e: 3.2 }), M.armor, { all: B.plainA }), 0, 0, 0.06);
-      place(g, P(chamferBox(0.08, 0.76, 0.06, 0.02), M.accent, { all: B.plainA }), s * 0.26, -0.36, 0.18);
-      port(this, g, 0.11, -s * 0.05, -0.5, 0.18);
+      for (const dx of [0.2, 0.28]) place(g, P(chamferBox(0.035, 0.76, 0.05, 0.01), M.accent, PA), s * dx, -0.36, 0.18);
+      port(this, g, 0.11, -s * 0.05, -0.5, 0.16, 0, 0, 0, null, 0.08);
       this.skirts.push({ g, leg: s < 0 ? 0 : 1, k: 0.75, x0: -0.08 });
     }
     // Rear skirt, rounded, with twin ports
@@ -88,8 +89,8 @@ export class Bastion extends Mech {
         { y: -0.1, w: 0.36, d: 1.34 },
         { y: 0.12, w: 0.28, d: 1.1 },
       ], { e: 3.2 }), M.armor, { all: B.plainA }), s * 0.16, 0, 0);
-      place(g, P(chamferBox(0.06, 0.08, 1.2, 0.02), M.accent, { all: B.plainA }), s * 0.32, -0.12, 0);
-      for (const z of [-0.26, 0.26]) port(this, g, 0.1, s * 0.33, -0.5, z, 0, s * Math.PI / 2, 0);
+      for (const dy of [-0.08, -0.16]) place(g, P(chamferBox(0.06, 0.035, 1.2, 0.01), M.accent, PA), s * 0.32, dy, 0);
+      for (const z of [-0.26, 0.26]) port(this, g, 0.1, s * 0.31, -0.5, z, 0, s * Math.PI / 2, 0, null, 0.08);
       return g;
     });
     for (const [key, s] of [['hipR', -1], ['hipL', 1]]) {
@@ -115,7 +116,7 @@ export class Bastion extends Mech {
       { y: -0.86, w: 0.96, d: 0.6, z: 0.3, x: s * 0.06 },
       { y: -TH + 0.4, w: 0.8, d: 0.46, z: 0.32, x: s * 0.04 },
     ], { e: 3 }), M.armor, { all: B.plainA }));
-    place(hip, P(chamferBox(0.08, 0.7, 0.06, 0.02), M.accent, { all: B.plainA }), s * 0.3, -0.86, 0.6);
+    for (const dx of [0.26, 0.33]) place(hip, P(chamferBox(0.035, 0.7, 0.05, 0.01), M.accent, PA), s * dx, -0.86, 0.6);
 
     const knee = new THREE.Group();
     knee.position.y = -TH;
@@ -123,7 +124,9 @@ export class Bastion extends Mech {
     place(knee, P(cylX(0.38, 1.0), M.joint));
     // Rounded knee cap with a white boss
     place(knee, P(dome(0.86, 0.86, 0.6, { back: 0.25 }), M.armor, { all: B.plainA }), 0, 0.06, 0.46);
-    place(knee, P(dome(0.5, 0.5, 0.3, { back: 0.2 }), M.accent, { all: B.plainA }), 0, 0.06, 0.66);
+    port(this, knee, 0.2, 0, 0.06, 0.62, 0, 0, 0, null, 0.14);
+    for (const x of [-0.27, 0.27]) place(knee, P(chamferBox(0.06, 0.5, 0.1, 0.02), M.accent, PA), x, 0.06, 0.74);
+    for (const x of [-0.34, 0.34]) place(knee, P(cylX(0.16, 0.2, 14), M.frame, PB), x, -0.1, -0.36);
     for (const x of [-0.32, 0.32]) this.pistons.push(new Piston(hip, new V3(x, -0.4, -0.4), knee, new V3(x, -0.7, -0.5), 0.08, M));
 
     // Shin: a swollen red bulk, widest over the calf, with a white band, flank ports and calf thrusters
@@ -134,10 +137,10 @@ export class Bastion extends Mech {
       { y: -1.6, w: 1.08, d: 1.18, z: -0.06 },
       { y: -SH + 0.12, w: 0.86, d: 0.94 },
     ], { e: 2.7, n: 24 }), M.armor, { all: B.plainA }));
-    place(knee, P(band(1.3, 1.44, 0.1), M.accent, { all: B.plainA }), 0, -1.1, -0.12);
+    for (const y of [-1.04, -1.16]) place(knee, P(band(1.3, 1.44, 0.04), M.accent, PA), 0, y, -0.12);
     place(knee, P(frontPrism([[-0.3, 0.0], [0.3, 0.0], [0.22, -0.8], [0, -0.98], [-0.22, -0.8]], 0.16, 0.03), M.armor, { all: B.plainA }), 0, -0.3, 0.62, 0.1);
     place(knee, P(chamferBox(0.08, 0.7, 0.05, 0.02), M.accent, { all: B.plainA }), 0, -0.62, 0.72, 0.1);
-    for (const [y, z] of [[-0.66, 0.24], [-0.66, -0.24], [-1.36, 0.0]]) port(this, knee, 0.12, s * 0.62, y, z - 0.1, 0, s * Math.PI / 2, 0);
+    for (const [y, z] of [[-0.66, 0.24], [-0.66, -0.24], [-1.4, 0.0]]) port(this, knee, 0.12, s * 0.6, y, z - 0.1, 0, s * Math.PI / 2, 0, null, 0.08);
     const bayY = -0.95;
     for (const x of [-0.24, 0.24]) port(this, knee, 0.16, x, bayY, -0.8, Math.PI - 0.5, 0, 0, this.thrusters.calf);
     this.mount(s > 0 ? 'legL' : 'legR', knee, s * 0.66, -0.9, -0.06, 0, 0, -s * Math.PI / 2);
@@ -146,17 +149,21 @@ export class Bastion extends Mech {
     ankle.position.y = -SH;
     knee.add(ankle);
     place(ankle, P(new THREE.SphereGeometry(0.36, 14, 10), M.joint));
-    // Foot: a rounded red hood over a broad dark sole, a white-tipped toe
+    // Foot: a dark grey mechanical hood over a broad sole, with white tube loops and a red toe guard
     place(ankle, P(shell([
       { y: 0.2, w: 0.8, d: 0.9, z: 0.05 },
       { y: -0.34, w: 1.1, d: 1.5, z: 0.22 },
       { y: -0.5, w: 1.16, d: 1.7, z: 0.26 },
-    ], { e: 3.2 }), M.armor, { all: B.plainA }));
+    ], { e: 3.2 }), M.frame, PB));
+    for (const sd of [-1, 1]) {
+      place(ankle, P(new THREE.TorusGeometry(0.26, 0.05, 6, 14, Math.PI), M.accent, PA), sd * 0.6, -0.42, 0.3, 0, sd * Math.PI / 2, 0);
+      slats(ankle, M.joint, 3, sd * 0.56, -0.2, -0.3, [0, 0, 0.14], 0.04, 0.2, 0.06);
+    }
     place(ankle, P(shell([
       { y: -0.5, w: 1.24, d: 1.9, z: 0.24 },
       { y: -0.7, w: 1.3, d: 2.0, z: 0.24 },
     ], { e: 4 }), M.second, { all: B.plainB }));
-    place(ankle, P(dome(0.8, 0.34, 0.5, { back: 0.3 }), M.accent, { all: B.plainA }), 0, -0.48, 1.12);
+    place(ankle, P(dome(0.9, 0.4, 0.5, { back: 0.3 }), M.armor, PA), 0, -0.46, 1.1);
     place(ankle, P(chamferBox(1.3, 0.05, 2.0, 0.02), M.joint), 0, -0.7, 0.24);
     this.thrusters.sole.push(new Thruster(ankle, new V3(0, -0.5, 0.0), new V3(0, -1, -0.1), 0.22, this.glowTex));
 
@@ -172,7 +179,9 @@ export class Bastion extends Mech {
     // Waist: a dark rounded drum with a gold band and a front armor tile
     place(waist, P(shell([{ y: -0.05, w: 1.5, d: 1.2 }, { y: 0.5, w: 1.4, d: 1.1 }], { e: 3 }), M.second, { all: B.plainB }));
     place(waist, P(band(1.52, 1.22, 0.08, 3), M.trim), 0, 0.24, 0);
-    place(waist, P(chamferBox(0.6, 0.34, 0.14, 0.08), M.armor, { all: B.plainA }), 0, 0.24, 0.6, -0.1);
+    place(waist, P(cylZ(0.3, 0.3, 0.14, 22), M.frame, PB), 0, 0.22, 0.6);
+    place(waist, P(cylZ(0.22, 0.22, 0.06, 20), M.second, PB), 0, 0.22, 0.68);
+    for (let k = 0; k < 6; k++) place(waist, P(chamferBox(0.05, 0.12, 0.04, 0.01), M.joint), Math.cos(k * 1.05) * 0.26, 0.22 + Math.sin(k * 1.05) * 0.26, 0.68, 0, 0, k * 1.05 + Math.PI / 2);
 
     const chest = (this.chest = new THREE.Group());
     chest.position.y = 0.48;
@@ -186,8 +195,12 @@ export class Bastion extends Mech {
       { y: 2.32, w: 1.7, d: 1.3, z: -0.16 },
     ], { e: 2.8, n: 24 }), M.armor, { all: B.plainA, x: B.sideVents }));
     // Dark center: the cockpit block between the breast domes, with a white keel stripe
-    place(chest, P(frontPrism([[-0.44, 0.1], [0.44, 0.1], [0.56, 1.4], [0.36, 2.0], [-0.36, 2.0], [-0.56, 1.4]], 0.2, 0.05), M.second, { all: B.plainB }), 0, 0, 0.86);
-    place(chest, P(chamferBox(0.08, 1.2, 0.06, 0.02), M.accent, { all: B.plainA }), 0, 0.9, 0.97);
+    place(chest, P(frontPrism([[-0.36, 0.2], [0.36, 0.2], [0.42, 1.2], [0.28, 1.7], [-0.28, 1.7], [-0.42, 1.2]], 0.2, 0.05), M.frame, PB), 0, 0, 0.86);
+    for (const dx of [-0.05, 0.05]) place(chest, P(chamferBox(0.035, 1.0, 0.05, 0.01), M.accent, PA), dx, 1.0, 0.97);
+    for (const sd of [-1, 1]) {
+      port(this, chest, 0.15, sd * 0.36, 0.42, 0.86, 0.2, sd * 0.2, 0, null, 0.14);
+      place(chest, P(frontPrism([[-0.22, -0.22], [0.22, -0.22], [0.22, -0.14], [-0.14, -0.14], [-0.14, 0.22], [-0.22, 0.22]].map(([x, y]) => [x * sd, y]), 0.06, 0.01), M.accent, PA), sd * 0.36, 0.42, 0.98, 0.2, sd * 0.2, 0);
+    }
     // Breast domes with intake grilles and white rims
     for (const sd of [-1, 1]) {
       place(chest, P(dome(1.06, 0.96, 0.66, { back: 0.15, e: 2.5 }), M.armor, { all: B.plainA }), sd * 0.82, 1.42, 0.7, 0, sd * 0.3, 0);
@@ -197,11 +210,11 @@ export class Bastion extends Mech {
       chest.add(grill);
       place(grill, P(shell([{ y: -0.04, w: 0.58, d: 0.4 }, { y: 0.04, w: 0.58, d: 0.4 }], { e: 2.2 }), M.joint), 0, 0, 0, Math.PI / 2, 0, 0);
       slats(grill, M.port, 4, 0, -0.12, 0.06, [0, 0.08, 0], 0.5, 0.03, 0.04);
-      place(chest, P(chamferBox(0.86, 0.06, 0.06, 0.02), M.accent, { all: B.plainA }), sd * 0.84, 0.98, 0.94, 0, sd * 0.3, -sd * 0.12);
+      for (const dy of [0, 0.08]) place(chest, P(chamferBox(0.86, 0.035, 0.05, 0.01), M.accent, PA), sd * 0.84, 0.96 + dy, 0.94, 0, sd * 0.3, -sd * 0.12);
       // Upper intake ports by the collar
-      port(this, chest, 0.17, sd * 0.42, 2.02, 0.74, -0.5, 0, 0);
+      port(this, chest, 0.17, sd * 0.42, 2.02, 0.74, -0.5, 0, 0, null, 0.12);
       // Flank ports
-      for (const y of [0.7, 1.2]) port(this, chest, 0.13, sd * 1.32, y, -0.3, 0, sd * Math.PI / 2, 0);
+      for (const y of [0.7, 1.2]) port(this, chest, 0.13, sd * 1.3, y, -0.3, 0, sd * Math.PI / 2, 0, null, 0.1);
     }
     // High collar wrapping the back and sides of the head
     for (const sd of [-1, 1]) place(chest, P(dome(0.5, 0.62, 1.0, { e: 2.6 }), M.armor, { all: B.plainA }), sd * 0.6, 2.36, -0.06, 0, sd * 0.2, sd * -0.2);
@@ -223,8 +236,8 @@ export class Bastion extends Mech {
     const eye = (this.monoEye = new THREE.Group());
     eye.position.set(0, 0.46, 0.44);
     head.add(eye);
-    place(eye, new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffd6f0, toneMapped: false })));
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff4fb0, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.9 }));
+    place(eye, new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0xd8ffe2, toneMapped: false })));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x4dff7a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.9 }));
     glow.scale.setScalar(0.5);
     glow.renderOrder = 6;
     place(eye, glow, 0, 0, 0.03);
@@ -256,10 +269,11 @@ export class Bastion extends Mech {
       { y: 0.36, w: 1.36, d: 1.6 },
       { y: 0.56, w: 0.9, d: 1.1 },
     ], { e: 2.6, n: 24 }), M.armor, { all: B.plainA }));
-    place(pauldron, P(band(1.6, 1.9, 0.1, 2.6), M.accent, { all: B.plainA }), 0, -0.1, 0);
+    for (const y of [-0.06, -0.16]) place(pauldron, P(band(1.6, 1.9, 0.04, 2.6), M.accent, PA), 0, y, 0);
     place(pauldron, P(shell([{ y: 0.3, w: 0.16, d: 1.5 }, { y: 0.66, w: 0.12, d: 1.1 }], { e: 4 }), M.trim), s * 0.24, 0, 0);
-    for (const [y, z] of [[-0.36, 0.38], [-0.36, -0.38], [0.24, 0.0]]) port(this, pauldron, 0.14, s * 0.77, y, z, 0, s * Math.PI / 2, 0);
-    for (const x of [-0.26, 0.26]) port(this, pauldron, 0.15, x, -0.3, -0.92, 0.2, Math.PI, 0);
+    for (const [y, z] of [[-0.4, 0.38], [-0.4, -0.38], [0.24, 0.0]]) port(this, pauldron, y > 0 ? 0.14 : 0.19, s * 0.72, y, z, 0, s * Math.PI / 2, 0, null, y > 0 ? 0.1 : 0.2);
+    port(this, pauldron, 0.2, s * 0.2, -0.36, 0.8, 0.1, s * 0.2, 0, null, 0.2);
+    for (const x of [-0.26, 0.26]) port(this, pauldron, 0.15, x, -0.3, -0.9, 0.2, Math.PI, 0, null, 0.12);
 
     // Upper arm: dark rounded sleeve
     place(sh, P(new THREE.CylinderGeometry(0.26, 0.26, 1.0, 12), M.joint), 0, -0.58, 0);
@@ -276,7 +290,7 @@ export class Bastion extends Mech {
       { y: -1.06, w: 0.94, d: 1.0 },
       { y: -1.36, w: 0.66, d: 0.74 },
     ], { e: 2.6, n: 22 }), M.armor, { all: B.plainA }));
-    place(elbow, P(band(0.98, 1.04, 0.1, 2.6), M.accent, { all: B.plainA }), 0, -1.08, 0);
+    for (const y of [-1.04, -1.12]) place(elbow, P(band(0.98, 1.04, 0.035, 2.6), M.accent, PA), 0, y, 0);
     place(elbow, P(chamferBox(0.05, 0.7, 0.05, 0.01), M.trim), s * 0.48, -0.66, 0);
     port(this, elbow, 0.1, 0, -0.6, -0.52, 0, Math.PI, 0);
     this.pistons.push(new Piston(sh, new V3(0, -0.5, 0.38), elbow, new V3(0, -0.36, 0.46), 0.08, M));

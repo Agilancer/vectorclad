@@ -79,29 +79,48 @@ export function dome(w, h, d, { e = 2.6, back = 1, seg = 18, rings = 10 } = {}) 
 
 /**
  * A vernier port: a raised collar around a tan-lined bowl with a nozzle
- * throat, facing +Z of the placement. With `thrust` it also fires: a small
- * thruster sits in the throat and joins the given list.
+ * throat, facing +Z of the placement. `out` stands it proud of the armor on a
+ * dark housing, like a nozzle. With `thrust` it also fires: a small thruster
+ * sits in the throat and joins the given list.
  */
-export function port(mech, parent, r, x, y, z, rx = 0, ry = 0, rz = 0, thrust = null) {
+export function port(mech, parent, r, x, y, z, rx = 0, ry = 0, rz = 0, thrust = null, out = 0) {
   const M = mech.mats;
   const g = new THREE.Group();
   g.position.set(x, y, z);
   g.rotation.set(rx, ry, rz);
   parent.add(g);
+  if (out > 0) {
+    const housing = P(new THREE.CylinderGeometry(r * 1.2, r * 1.32, out, 18).rotateX(Math.PI / 2), M.frame, { all: B.plainB });
+    housing.position.z = out / 2 - r * 0.1;
+    g.add(housing);
+  }
+  const f = new THREE.Group();
+  f.position.z = out;
+  g.add(f);
   const collar = P(new THREE.TorusGeometry(r, r * 0.2, 6, 18), M.second, { all: B.plainB });
-  g.add(collar);
+  f.add(collar);
   const bowl = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.92, r * 0.5, r * 0.55, 18, 1, true).rotateX(-Math.PI / 2), M.port);
   bowl.position.z = -r * 0.22;
-  g.add(bowl);
+  f.add(bowl);
   const throat = new THREE.Mesh(new THREE.CircleGeometry(r * 0.5, 14), M.joint);
   throat.position.z = -r * 0.48;
-  g.add(throat);
+  f.add(throat);
   for (const o of [collar, bowl, throat]) o.userData.noOutline = true;
   if (thrust) {
-    const t = new Thruster(g, new V3(0, 0, -r * 0.3), new V3(0, 0, 1), r * 0.55, mech.glowTex);
+    const t = new Thruster(f, new V3(0, 0, -r * 0.3), new V3(0, 0, 1), r * 0.55, mech.glowTex);
     thrust.push(t);
   }
   return g;
+}
+
+/** Thin piping along an armor edge: a bar of `mat` len long, at (x, y, z) turned by rx/ry/rz. */
+export function pipe(parent, mat, len, x, y, z, rx = 0, ry = 0, rz = 0, t = 0.03) {
+  const m = P(chamferBox(t, len, t, t * 0.3, 0.008), mat, mat.map ? { all: B.plainA } : undefined);
+  m.position.set(x, y, z);
+  m.rotation.set(rx, ry, rz);
+  m.userData.noOutline = true;
+  parent.add(m);
+  return m;
 }
 
 /** A V-fin antenna on a forehead: two swept blades from a crest block, facing +Z. */

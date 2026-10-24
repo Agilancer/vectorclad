@@ -27,7 +27,8 @@ joined by then (every spider and scorpion is in by wave 6).
 `tools/showroom.html` shows the frames and weapons on a turntable without the city: pick a
 frame or the six side by side, a pose (idle, walk, aim, dash, air, blade swing, shield),
 or the weapon rack, and drag to turn it. URL parameters set the same things, for example
-`tools/showroom.html?frame=goliath&preset=1&pose=walk`.
+`tools/showroom.html?frame=goliath&preset=1&pose=walk`; `bare=1` takes the weapons off,
+and the lineup shows each frame in its own scheme.
 
 `tools/tests/arsenal.js` (headless Chromium through Playwright, like the destruction
 test below) puts every frame through the bay, walks, dashes and jumps it, and fires every
@@ -128,16 +129,16 @@ the heavy-class weapons and close to twice the armor.
 
 | Frame | Class | Armor | Walk / dash | Boost | Hardpoints | What it is |
 | --- | --- | --- | --- | --- | --- | --- |
-| **LT-3 Kestrel** | Light | 640 | 9.6 / 45 | 2.3x, refills 1.6x | 2 hands, 2 shoulders | A stilt-legged scout after the light-mech concept: a wedge cockpit pod with a sensor cap and antenna on an exposed spine, drum hip actuators, slab-armored thighs, long segmented shins with chevron lights, skid feet, long thin arms and side hardpoints beside the pod. |
-| **RJ-6 Locust** | Light | 720 | 9 / 41 | 2x, refills 1.45x | 2 hands, 2 legs | A reverse-joint hopper: its knees bend backward over three-toed talons, with a shock ram behind each, and it jumps far higher than any other frame. Four-eyed sensor head, a low wedge thorax and two jump-jet nacelles. No shoulder mounts: its pods ride on its thighs. |
+| **LT-3 Kestrel** | Light | 640 | 9.6 / 45 | 2.3x, refills 1.6x | 2 hands, 2 shoulders | A stilt-legged scout in khaki and copper: a hunched cockpit pod with a chevron glacis and a tinted canopy on an exposed spine, a camera head with a row of lenses and an antenna, big flat shoulder blocks over long thin arms, drum hip actuators, slab-plated thighs, long segmented shins with chevron lights and tip-toe feet. Its shoulder guns ride a rail over the booster pack. |
+| **RJ-6 Locust** | Light | 720 | 9 / 41 | 2x, refills 1.45x | 2 hands, 2 legs | A reverse-joint hopper in hazard orange: its knees bend backward over pointed tip-toe feet, with a shock ram behind each, and it jumps far higher than any other frame. A hunched chevron torso between two great ribbed shoulder drums, a single green eye under swept V-fins, blades along its forearms and a jump pack with raked vanes. No shoulder mounts: its pods ride on its thighs. |
 | **FS-07A Vanguard** | Medium | 1000 | 7.5 / 36 | 1x | 2 hands, 2 shoulders, 2 legs | The prototype (see Design notes). |
-| **KR-11 Revenant** | Medium | 1120 | 7.2 / 35 | 0.95x | 2 hands, 2 shoulders, 2 legs | A knight: a great helm with a crest fin, swept horns and a mono-eye that sweeps its visor slit, layered pauldrons, a ridged cuirass over abdominal lames, tassets, poleyn knees and pointed sabatons, and twin upright booster pods carrying its shoulder mounts. |
-| **HV-90 Goliath** | Heavy | 1750 | 5.8 / 29 | 0.6x | 2 hands, 2 shoulders, 2 legs, 2 hips | A hunched brawler after the heavy-mech concept: a barrel chest and shoulder blocks that rise past its small, low head and toothed white chin guard, long arms with huge gauntlets, short wide legs on white knee caps, and a reactor block with vent stacks. |
-| **TK-40 Bastion** | Heavy | 2000 | 5.2 / 26 | 0.55x | 2 hands, 2 shoulders, back deck, 2 legs, 2 hips | A walking fortress: column legs braced by rams on outrigger feet with stabilizer claws, a tall box body faced in glacis bands, slab shields off the shoulders, a squat turret head with a bar of eyes and a weapons deck across its back. |
+| **KR-11 Revenant** | Medium | 1120 | 7.2 / 35 | 0.95x | 2 hands, 2 shoulders, 2 legs | A lancer in maroon and white: a white head with a gold V-fin, twin green eyes and a sensor mast; an angular chest under a white collar with gold intake louvres; a gold mechanical waist; binder pods on its shoulders with vernier ports in their tails; layered skirts, pointed white knees, calf ports; and a flight pack with two binder wings raked over its shoulders. |
+| **HV-90 Goliath** | Heavy | 1750 | 5.8 / 29 | 0.6x | 2 hands, 2 shoulders, 2 legs, 2 hips | A hunched brawler in layered dark plate edged in red: tall shoulder blocks peaking past its low head and its visor of blue eyes, a barrel chest around a glowing core, long arms with huge layered gauntlets, short wide legs on clawed feet, and two binders hanging off its back over the main engines. |
+| **TK-40 Bastion** | Heavy | 2000 | 5.2 / 26 | 0.55x | 2 hands, 2 shoulders, back deck, 2 legs, 2 hips | A commander-pattern fortress in swollen red armor: a crested helm with a mono-eye sweeping its groove, sunk in a high collar; a barrel chest with breast domes and intake grilles; shoulder pods bigger than the head, ringed in white and studded with verniers; rounded skirts; bulging shins with ports down their flanks; a funnel rack on its back under a weapons deck. |
 
 The world stays scaled to the Vanguard, 40 feet to the top of its head. The Goliath's
-shoulder blocks rise to about 51 feet and the Bastion's antennas to 65; the Locust is the
-smallest, about 34 feet to the top of its jump jets. A frame's size scales its
+shoulder blocks rise to about 50 feet and the Bastion's crest to 63; the Locust is the
+smallest, about 32 feet to the top of its shoulder drums. A frame's size scales its
 collision, the hit capsule the swarm aims at, the camera, footfalls and landings: heavy
 frames shake the street and take longer to recover from a landing. Heavy-class weapons
 (the siege cannon and the orbital uplink) only go on heavies.
@@ -593,7 +594,9 @@ and stride timing are worked in the frame's own units and scaled into the world,
 heavy plants big, slow steps and a light quick ones. The Locust's knees bend backward:
 the two-joint IK takes a bend direction, and its knee pole points behind it. A laser
 blade's swing is a pose the arm blends into, with the waist winding up and then
-twisting through the cut.
+twisting through the cut. Skirt plates lift with the thigh behind them, and the big
+shoulder blocks and binder pods ride their upper arms only part of the way, so they
+stay roughly level with the chest while the arm aims.
 
 The thrusters are built to read as real hardware:
 
@@ -623,6 +626,7 @@ in the hangar settings.
 | `js/mech.js` | The rig every frame shares (IK foot-planting gait, dash/jump/aim/blade animation), gimbaled bell-nozzle thrusters with plume shaders, hydraulic pistons, armor-shaping helpers, and the Vanguard's model |
 | `js/frames/index.js` | The six frames: class, stats, hardpoints, default paint and presets |
 | `js/frames/kestrel.js`, `locust.js`, `revenant.js`, `goliath.js`, `bastion.js` | The other five frames' models and rigs |
+| `js/frames/kit.js` | Shaping kit for the frames: rounded superellipse shells and domes, vernier ports (some of them thrusters), V-fins, light strips, slats |
 | `js/playerBody.js` | The size of the frame in use, for everything that tests against it |
 | `js/weapons.js` | Weapon definitions, hardpoints, the first wave's models, projectiles, homing and hydra missiles, lock-on |
 | `js/arsenal.js` | The second wave: rail gun, arc caster, flamethrower, laser blade, saw launcher, harpoon, drones, hydra pod, singularity, siege cannon, mines and orbital uplink, models and what they do |

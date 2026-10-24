@@ -1,7 +1,7 @@
 import * as THREE from '../three.js';
 import { B, frontPrism, chamferBox, cylX, loft, place } from '../atlas.js';
 import { Mech, Thruster, Piston, P, blade, warp, loftZ, mirror } from '../mech.js';
-import { port, strip, slats } from './kit.js';
+import { shell, dome, port, strip, slats } from './kit.js';
 
 const V3 = THREE.Vector3;
 
@@ -111,6 +111,9 @@ export class Goliath extends Mech {
     place(knee, P(frontPrism([[-0.44, -0.3], [0.44, -0.3], [0.5, 0.2], [0.2, 0.6], [0, 0.72], [-0.2, 0.6], [-0.5, 0.2]], 0.22, 0.05), M.armor, PA), 0, 0.0, 0.56, -0.18);
     place(knee, P(frontPrism([[-0.26, 0.0], [0, 0.24], [0.26, 0.0], [0.26, -0.08], [0, 0.14], [-0.26, -0.08]], 0.06, 0.01), M.accent, PA), 0, 0.12, 0.69, -0.18);
     for (const sd of [-1, 1]) place(knee, P(blade([[0.36, 0.26], [0.0, 0.4], [-0.4, 0.2], [-0.3, -0.24], [0.3, -0.26]], 0.08, [1, 1]), M.armor, PA), sd * 0.5, 0, 0);
+    // A white rounded cap over the top of the knee, split by a dark seam
+    place(knee, P(dome(0.62, 0.62, 0.42, { back: 0.25, e: 2.4 }), M.white, PA), 0, 0.44, 0.6, -0.3);
+    place(knee, P(chamferBox(0.04, 0.5, 0.1, 0.01), M.joint), 0, 0.44, 0.8, -0.3);
     for (const sd of [-1, 1]) this.pistons.push(new Piston(hip, new V3(sd * 0.3, -0.4, -0.45), knee, new V3(sd * 0.3, -0.5, -0.4), 0.09, M));
 
     // Greave: a wide calf block under two stepped front plates
@@ -254,6 +257,15 @@ export class Goliath extends Mech {
       place(head, P(blade([[0.36, 0.06], [0.1, 0.28], [-0.32, 0.38], [-0.4, 0.0], [0.0, -0.12]], 0.07, [1, 0.6]), M.armor, PA), sd * 0.4, 0.12, 0.0, 0, -sd * 0.14, 0);
     }
     place(head, P(blade([[0.36, 0.56], [0.1, 0.84], [-0.4, 0.96], [-0.2, 0.62]], 0.06, [0.6, 1], [1, 0.5]), M.accent, PA));
+    // Antenna spikes raked back off the brow
+    for (const [x, rz, h] of [[-0.12, 0.2, 1.1], [0.12, -0.2, 1.1], [0.26, -0.5, 0.7]]) {
+      place(head, P(new THREE.ConeGeometry(0.035, h, 5), M.frame, PB), x, 0.6 + h * 0.4, -0.1, -0.5, 0, rz);
+    }
+    // Cables from the jaw down into the collar
+    for (const sd of [-1, 1]) {
+      const curve = new THREE.CatmullRomCurve3([new V3(sd * 0.26, 0.04, 0.24), new V3(sd * 0.42, -0.24, 0.1), new V3(sd * 0.5, -0.4, -0.3)]);
+      place(head, P(new THREE.TubeGeometry(curve, 10, 0.045, 6), M.joint));
+    }
   }
 
   buildArm(s) {
@@ -267,12 +279,19 @@ export class Goliath extends Mech {
     const pauldron = new THREE.Group();
     pauldron.position.set(s * 0.3, 0.3, 0);
     sh.add(pauldron);
-    const block = warp(frontPrism(mirror([[-0.36, -0.3], [0.66, -0.24], [0.8, 0.3], [0.34, 0.92], [-0.18, 1.06], [-0.44, 0.56]], s), 1.6, 0.05), (v, n) => {
-      v.z *= 1 - 0.32 * n.y;        // narrower front to back toward the peak
-      v.z += 0.12 * n.y;            // and leaning forward over the chest
-    });
-    place(pauldron, P(block, M.armor, { all: B.plainA }), s * 0.1, 0, -0.04);
-    place(pauldron, P(frontPrism(mirror([[0.0, 0.7], [0.36, 0.86], [-0.14, 1.0], [-0.34, 0.6], [-0.26, 0.56]], s), 1.3, 0.03), M.second, PB), s * 0.12, 0.06, 0.02);
+    place(pauldron, P(shell([
+      { y: -0.32, w: 1.06, d: 1.44, x: s * 0.16 },
+      { y: 0.2, w: 1.22, d: 1.6, x: s * 0.1, z: 0.04 },
+      { y: 0.7, w: 1.02, d: 1.36, x: -s * 0.04, z: 0.1 },
+      { y: 1.0, w: 0.6, d: 0.9, x: -s * 0.14, z: 0.12 },
+    ], { e: 3.2, n: 24 }), M.armor, PA), s * 0.1, 0, -0.04);
+    // A layered cap over the top, a lighter inner plate, white chevron marks on the face
+    place(pauldron, P(shell([
+      { y: 0.72, w: 1.1, d: 1.44, x: -s * 0.02, z: 0.1 },
+      { y: 0.9, w: 0.86, d: 1.2, x: -s * 0.1, z: 0.12 },
+    ], { e: 3.2 }), M.second, PB), s * 0.1, 0, -0.04);
+    place(pauldron, P(chamferBox(0.5, 0.4, 0.06, 0.08), M.frame, PB), s * 0.1, 0.24, 0.8);
+    for (const dy of [0.1, 0.3]) place(pauldron, P(frontPrism(mirror([[0.0, 0.0], [0.14, 0.1], [0.14, 0.04], [0.06, 0.0], [0.14, -0.04], [0.14, -0.1]], -s), 0.03, 0.006), M.white), s * 0.12, dy, 0.84);
     this.edge(pauldron, 0.7, s * 0.66, 0.66, 0.12, -s * 0.9, 0, 0.06);
     this.edge(pauldron, 0.9, s * 0.42, -0.24, 0.8, 0.04, 0, 0.05);
     for (let k = 0; k < 3; k++) {
@@ -325,7 +344,11 @@ export class Goliath extends Mech {
     elbow.add(hand);
     place(hand, P(chamferBox(0.6, 0.5, 0.68, 0.12), M.joint), 0, -0.2, 0);
     place(hand, P(chamferBox(0.64, 0.26, 0.52, 0.08), M.armor, PA), 0, -0.48, 0.14, 0.4);
-    for (const x of [-0.18, 0, 0.18]) place(hand, P(chamferBox(0.14, 0.1, 0.14, 0.03), M.accent, PA), x, -0.4, 0.42);
+    for (const x of [-0.2, -0.07, 0.07, 0.2]) {
+      place(hand, P(chamferBox(0.11, 0.2, 0.12, 0.03), M.frame, PB), x, -0.5, 0.38, 0.6);
+      place(hand, P(chamferBox(0.1, 0.16, 0.1, 0.03), M.joint), x, -0.62, 0.26, 1.3);
+      place(hand, P(chamferBox(0.08, 0.04, 0.08, 0.01), M.accent, PA), x, -0.38, 0.44);
+    }
     place(hand, P(chamferBox(0.18, 0.38, 0.2, 0.05), M.joint), -s * 0.3, -0.3, 0.24, 0.3);
     const mount = new THREE.Group();
     mount.position.set(0, -0.36, 0.04);
