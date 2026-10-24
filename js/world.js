@@ -490,6 +490,7 @@ export class World {
   damageRadius(point, radius, amount, o = {}) {
     if (this.people && !o.crush) this.people.blast(point, radius, amount);
     if (this.furniture && !o.crush) this.furniture.blast(point, radius, amount);
+    if (this.train && !o.crush) this.train.blast(point, radius, amount);
     // A copy: kills drop targets from the list
     for (const t of [...this.targets]) {
       if (!t.alive) continue;

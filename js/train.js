@@ -10,13 +10,17 @@ import { PANELS, ATLASES } from './cityTiles.js';
 // roofs, on bogies. It runs south down the line, stops at the end of it by the water,
 // crosses over to the other track and runs back north out of the city.
 //
-// It brakes for the mech on the track. Wherever the deck has been shot away
-// under it, or a wreck lies on the line, it derails: the cars stay coupled
-// while it brakes, and each leaves the rails as a rigid body with the
-// train's speed as it runs off the broken end, tumbles off and crashes down
-// onto whatever is below, crushing cars, people and trees where it lands. The trains keep coming whether or not the line is still there,
-// so the wrecks pile up under the gap, each settled car becoming something
-// solid for the next ones to land on and for the mech to climb.
+// It brakes for the mech on the track, and for a train stopped ahead. Running,
+// its cars are solid to shots: they strike them and blow up on them. Wherever
+// the deck has been shot away under it, or a wreck lies on the line, it
+// derails, and a blast that reaches it throws the cars it hits off the rails.
+// The cars stay coupled while it brakes, and each leaves the rails as a rigid
+// body with the train's speed as it runs off the broken end, slewed aside and
+// rolling, each the other way from the one before, so the train jackknifes. It
+// tumbles off and crashes down onto whatever is below, crushing cars, people
+// and trees where it lands. The trains keep coming whether or not the line is
+// still there, so the wrecks pile up under the gap, each settled car becoming
+// something solid for the next ones to land on and for the mech to climb.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -25,7 +29,7 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _qi = new THREE.Qua
 const UP = new V3(0, 1, 0);
 
 const CAR = { L: 15, W: 2.9, H: 3.5, floor: 0.95 }; // meters
-const CARS = 6, SPEED = 16, EVERY = 60, MAX_WRECKS = 96;
+const CARS = 6, SPEED = 16, EVERY = 60, MAX_WRECKS = 130;
 const MID = (CAR.floor + CAR.H) / 2; // a wreck's center of mass above the rails, meters
 
 function tileCell(name) {
@@ -99,9 +103,11 @@ export class Train {
     this.el = this.city.el;
     this.trains = [];
     this.wrecks = [];   // cars off the rails, moving or settled
-    this.timer = 6;     // the first train comes soon after the start
+    this.timer = 30;    // the next one in from the north end (the first starts on the line, see update)
     this.next = 0;
-    const M = this.M, cap = 140;
+    this.player = null;
+    // Every wreck, and the line full of trains queued nose to tail
+    const M = this.M, cap = MAX_WRECKS + CARS * Math.ceil((this.el ? this.el.z1 - this.el.z0 : 0) / this.m(140) + 1);
     const mat = this.city.mats.panelsKit, frameMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.5 });
     const mk = (geo, m) => {
       const mesh = new THREE.InstancedMesh(geo, m, cap);
@@ -168,12 +174,16 @@ export class Train {
     return D.solidAt(x, y, z) || D.solidAt(x - this.m(1), y, z) || D.solidAt(x + this.m(1), y, z);
   }
 
-  /** A wreck (of another train, or of this one's cars already gone) on the track at (x, z) */
+  /** A wreck (of another train, or of this one's cars already gone) on the track at (x, z), however it lies across it */
   blocked(x, z, t) {
     const m = (v) => this.m(v), yt = this.el.yt;
     for (const w of this.wrecks) {
-      if (w.from === t) continue;
-      if (Math.abs(w.pos.x - x) < m(3) && Math.abs(w.pos.z - z) < m(CAR.L * 0.6) && w.pos.y > yt - m(4) && w.pos.y < yt + m(5)) return true;
+      if (w.from === t || w.pos.y < yt - m(4) || w.pos.y > yt + m(5)) continue;
+      const dx = x - w.pos.x, dz = z - w.pos.z;
+      if (dx * dx + dz * dz > m(CAR.L) ** 2) continue;
+      // Along the wreck's length and across it
+      const f = _n.set(0, 0, 1).applyQuaternion(w.q).setY(0).normalize(), along = dx * f.x + dz * f.z, across = dx * f.z - dz * f.x;
+      if (Math.abs(along) < m(CAR.L / 2 + 1) && Math.abs(across) < m(CAR.W + 0.5)) return true;
     }
     return false;
   }
@@ -217,15 +227,69 @@ export class Train {
   /** Car c (index i, from the front) of train t leaves the rails: a body with the train's speed */
   wreckCar(t, c, i) {
     const m = (v) => this.m(v);
+    this.unsolid(c);
     const flip = c.cab && c.rear ? Math.PI : 0;
+    // Off the rails at speed: thrown aside, slewing round and rolling over, each car the other way
+    // from the one before, so the train jackknifes; its nose dips as it goes over the end
+    const k = Math.min(1.2, t.speed / m(SPEED)), side = ((t.lost = (t.lost || 0) + 1) % 2 ? 1 : -1) * (t.side || 1);
     // Its position is its center of mass, which it turns about
     const w = {
       cab: c.cab, pos: this.carAt(t, c, new V3()).setY(this.el.yt + m(MID)), q: new THREE.Quaternion().setFromAxisAngle(UP, (t.dir > 0 ? 0 : Math.PI) + flip),
-      vel: new V3(rand(-1, 1) * m(1.5), m(rand(0.3, 2)), t.dir * Math.max(t.speed, m(3))), w: new V3(rand(-0.3, 0.3), rand(-0.2, 0.2), rand(-0.5, 0.5)),
+      vel: new V3(side * (m(1) + t.speed * rand(0.12, 0.25)), m(rand(0.5, 2)) + t.speed * 0.1, t.dir * Math.max(t.speed, m(3))),
+      w: new V3(t.dir * rand(-0.1, 0.35) * k, t.dir * side * rand(0.35, 0.8) * k + rand(-0.1, 0.1), -side * rand(0.25, 0.7) * k),
       rest: 0, asleep: false, collider: null, hitT: 0, from: t,
     };
     this.wrecks.push(w);
     return w;
+  }
+
+  /**
+   * A running car's box on the world grid, where it is now, for shots to strike. Like a street
+   * car's, it is no floor or wall: nothing comes to rest on a roof that moves on from under it,
+   * and the mech isn't shoved along by it
+   */
+  solid(t, c) {
+    const m = (v) => this.m(v), p = this.carAt(t, c, _c);
+    const b = c.col || (c.col = { min: new V3(), max: new V3(), train: true, walk: true });
+    b.min.set(p.x - m(CAR.W / 2), p.y, p.z - m(CAR.L / 2));
+    b.max.set(p.x + m(CAR.W / 2), p.y + m(CAR.floor + CAR.H), p.z + m(CAR.L / 2));
+    this.world.moveCollider(b);
+  }
+
+  unsolid(c) {
+    if (c.col) { this.world.removeCollider(c.col); c.col = null; }
+  }
+
+  /**
+   * An explosion near the line: the cars of a running train that it reaches leave the rails,
+   * flung away from it, and the rest of the train derails behind them
+   */
+  blast(p, radius, amount) {
+    const el = this.el, m = (v) => this.m(v);
+    if (!el || Math.abs(p.x - el.cx) > el.hw + radius || p.y < el.yt - radius - m(2) || p.y > el.yt + radius + m(6)) return;
+    for (const t of this.trains) {
+      let hit = false;
+      t.cars = t.cars.filter((c) => {
+        const q = this.carAt(t, c, _c);
+        if (q.z < el.z0 || q.z > el.z1) return true;
+        // From the blast to the nearest point of the car's box
+        const dx = Math.max(0, Math.abs(p.x - q.x) - m(CAR.W / 2)), dy = Math.max(0, Math.abs(p.y - q.y - m(MID)) - m(MID)), dz = Math.max(0, Math.abs(p.z - q.z) - m(CAR.L / 2));
+        const d = Math.hypot(dx, dy, dz), f = amount * (1 - d / radius);
+        if (d >= radius || f < 18) return true;
+        hit = true;
+        const w = this.wreckCar(t, c, 0), k = Math.min(1.6, f / 60);
+        _d.subVectors(w.pos, p).setY(0);
+        if (_d.lengthSq() < 1e-6) _d.set(rand(-1, 1), 0, rand(-1, 1));
+        w.vel.addScaledVector(_d.normalize(), m(rand(5, 9)) * k).y += m(rand(3, 6)) * k;
+        w.w.add(_d.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(k));
+        return false;
+      });
+      if (!hit) continue;
+      this.derail(t);
+      // Stood at the end of the line, it goes now
+      if (t.state === 'wait') t.state = 'run';
+      if (!t.cars.length) t.gone = true;
+    }
   }
 
   /**
@@ -236,12 +300,27 @@ export class Train {
   derail(t) {
     if (t.crash) return;
     t.crash = true;
-    this.sound.explosion(this.carAt(t, t.cars[0], _a), 0.8);
-    // Too many: the oldest settled ones go (what lay on them comes down, see wake())
-    while (this.wrecks.length > MAX_WRECKS) {
-      const k = this.wrecks.findIndex((w) => w.asleep);
-      if (k < 0) break;
-      const [w] = this.wrecks.splice(k, 1);
+    t.side = Math.random() < 0.5 ? 1 : -1;
+    if (t.cars.length) this.sound.explosion(this.carAt(t, t.cars[0], _a), 0.8);
+    this.prune(MAX_WRECKS - CARS);
+  }
+
+  /**
+   * Too many wrecks: settled ones go, those sunk in the river first, then the ones with nothing
+   * lying on them, farthest from the mech first, so no pile is cut from underneath
+   */
+  prune(keep) {
+    const P = this.player, m = (v) => this.m(v);
+    while (this.wrecks.length > keep) {
+      let best = -1, score = -Infinity;
+      this.wrecks.forEach((w, k) => {
+        if (!w.asleep) return;
+        const under = this.wrecks.some((o) => o !== w && o.pos.y > w.pos.y + m(1) && Math.abs(o.pos.x - w.pos.x) < m(4) && Math.abs(o.pos.z - w.pos.z) < m(CAR.L * 0.7));
+        const s = (w.collider ? 0 : 1e9) - (under ? 1e8 : 0) + (P ? Math.hypot(w.pos.x - P.x, w.pos.z - P.z) : 0);
+        if (s > score) { score = s; best = k; }
+      });
+      if (best < 0) break;
+      const [w] = this.wrecks.splice(best, 1);
       if (w.collider) this.world.removeCollider(w.collider);
     }
   }
@@ -403,6 +482,14 @@ export class Train {
   update(dt, ctx) {
     if (!this.el) return;
     const m = (x) => this.m(x), P = ctx.player, el = this.el;
+    this.player = P;
+    // From the start one is already on its way down the line, just short of where the mech stands
+    if (!this.started) {
+      this.started = true;
+      this.depart();
+      const t = this.trains[this.trains.length - 1];
+      t.s = Math.max(el.z0, Math.min(el.z1 - m(400), (P ? P.z : el.z0) - m(250)));
+    }
     this.timer -= dt;
     // Every minute or so, unless the last one is still standing where the next would come in
     if (this.timer <= 0) {
@@ -447,7 +534,18 @@ export class Train {
       if (t.dir < 0 && last < el.z0 - m(10)) t.gone = true;
       if (Math.random() < dt * 3 && P && Math.abs(t.s - P.z) < m(300)) this.sound.footstep(_a.set(head.x, el.yt, t.s), 0.25);
     }
+    // Running cars stay solid where they are; gone trains take theirs away
+    for (const t of this.trains) {
+      if (t.gone) { for (const c of t.cars) this.unsolid(c); continue; }
+      for (const c of t.cars) {
+        const z = this.carAt(t, c, _c).z;
+        // (off the line, or past what can be drawn: not there to be struck)
+        if (z < el.z0 || z > el.z1 || c.drawn === false) this.unsolid(c); else this.solid(t, c);
+      }
+    }
     this.trains = this.trains.filter((t) => !t.gone);
+    // Never more wrecks than can be drawn (two derailing at once can overshoot)
+    if (this.wrecks.length > MAX_WRECKS) this.prune(MAX_WRECKS);
     // A few settled wrecks a frame: still held up? (the deck or the wreck under one may be gone)
     for (let k = 0, n = this.wrecks.length; k < Math.min(4, n); k++) {
       const w = this.wrecks[(this.next = (this.next + 1) % n)];
@@ -472,7 +570,8 @@ export class Train {
       for (const c of t.cars) {
         this.carAt(t, c, _a);
         // On the line only: they come in from its north end and leave there
-        if (_a.z < this.el.z0 || _a.z > this.el.z1 + M * 20 || nf >= this.cap) continue;
+        c.drawn = !(_a.z < this.el.z0 || _a.z > this.el.z1 + M * 20 || nf >= this.cap);
+        if (!c.drawn) continue;
         // The cab at the back faces the other way
         _q.setFromAxisAngle(UP, (t.dir > 0 ? 0 : Math.PI) + (c.cab && c.rear ? Math.PI : 0));
         if (c.cab) put(this.cab, nc++, _a, _q); else put(this.body, nb++, _a, _q);
