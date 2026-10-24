@@ -4,11 +4,12 @@ import { FX } from './fx.js';
 import { Sound } from './audio.js';
 import { music } from './music.js';
 import { World, SUN_DIR, STEP } from './world.js';
-import { Mech } from './mech.js';
+import { FRAMES } from './frames.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { Input } from './input.js';
-import { HUD, Hangar } from './ui.js';
+import { HUD, Hangar, FrameSelect } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
+import { Allies } from './allies.js';
 import { Destruction } from './destruct/destruct.js';
 import { People } from './people.js';
 import { Furniture } from './furniture.js';
@@ -20,6 +21,7 @@ const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Math.exp(-rate * dt));
 
@@ -28,10 +30,9 @@ const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Mat
 const MECH_HEIGHT_M = 40 * 0.3048;
 let METERS = 1.7;
 
-// Armor points. Spider hits are scaled by HIT_SCALE; armor starts regenerating
-// REGEN_DELAY seconds after the last hit. A raised shield turns away hits from
-// within SHIELD_ARC of the way the mech faces.
-const AP_MAX = 1000;
+// Armor points come with the frame (js/frames.js). Spider hits are scaled by HIT_SCALE; armor
+// starts regenerating REGEN_DELAY seconds after the last hit. A raised shield turns away hits
+// from within SHIELD_ARC of the way the mech faces.
 const HIT_SCALE = 1.5;
 const REGEN_DELAY = 4;
 const REGEN_RATE = 26;
@@ -55,6 +56,8 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage blocked */ } },
 };
+// The frame picked on the select screen (js/frames.js)
+let spec = FRAMES[store.get('vectorclad.frame', 'vanguard')] || FRAMES.vanguard;
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 // ?wave=N starts the fight at wave N, with every kind that has joined by then
@@ -132,7 +135,8 @@ const sound = new Sound();
 window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
-let world, fx, mech, weapons, hud, hangar, mats, spiders;
+let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel;
+const frameMechs = {}; // each frame's model, built the first time it is picked
 
 const DEFAULT = PRESETS[0];
 // Bumped storage key: loadouts saved for the earlier frame start fresh on this one.
@@ -154,11 +158,12 @@ const P = {
   phase: 0, gaitDir: 1, legYaw: 0,
   dashing: false, ascending: false, onLip: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
-  ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, pullK: 0, pullFrom: new V3(),
+  ap: spec.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, pullK: 0, pullFrom: new V3(),
   chest: new V3(),
 };
 const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
-let mode = 'loading'; // loading | intro | play | hangar | over
+// loading | intro | frames (frame select) | loadout (before a drop) | drop (flown in) | play | hangar (paused) | over
+let mode = 'loading';
 let time = 0;
 let deployed = false;
 
@@ -197,12 +202,14 @@ async function init() {
   applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
   fx = new FX(scene, { onShake: shake, sound });
   hud = new HUD({ touch: isTouch });
-  mech = new Mech(mats, fx.glowTex);
+  // The world is always scaled from the Vanguard, whichever frame is picked
+  mech = frameMechs.vanguard = FRAMES.vanguard.build(mats, fx.glowTex);
   METERS = MECH_HEIGHT_M / measureMech();
   $('#load-msg').textContent = 'Building Port Meridian…';
   await new Promise((r) => setTimeout(r, 30));
   world = new World(scene, mats, fx, sound, { M: 1 / METERS, cityTex: tex.city }, {
-    onHit: () => hud.hit(false),
+    // The allies' hits (world.allyFire) don't light the mech's hit marker
+    onHit: () => { if (!world.allyFire) hud.hit(false); },
   });
   spiders = new SpiderSwarm({
     scene, world, fx, sound, tex, glowTex: fx.glowTex,
@@ -214,12 +221,13 @@ async function init() {
         sound.warning();
       },
       onWaveClear: (n) => {
-        P.ap = Math.min(AP_MAX, P.ap + AP_MAX * 0.3);
+        P.ap = Math.min(spec.ap, P.ap + spec.ap * 0.3);
         hud.toast(`WAVE ${n} CLEARED · ARMOR PATCHED`, 2.8);
       },
       onKill: (s) => {
-        hud.hit(true);
-        hud.addKill();
+        // The tanks' kills are theirs, not the mech's
+        if (world.allyFire) allies.kills++;
+        else { hud.hit(true); hud.addKill(); }
         if (s.boss || s.v.elite) { hud.toast(`${s.name} DOWN`, 2.6); shake(s.pos, 1); }
       },
       onPlayerHit: hurt,
@@ -274,6 +282,9 @@ async function init() {
   world.furniture = new Furniture({ scene, world, mobile: isTouch });
   world.train = new Train({ scene, world, fx, sound });
   D.onCarve = (s, x, y, z, r) => world.carved(s, x, y, z, r);
+  // The Kestrel H that flies the mech in, and the Kestrels and Bastion tanks that join the fight
+  allies = new Allies({ scene, world, fx, sound, meters: METERS, mobile: isTouch });
+  allies.setSwarm(spiders);
   P.pos.copy(world.spawn);
   mech.root.position.copy(P.pos);
   mech.resetFeet();
@@ -300,7 +311,10 @@ async function init() {
       store.set('vectorclad.loadout', loadout);
     },
     onSettings: applySettings,
+    frames: FRAMES, frame: () => spec.id, onFrame: (id) => setFrame(id),
   });
+  frameSel = new FrameSelect({ frames: FRAMES, current: spec.id, sound, meters: () => METERS, onPick: (id) => setFrame(id) });
+  if (spec !== FRAMES.vanguard) setFrame(spec.id);
   applySettings();
 
   if (isTouch) {
@@ -317,12 +331,16 @@ async function init() {
   document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') openHangar(); });
   portraitPhone.addEventListener('change', () => { if (portraitPhone.matches && mode === 'play') openHangar(); });
 
-  $('#btn-launch').addEventListener('click', () => { sound.unlock(); startPlay(); });
-  $('#btn-intro-hangar').addEventListener('click', () => { sound.unlock(); $('#intro').hidden = true; openHangar(); });
-  $('#btn-close-hangar').addEventListener('click', () => { sound.unlock(); startPlay(); });
+  // Launch: frame select, then the loadout, then the drop. Quick deploy goes straight to the drop.
+  $('#btn-launch').addEventListener('click', () => { sound.unlock(); openFrames(); });
+  $('#btn-quick').addEventListener('click', () => { sound.unlock(); startDrop(); });
+  $('#btn-frame-next').addEventListener('click', () => { sound.unlock(); openLoadout(); });
+  $('#btn-frame-back').addEventListener('click', () => { sound.unlock(); openIntro(); });
+  $('#btn-hangar-back').addEventListener('click', () => { sound.unlock(); openFrames(); });
+  $('#btn-close-hangar').addEventListener('click', () => { sound.unlock(); if (mode === 'loadout') startDrop(); else startPlay(); });
   $('#btn-hangar').addEventListener('click', () => openHangar());
-  $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); startPlay(); });
-  $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); redeploy(); openHangar(); });
+  $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); startDrop(); });
+  $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); openFrames(); });
   $('#t-menu').addEventListener('click', () => openHangar());
   // A tap with a second finger (thumb still on the stick) never becomes a click, so open on touchend.
   // Cancelling it also keeps the click from landing on the hangar that just opened under the finger.
@@ -347,9 +365,11 @@ async function init() {
   requestAnimationFrame(frame);
 }
 
+/** Into the fight from the hangar. Not yet deployed (only tests call it that way), the frame starts on the plaza. */
 function startPlay() {
   if (!deployed || !P.alive) redeploy();
   $('#intro').hidden = true;
+  $('#frames').hidden = true;
   $('#hangar').hidden = true;
   $('#hud').hidden = false;
   if (isTouch) $('#touch').hidden = false;
@@ -360,7 +380,8 @@ function startPlay() {
 /** Fresh frame on the starting plaza, fresh waves */
 function redeploy() {
   deployed = true;
-  Object.assign(P, { ap: AP_MAX, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
+  allies.clear();
+  Object.assign(P, { ap: spec.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
   P.vel.set(0, 0, 0);
   if (world.city.landmark) P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
@@ -389,7 +410,7 @@ function hurt(amount, from, kind) {
   P.ap -= dmg;
   P.hurtT = 0;
   // Screen angle of the shooter: 0 straight ahead, clockwise
-  hud.damage(dmg / AP_MAX, -wrap(bearing - P.yaw), blocked);
+  hud.damage(dmg / spec.ap, -wrap(bearing - P.yaw), blocked);
   if (blocked) {
     _t.normalize();
     _t2.set(P.pos.x + Math.sin(P.bodyYaw) * 2.2, P.pos.y + 4.6, P.pos.z + Math.cos(P.bodyYaw) * 2.2);
@@ -419,18 +440,139 @@ function die() {
   cam.orbit = P.yaw + Math.PI;
   const t = Math.floor(P.runT);
   $('#over-wave').textContent = String(Math.max(1, spiders.wave));
-  $('#over-kills').textContent = String(spiders.kills);
+  $('#over-kills').textContent = String(hud.score);
   $('#over-time').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
+/** The pause hangar: loadout and settings, then back into the fight */
 function openHangar() {
   if (mode === 'hangar') return;
   mode = 'hangar';
+  $('#hangar-eyebrow').textContent = 'HANGAR 2 · BAY 07';
+  $('#btn-close-hangar').textContent = 'Launch';
+  $('#btn-hangar-back').hidden = true;
+  hangar.render();
   $('#hangar').hidden = false;
   $('#touch').hidden = true;
   input.releaseTouch();
   input.exitLock();
   cam.orbit = P.bodyYaw + 0.6;
+}
+
+/** Only one of the full-screen panels at a time */
+function showPanel(id) {
+  for (const p of ['#intro', '#frames', '#hangar', '#gameover', '#drop']) $(p).hidden = p !== id;
+  $('#hud').hidden = true;
+  $('#touch').hidden = true;
+  input.releaseTouch();
+  input.exitLock();
+}
+
+function openIntro() {
+  mode = 'intro';
+  showPanel('#intro');
+  if (!isTouch) $('#btn-launch').focus({ preventScroll: true });
+}
+
+/** Frame select: the frames take turns in the showroom on the plaza */
+function openFrames() {
+  // Back from a lost fight: a fresh frame on the plaza to look at, not the wreck
+  if (!P.alive) redeploy();
+  mode = 'frames';
+  showPanel('#frames');
+  frameSel.render(spec.id);
+  cam.orbit = P.bodyYaw + 0.5;
+  if (!isTouch) $('#btn-frame-next').focus({ preventScroll: true });
+}
+
+/** The loadout before a drop: the hangar panel, with Deploy and a way back to the frames */
+function openLoadout() {
+  mode = 'loadout';
+  showPanel('#hangar');
+  $('#hangar-eyebrow').textContent = `PRE-DEPLOY · ${spec.code} ${spec.name.toUpperCase()}`;
+  $('#btn-close-hangar').textContent = 'Deploy';
+  $('#btn-hangar-back').hidden = false;
+  hangar.render();
+  cam.orbit = P.bodyYaw + 0.6;
+}
+
+/**
+ * Swap the frame on show (or in play, from the pause hangar): same spot and loadout, and the
+ * same share of its armor left. The world's scale is left alone.
+ */
+function setFrame(id) {
+  const f = FRAMES[id];
+  if (!f) return;
+  const share = P.ap / spec.ap;
+  spec = f;
+  store.set('vectorclad.frame', id);
+  const next = frameMechs[id] || (frameMechs[id] = f.build(mats, fx.glowTex));
+  if (next !== mech) {
+    weapons.equip({ slots: {} }); // strip the weapons off the old frame
+    scene.remove(mech.root);
+    mech = next;
+    weapons.mech = mech;
+    mech.root.position.copy(P.pos);
+    mech.root.rotation.set(0, P.bodyYaw, 0);
+    mech.resetFeet();
+    mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; if (o.userData.isOutline) o.visible = settings.outlines; });
+    scene.add(mech.root);
+    weapons.equip(loadout);
+    if (mode !== 'loading') { fx.dust(P.pos, 1.2, 14); sound.servo(P.pos); }
+  }
+  P.ap = Math.max(1, share * f.ap);
+  $('#unit-code').textContent = f.code;
+  $('#unit-name').textContent = f.name.toUpperCase();
+}
+
+/** Deploy: the Kestrel H flies the frame in from the harbor and lets go over the plaza */
+function startDrop() {
+  redeploy();
+  mode = 'drop';
+  showPanel('#drop');
+  const D = allies.startDrop(world.spawn);
+  P.yaw = P.bodyYaw = D.heading;
+  P.pitch = 0.05;
+  P.pos.copy(D.feet);
+  P.grounded = false;
+  mech.root.position.copy(P.pos);
+  mech.resetFeet();
+  cam.pivotY = P.pos.y + 7.4;
+  // Inside the click: the only time the pointer can be locked without another one
+  input.requestLock();
+}
+
+/** Hanging from the cradle: no control, no thrusters, the lifter's turbines in the ears */
+let etaShown = '';
+function holdInCradle(dt, D) {
+  P.pos.copy(D.feet);
+  P.vel.copy(D.vel);
+  P.yaw = P.bodyYaw = D.heading;
+  P.legYaw = 0;
+  P.grounded = false;
+  for (const k in P.thrust) P.thrust[k] = damp(P.thrust[k], 0, 10, dt);
+  washMat.opacity = 0;
+  sound.setThrust(0.85, dt);
+  const eta = Math.max(0, D.releaseT - D.t).toFixed(1);
+  if (eta !== etaShown) $('#drop-eta').textContent = etaShown = eta;
+  if (D.released) releaseFrame(D);
+  return { speed: 0, gait: 0, ground: 0 };
+}
+
+/** The clamps open: the frame drops onto the plaza and is the player's from here */
+function releaseFrame(D) {
+  mode = 'play';
+  // The pointer stays locked from the Deploy click; if it was let go, a click on the view takes it again
+  $('#drop').hidden = true;
+  $('#hud').hidden = false;
+  if (isTouch) $('#touch').hidden = false;
+  P.vel.set(D.vel.x, Math.min(0, D.vel.y) - 2, D.vel.z);
+  P.grounded = false;
+  P.airT = 0;
+  mech.resetFeet();
+  hud.toast('FRAME RELEASED · WEAPONS FREE', 2.4);
+  // The first Kestrels with tanks come in a little after the first wave
+  allies.schedule(14);
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +585,8 @@ const NO_INPUT = { move: { x: 0, y: 0 }, lookX: 0, lookY: 0 };
 function updatePlayer(dt, c) {
   const playing = mode === 'play';
   if (!playing) c = Object.assign({}, NO_INPUT, { wheel: c.wheel });
+  // A frame with less boost burns its gauge faster
+  const BD = BOOST_DRAIN / spec.boost;
 
   // Look
   const sens = 0.0022 * settings.sens;
@@ -470,9 +614,9 @@ function updatePlayer(dt, c) {
 
   // Boost / dash
   const canBoost = P.boost > 0 && !P.overheat;
-  if (playing && c.dashPressed && canBoost && P.boost > 6 * BOOST_DRAIN && !pinned) {
+  if (playing && c.dashPressed && canBoost && P.boost > 6 * BD && !pinned) {
     sound.boostIgnite();
-    P.boost -= 6 * BOOST_DRAIN;
+    P.boost -= 6 * BD;
     const dir = wishLen > 0.1 ? _t.copy(_w).normalize() : _t.copy(_f);
     P.vel.x += dir.x * 14; P.vel.z += dir.z * 14;
     if (P.grounded) fx.dust(P.pos, 0.8, 8);
@@ -487,7 +631,7 @@ function updatePlayer(dt, c) {
       fx.smoke.emit(P.pos.x + Math.cos(a) * 1.6, P.pos.y + 1 + Math.random() * 5, P.pos.z + Math.sin(a) * 1.6, 0, -0.5, 0, 0.9, 1.2, 2.2, 0.9, 0.95, 1, 0.55, 0.85, 0.9, 1, 0, 1, 0);
     }
   }
-  const maxSpeed = (P.dashing ? 36 : 7.5) * (webbed ? 0.45 : 1) * (pinned ? 0 : 1);
+  const maxSpeed = (P.dashing ? spec.dash : spec.walk) * (webbed ? 0.45 : 1) * (pinned ? 0 : 1);
   const accel = P.grounded ? (P.dashing ? 70 : 30) : (P.dashing ? 45 : 14);
   const target = _t.set(0, 0, 0);
   if (wishLen > 0.08) target.copy(_w).multiplyScalar(maxSpeed);
@@ -513,10 +657,10 @@ function updatePlayer(dt, c) {
     if (P.jumpT > 0) {
       P.jumpT -= dt;
       if (P.jumpT <= 0) {
-        P.vel.y = 15;
+        P.vel.y = spec.jump;
         P.grounded = false;
         P.launchT = 0.35;
-        if (canBoost) P.boost -= 4 * BOOST_DRAIN;
+        if (canBoost) P.boost -= 4 * BD;
         sound.boostIgnite();
         fx.dust(P.pos, 1.2, 14);
         shake(null, 0.25);
@@ -529,14 +673,14 @@ function updatePlayer(dt, c) {
       P.ascending = true;
       P.vel.y = Math.min(14, P.vel.y + 62 * dt);
       g = 0;
-      P.boost -= 24 * BOOST_DRAIN * dt;
+      P.boost -= 24 * BD * dt;
     } else if (P.dashing) {
       g = 9;
       P.vel.y = Math.max(P.vel.y, -6);
     }
     P.vel.y -= g * dt;
   }
-  if (P.dashing) P.boost -= 26 * BOOST_DRAIN * dt;
+  if (P.dashing) P.boost -= 26 * BD * dt;
 
   // Integrate
   const prevY = P.pos.y;
@@ -623,7 +767,7 @@ function updatePlayer(dt, c) {
     else { P.legYaw = clamp(Math.atan2(-lx, -lz), -1.0, 1.0); P.gaitDir = -1; }
   } else P.legYaw *= 0.9;
   const walking = P.grounded && !P.dashing && P.landT <= 0;
-  const gait = walking ? clamp(speed / 7.5, 0, 1) : 0;
+  const gait = walking ? clamp(speed / spec.walk, 0, 1) : 0;
 
   // Thrusters
   const T = P.thrust;
@@ -748,12 +892,13 @@ function leadPoint(out) {
   if (speed > 0) out.addScaledVector(t.vel, Math.min(2, d / speed));
   return out;
 }
-const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3();
+const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3(), dropQ = new THREE.Quaternion();
 
 function updateCamera(dt, speed) {
-  cam.pivotY = damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
+  const dropping = mode === 'drop' && allies.drop;
+  cam.pivotY = dropping ? P.pos.y + 7.4 : damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
-  if (mode === 'play' && !cam.debugOrbit) {
+  if ((mode === 'play' || dropping) && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
     // Shoulder offset, pulled in when a wall is close on that side
@@ -772,6 +917,16 @@ function updateCamera(dt, speed) {
     camera.lookAt(_t.copy(camPos).add(camDir));
     const fovT = P.dashing ? 72 : 60;
     cam.fov = damp(cam.fov, fovT, 4, dt);
+    if (dropping) {
+      // The insertion: a chase shot of the lifter that eases into this view by the release
+      const D = allies.drop, k = smoothstep(D.flyT - 1.2, D.releaseT, D.t);
+      dropQ.copy(camera.quaternion);
+      camera.position.copy(D.cam.pos);
+      camera.lookAt(D.cam.look);
+      camera.position.lerp(camPos, k);
+      camera.quaternion.slerp(dropQ, k);
+      camDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    }
   } else {
     // Showroom orbit for the intro and hangar
     cam.orbit += dt * cam.orbitSpeed;
@@ -779,14 +934,17 @@ function updateCamera(dt, speed) {
     camPos.set(P.pos.x + Math.sin(cam.orbit) * r, P.pos.y + cam.orbitY, P.pos.z + Math.cos(cam.orbit) * r);
     camera.position.copy(camPos);
     const look = _t.set(P.pos.x, P.pos.y + cam.lookY, P.pos.z);
-    // Shift the mech left of center while a side panel covers the right
-    const panelOpen = mode === 'hangar' && !hangarSheet.matches;
-    const introOpen = mode === 'intro' && window.innerWidth > 720;
+    // Shift the mech left of center while a side panel covers the right, right of it while the
+    // intro or frame select covers the left
+    const sidePanel = mode === 'hangar' || mode === 'loadout';
+    const panelOpen = sidePanel && !hangarSheet.matches;
+    const introOpen = (mode === 'intro' || mode === 'frames') && window.innerWidth > 720;
     if (panelOpen || introOpen) {
       _t2.subVectors(look, camPos).normalize().cross(new V3(0, 1, 0)).normalize();
-      look.addScaledVector(_t2, panelOpen ? 4.5 : -4.5);
+      // On a landscape phone the two frame cards sit side by side and reach further across
+      look.addScaledVector(_t2, panelOpen ? 4.5 : mode === 'frames' && window.innerHeight <= 500 ? -7 : -4.5);
     }
-    if (mode === 'hangar' && hangarSheet.matches) look.y -= 2.5;
+    if (sidePanel && hangarSheet.matches) look.y -= 2.5;
     camera.lookAt(look);
     camDir.subVectors(look, camPos).normalize();
     cam.fov = damp(cam.fov, 50, 3, dt);
@@ -846,7 +1004,10 @@ function frame(now) {
   if (c.lockon && mode === 'play') pressLock();
   updateHardLock();
 
-  const { speed, gait } = updatePlayer(dt, c);
+  // The Kestrel H: carrying the frame in, then climbing away after the release
+  const running = mode === 'drop' || mode === 'play' || mode === 'over';
+  const D = running && allies.drop ? allies.updateDrop(dt) : null;
+  const { speed, gait } = mode === 'drop' && D ? holdInCradle(dt, D) : updatePlayer(dt, c);
   updateCamera(dt, speed);
   P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
 
@@ -865,9 +1026,16 @@ function frame(now) {
       }
       if (P.ap <= 0) die();
     }
-    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(AP_MAX, P.ap + REGEN_RATE * dt);
+    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(spec.ap, P.ap + REGEN_RATE * dt);
   }
   if (mode === 'play' || mode === 'over') spiders.update(dt, spiderCtx);
+  // Tanks and their Kestrels fight on over the wreck; new packs only come while the mech fights
+  if (running) {
+    allies.update(dt, {
+      player: P.pos, packs: mode === 'play' && P.alive,
+      onPack: (n) => hud.toast(`KESTRELS INBOUND · ${n} BASTION${n === 1 ? '' : 'S'}`, 2.6),
+    });
+  }
   if (mode === 'over') {
     P.deadT += dt;
     if (P.deadT > 1.8 && $('#gameover').hidden) $('#gameover').hidden = false;
@@ -896,7 +1064,9 @@ function frame(now) {
 
   // Animate mech
   mech.root.position.copy(P.pos);
-  mech.root.rotation.y = P.bodyYaw;
+  mech.root.rotation.set(0, P.bodyYaw, 0);
+  // Hanging from the cradle it pitches and rolls with the lifter
+  if (mode === 'drop' && D && !D.released) mech.root.quaternion.copy(D.mechQ);
   const H = weapons.hand;
   const res = mech.animate(dt, {
     gait, air: P.grounded ? 0 : 1, dash: P.dashing ? 1 : 0,
@@ -921,7 +1091,7 @@ function frame(now) {
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {
     hud.update(dt, {
-      ap: P.ap, apMax: AP_MAX, wave: spiders.wave, hostiles: spiders.hostiles, boss: spiders.boss,
+      ap: P.ap, apMax: spec.ap, wave: spiders.wave, hostiles: spiders.hostiles, boss: spiders.boss,
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
@@ -939,7 +1109,8 @@ init().catch((err) => {
 
 // Debug/test hook
 window.__mech = {
-  P, cam, input, startPlay, openHangar, redeploy, hurt, AP_MAX, get spiders() { return spiders; }, scene, camera,
+  P, cam, input, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
+  openFrames, openLoadout, startDrop, setFrame, get frame() { return spec; }, get allies() { return allies; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
   renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
 };

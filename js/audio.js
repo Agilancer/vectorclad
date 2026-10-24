@@ -146,6 +146,13 @@ export class Sound {
     this.noiseHit({ type: 'bandpass', freq: 500, freqEnd: 2600, q: 1.2, peak: 0.55, attack: 0.02, decay: 0.7, pos });
     this.tone({ type: 'sine', freq: 70, freqEnd: 40, peak: 0.5, decay: 0.3, pos });
   }
+  /** An allied tank's gun */
+  cannon(pos) {
+    if (!this.gate('cannon', 0.05, pos, 0.02)) return;
+    this.noiseHit({ type: 'lowpass', freq: 1800, freqEnd: 220, peak: 0.6, decay: 0.38, pos });
+    this.tone({ type: 'sine', freq: 115, freqEnd: 36, peak: 0.55, decay: 0.32, pos });
+    this.noiseHit({ type: 'highpass', freq: 2800, peak: 0.14, decay: 0.05, pos });
+  }
   missile(pos) {
     this.noiseHit({ type: 'bandpass', freq: 700, freqEnd: 3200, q: 1.5, peak: 0.3, attack: 0.01, decay: 0.45, pos });
     this.noiseHit({ type: 'highpass', freq: 5000, peak: 0.08, decay: 0.1, pos });

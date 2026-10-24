@@ -110,6 +110,7 @@ const LASERS = {
 };
 
 const _a = new V3(), _b = new V3(), _c = new V3(), _d = new V3(), _e = new V3(), _g = new V3(), _h = new V3();
+const _al = new V3();
 const _u = new V3(), _n = new V3(), _q = new V3();
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const _col = new THREE.Color();
@@ -172,6 +173,9 @@ export class SpiderSwarm {
     this.fx = fx;
     this.sound = sound;
     this.cb = cb || {};
+    // The mech's callbacks: this.cb is swapped for an ally's while a spider goes after it (think)
+    this.playerCb = this.cb;
+    this.allies = []; // allied tanks and Kestrels the swarm may go after (js/allies.js)
     this.list = [];
     this.free = [];
     for (let i = CAP - 1; i >= 0; i--) this.free.push(i);
@@ -635,7 +639,68 @@ export class SpiderSwarm {
   }
 
   think(s, dt, ctx) {
-    const P = ctx.player;
+    const P = this.foeFor(s, ctx.player, dt);
+    if (!P.cb) { this.act(s, dt, P); return; }
+    // Going after an ally: the hits that would land on the mech land on it instead
+    const cb = this.cb;
+    this.cb = P.cb;
+    try { this.act(s, dt, P); } finally { this.cb = cb; }
+  }
+
+  /**
+   * Who a spider goes after: the mech, unless an allied tank or Kestrel (js/allies.js) is a good
+   * deal nearer. Bosses keep to the mech.
+   */
+  foeFor(s, P, dt) {
+    if (!this.allies.length || s.boss || s.state === 'dead') return P;
+    s.foeT = (s.foeT || 0) - dt;
+    if (s.foeT > 0 && s.foe && (s.foe === P || s.foe.alive)) return s.foe;
+    s.foeT = rand(1.2, 2.2);
+    let best = P, bd = P.alive ? s.c.distanceTo(P.pos) * 0.7 : Infinity;
+    for (const a of this.allies) {
+      if (!a.alive) continue;
+      const d = s.c.distanceTo(a.pos);
+      if (d < bd && d < 170) { bd = d; best = a; }
+    }
+    if (best !== s.foe) s.losT = 0; // look again, at the new foe
+    s.foe = best;
+    return best;
+  }
+
+  /** How far p is from an ally's hull (its hit spheres), or from the mech's capsule */
+  foeDist(F, p) {
+    if (!F.spheres) return capsuleDist(p, F.pos);
+    let d = Infinity;
+    for (const q of F.spheres) d = Math.min(d, p.distanceTo(q.c) - q.r);
+    return d;
+  }
+
+  /** The ally whose hull p is in, if any */
+  allyAt(p, pad = 0.3) {
+    for (const a of this.allies) if (a.alive && this.foeDist(a, p) < pad) return a;
+    return null;
+  }
+
+  /** The first ally hull the segment a-b passes through, as { ally, point }, or null */
+  allySeg(a, b) {
+    const dir = _al.subVectors(b, a), len = dir.length();
+    dir.divideScalar(len || 1);
+    let best = null, bt = len;
+    for (const al of this.allies) {
+      if (!al.alive) continue;
+      for (const q of al.spheres) {
+        const ox = a.x - q.c.x, oy = a.y - q.c.y, oz = a.z - q.c.z;
+        const B = ox * dir.x + oy * dir.y + oz * dir.z, disc = B * B - (ox * ox + oy * oy + oz * oz - q.r * q.r);
+        if (disc < 0) continue;
+        const t = -B - Math.sqrt(disc);
+        if (t >= 0 && t < bt) { bt = t; best = al; }
+      }
+    }
+    return best ? { ally: best, point: a.clone().addScaledVector(dir, bt) } : null;
+  }
+
+  /** One spider's turn. P: its foe, the mech or an ally with the same pos, chest, vel and alive. */
+  act(s, dt, P) {
     s.t += dt;
     s.flash = Math.max(0, s.flash - dt * 6);
     if (s.state === 'dead') { this.corpse(s, dt); return; }
@@ -650,7 +715,7 @@ export class SpiderSwarm {
     s.seeT = s.see ? s.seeT + dt : 0;
     // A spider lost somewhere far off for a long time goes back into the wave's pool
     s.lostT = s.see ? 0 : (s.lostT || 0) + dt;
-    if (s.lostT > 40 && s.state === 'crawl' && s.c.distanceTo(P.pos) > 120) {
+    if (s.lostT > 40 && s.state === 'crawl' && s.c.distanceTo(this.P.pos) > 120) {
       this.remove(s);
       this.toSpawn++;
       return;
@@ -840,7 +905,7 @@ export class SpiderSwarm {
     const d = from.distanceTo(P.chest), T = clamp(d / 32, 0.35, 1.4);
     const v = new V3().copy(P.chest).addScaledVector(P.vel, T * 0.7).sub(from).divideScalar(T);
     v.y += 0.5 * GRAVITY * T;
-    s.flight = { vel: v, target: null, from, pounce: true };
+    s.flight = { vel: v, target: null, from, pounce: true, foe: P };
     s.goal = null;
     s.state = 'crouch';
     s.timer = 0.16;
@@ -858,7 +923,11 @@ export class SpiderSwarm {
     this.sound.explosion(p, 1);
     if (P && P.alive) {
       const d = capsuleDist(p, P.pos);
-      if (d < 9) this.cb.onPlayerHit && this.cb.onPlayerHit(8 + 26 * (1 - d / 9), p, 'blast');
+      if (d < 9) this.playerCb.onPlayerHit && this.playerCb.onPlayerHit(8 + 26 * (1 - d / 9), p, 'blast');
+    }
+    for (const a of this.allies) {
+      const d = a.alive ? Math.max(0, this.foeDist(a, p)) : 9;
+      if (d < 9) a.cb.onPlayerHit(8 + 26 * (1 - d / 9), p, 'blast');
     }
     this.world.damageRadius(p, 6, 30);
     if (this.world.destruct) this.world.destruct.blast(p, 1.5, 120, { enemy: true });
@@ -977,7 +1046,8 @@ export class SpiderSwarm {
     s.vel.y -= GRAVITY * dt;
     const sp = s.vel.length();
     const dir = _a.copy(s.vel).divideScalar(sp || 1);
-    if (fl.pounce && this.P && this.P.alive && capsuleDist(s.c, this.P.pos) < 1.8 + s.scale) { this.detonate(s); return; }
+    const F = fl.foe || this.P;
+    if (fl.pounce && F && F.alive && this.foeDist(F, s.c) < 1.8 + s.scale) { this.detonate(s); return; }
     const hit = fl.t > 0.06 ? this.ray(s.c, dir, sp * dt + 0.9 * s.scale) : null;
     if (hit) { this.land(s, hit); return; }
     s.c.addScaledVector(s.vel, dt);
@@ -1259,6 +1329,8 @@ export class SpiderSwarm {
       b.pos.addScaledVector(b.vel, dt);
       // Player: distance from the bolt to the mech's capsule
       const ph = P.alive && capsuleDist(b.pos, P.pos) < 1.9;
+      // Allied tanks and Kestrels in the way (or aimed at) take the hit
+      const ah = ph ? null : this.allies.length ? this.allyAt(b.pos) : null;
       if (b.ring) {
         // The warning ring pulses faster as the shell comes down
         const u = b.ring.userData;
@@ -1266,9 +1338,11 @@ export class SpiderSwarm {
         const k = Math.min(1, u.t / u.T);
         b.ring.material.opacity = (0.35 + 0.65 * Math.abs(Math.sin(u.t * (5 + 20 * k)))) * Math.min(1, u.t * 4);
       }
-      if (ph || hit || b.life <= 0) {
-        if (!ph && hit && hit.target && hit.target.kind === 'tree' && !B.web) this.world.damage(hit.target, B.dmg, hit.point);
-        this.impact(b, ph ? b.pos : hit ? hit.point : b.pos, hit ? hit.normal : _c.copy(_a).negate(), ph, P, ph ? null : hit);
+      if (ph || ah || hit || b.life <= 0) {
+        if (!ph && !ah && hit && hit.target && hit.target.kind === 'tree' && !B.web) this.world.damage(hit.target, B.dmg, hit.point);
+        const at = ph || ah;
+        this.impact(b, at ? b.pos : hit ? hit.point : b.pos, hit ? hit.normal : _c.copy(_a).negate(), ph, P, at ? null : hit);
+        if (ah && b.kind !== 'shell') ah.cb.onPlayerHit(B.dmg, b.from, b.kind);
         this.bolts.splice(i, 1);
         continue;
       }
@@ -1300,6 +1374,10 @@ export class SpiderSwarm {
       this.world.blastTrees(p, B.splash, B.dmg);
       const d = capsuleDist(p, P.pos);
       if (P.alive && d < B.splash && hurt) hurt(4 + B.dmg * (1 - d / B.splash), b.from, 'shell');
+      for (const a of this.allies) {
+        const da = a.alive ? Math.max(0, this.foeDist(a, p)) : B.splash;
+        if (da < B.splash) a.cb.onPlayerHit(4 + B.dmg * (1 - da / B.splash), b.from, 'shell');
+      }
       return;
     }
     fx.beamHit(p, nrm, B.hit);
@@ -1322,7 +1400,7 @@ export class SpiderSwarm {
     slot.line.material.uniforms.uColor.value.set(cfg.line);
     slot.beam.material.uniforms.uColor.value.set(cfg.beam);
     slot.glow.material.uniforms.uColor.value.set(cfg.halo);
-    const L = { s, slot, cfg, phase: 'charge', t: 0, aim: P.chest.clone().add(_a.set(rand(-6, 6), rand(-2, 4), rand(-6, 6))), dir: new V3(), from: new V3(), end: new V3(), tree: null };
+    const L = { s, foe: P, slot, cfg, phase: 'charge', t: 0, aim: P.chest.clone().add(_a.set(rand(-6, 6), rand(-2, 4), rand(-6, 6))), dir: new V3(), from: new V3(), end: new V3(), tree: null };
     s.laser = L;
     this.lasers.push(L);
     this.sound.laserCharge(s.c, cfg.charge);
@@ -1347,8 +1425,9 @@ export class SpiderSwarm {
       if (s.nest) L.from.copy(s.tip);
       else this.bodyPoint(s, s.v.lance ? LANCE_TIP : EYE, L.from);
       if (L.phase === 'charge') {
-        // The aim drags after the player, then locks just before firing
-        if (L.t < cfg.lock) L.aim.lerp(P.chest, 1 - Math.exp(-dt * 3.2));
+        // The aim drags after its foe, then locks just before firing
+        const F = L.foe && L.foe.alive ? L.foe : P;
+        if (L.t < cfg.lock) L.aim.lerp(F.chest, 1 - Math.exp(-dt * 3.2));
         L.dir.subVectors(L.aim, L.from).normalize();
         const hit = this.world.raycast(L.from, L.dir, 320, { targets: false, trees: true });
         L.end.copy(hit ? hit.point : _a.copy(L.from).addScaledVector(L.dir, 320));
@@ -1369,13 +1448,17 @@ export class SpiderSwarm {
           this.fx.light(L.from, cfg.beam, 50, 0.25, 40);
           // Hit test once, along the locked line
           const onMech = P.alive && segCapsuleHit(L.from, L.end, P.pos, 1.9);
+          const onAlly = !onMech && this.allies.length ? this.allySeg(L.from, L.end) : null;
           if (onMech) {
             L.end.copy(onMech);
             this.cb.onPlayerHit && this.cb.onPlayerHit(cfg.dmg, L.from.clone(), 'laser');
             if (cfg.shock) this.cb.onShock && this.cb.onShock(cfg.shock, L.from.clone());
+          } else if (onAlly) {
+            L.end.copy(onAlly.point);
+            onAlly.ally.cb.onPlayerHit(cfg.dmg, L.from.clone(), 'laser');
           } else if (L.tree) this.world.damage(L.tree, cfg.dmg, L.end);
           this.fx.beamHit(L.end, _a.copy(L.dir).negate(), cfg.beam);
-          if (!onMech && this.world.destruct) this.world.destruct.blast(L.end, 0.6 + cfg.width, 95, { enemy: true });
+          if (!onMech && !onAlly && this.world.destruct) this.world.destruct.blast(L.end, 0.6 + cfg.width, 95, { enemy: true });
           if (L.end.y < 0.6) this.fx.scorch(L.end.x, L.end.z, 2.5, L.end.y + 0.03);
         }
       } else {
