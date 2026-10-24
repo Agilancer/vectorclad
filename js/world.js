@@ -28,6 +28,55 @@ export const STEP = 0.7;
 export const SUN_DIR = new V3(-0.5, 0.66, 0.42).normalize();
 
 // ---------------------------------------------------------------------------
+// Haze
+//
+// three's linear fog, reworked for every material at once through its shader chunks: measured
+// along the ray rather than the view axis (so it doesn't shift as the camera turns), thickest
+// along the ground and thinning with height, so tower tops stand out of it, and lit warm toward
+// the sun and cool away from it, as the sky is. Exponential fog (the title screen's) is left
+// as it was.
+// ---------------------------------------------------------------------------
+
+const v3 = (v) => `vec3(${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)})`;
+THREE.ShaderChunk.fog_pars_vertex = `#ifdef USE_FOG
+  varying float vFogDepth;
+  varying vec3 vFogRay;
+#endif`;
+THREE.ShaderChunk.fog_vertex = `#ifdef USE_FOG
+  vFogDepth = - mvPosition.z;
+  // From the camera to the vertex, in world space (the view matrix's rotation, transposed)
+  vFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;
+#endif`;
+THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
+  uniform vec3 fogColor;
+  varying float vFogDepth;
+  varying vec3 vFogRay;
+  #ifdef FOG_EXP2
+    uniform float fogDensity;
+  #else
+    uniform float fogNear;
+    uniform float fogFar;
+  #endif
+#endif`;
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+  #else
+    float fogDist = length( vFogRay );
+    vec3 fogDir = vFogRay / max( fogDist, 1e-3 );
+    // Mean density along the ray, for a haze that falls off exponentially with height
+    const float FALL = 1.0 / 90.0;
+    float fogDy = vFogRay.y, fogA = exp( - max( cameraPosition.y, 0.0 ) * FALL ), fogB = exp( - max( cameraPosition.y + fogDy, 0.0 ) * FALL );
+    float fogMean = abs( fogDy ) > 0.01 ? ( fogA - fogB ) / ( fogDy * FALL ) : fogA;
+    float fogFactor = smoothstep( fogNear, fogFar, fogDist * mix( 0.5, 1.15, clamp( fogMean, 0.0, 1.0 ) ) );
+    float fogSun = max( dot( fogDir, ${v3(SUN_DIR)} ), 0.0 );
+    vec3 fogCol = mix( fogColor * vec3( 0.96, 0.985, 1.03 ), vec3( 0.97, 0.93, 0.86 ), pow( fogSun, 4.0 ) * 0.6 );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, fogFactor );
+  #endif
+#endif`;
+
+// ---------------------------------------------------------------------------
 // Sky
 // ---------------------------------------------------------------------------
 
@@ -43,6 +92,7 @@ function makeSky() {
       uGround: { value: new THREE.Color('#8f9aa2') },
       uSunDir: { value: SUN_DIR.clone() },
       uSun: { value: new THREE.Color('#fff1d6') },
+      uTime: { value: 0 },
     },
     vertexShader: /* glsl */`
       varying vec3 vDir;
@@ -53,14 +103,37 @@ function makeSky() {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uTop, uHorizon, uGround, uSunDir, uSun;
+      uniform float uTime;
       varying vec3 vDir;
+      float hash(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+      }
+      float fbm(vec2 p) {
+        float s = 0.0, a = 0.5;
+        for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.07 + vec2(3.1, 1.7); a *= 0.5; }
+        return s;
+      }
       void main() {
         vec3 d = normalize(vDir);
         float h = d.y;
         vec3 col = mix(uHorizon, uTop, pow(max(h, 0.0), 0.5));
         col = mix(col, uGround, smoothstep(0.0, -0.08, h));
         float s = max(dot(d, uSunDir), 0.0);
-        col += uSun * (pow(s, 900.0) * 14.0 + pow(s, 40.0) * 0.5 + pow(s, 6.0) * 0.16);
+        // Fair-weather cumulus on a layer overhead, drifting, lit from the sun's side and gray
+        // underneath, thinning into the haze toward the horizon
+        float cloud = 0.0;
+        if (h > 0.0) {
+          vec2 cp = d.xz / (h + 0.1) * 1.4 + vec2(uTime * 0.006, uTime * 0.0025);
+          float n = fbm(cp);
+          cloud = smoothstep(0.6, 0.84, n) * smoothstep(0.03, 0.3, h);
+          float lit = clamp(0.75 + (n - fbm(cp + uSunDir.xz * 0.08)) * 3.0, 0.45, 1.0);
+          vec3 cc = mix(vec3(0.62, 0.68, 0.78), vec3(1.1, 1.08, 1.04), lit) + uSun * pow(s, 12.0) * 0.2;
+          col = mix(col, cc, cloud * 0.85);
+        }
+        col += uSun * (pow(s, 900.0) * 14.0 * (1.0 - cloud * 0.85) + pow(s, 40.0) * 0.5 + pow(s, 6.0) * 0.16);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -116,7 +189,8 @@ export class World {
     this.targets = [];   // anything weapons can lock and hit: spiders, filled in by SpiderSwarm
     this.spiders = null;
 
-    scene.add(makeSky());
+    this.sky = makeSky();
+    scene.add(this.sky);
     scene.fog = new THREE.Fog(0xc4ccd2, 260, 2600);
 
     // Lights
@@ -542,6 +616,7 @@ export class World {
     if (this.people) this.people.update(dt, c);
     if (this.furniture) this.furniture.update(dt, c);
     if (this.train) this.train.update(dt, c);
+    this.sky.material.uniforms.uTime.value += dt;
     // Keep the shadow frustum centered on the player, far enough back to catch the tall towers
     this.sun.position.copy(player).addScaledVector(SUN_DIR, 700);
     this.sun.target.position.copy(player);

@@ -3,6 +3,7 @@ import { BODY_SHEET, WEAPON_SHEET } from './regions.js';
 import { PIECES } from './pieces.js';
 import { ATLASES } from './cityTiles.js';
 import './kitTiles.js'; // adds the facade, storefront, roof, tree and car pages to ATLASES
+import './billboards.js'; // adds the billboard ads page to ATLASES
 
 export { B, W, BODY_SHEET, WEAPON_SHEET } from './regions.js';
 
@@ -275,6 +276,140 @@ export function addOutline(root, t = 0.026) {
     m.add(o);
     out.push(o);
   }
+  return out;
+}
+
+/**
+ * Draw calls: a frame and its weapons are a few hundred meshes, each with its outline, and each
+ * drawn again for the sun's shadow. Merge the meshes that never move apart, those under the same
+ * joint with the same material, into one, and their outlines into one per joint. refs: what code
+ * keeps hold of to move, hide or recolor (the frame or weapon model object); any mesh it reaches
+ * is left as it is. Returns the outlines left under root.
+ */
+export function batchRigid(root, refs) {
+  const keep = new Set(), seen = new Set();
+  const reach = (v, depth) => {
+    if (!v || typeof v !== 'object' || seen.has(v) || depth > 6) return;
+    seen.add(v);
+    if (v.isObject3D) { if (!v.userData.isOutline) keep.add(v); return; }
+    if (v.isMaterial || v.isBufferGeometry || v.isTexture || ArrayBuffer.isView(v)) return;
+    for (const k of Object.keys(v)) reach(v[k], depth + 1);
+  };
+  reach(refs, 0);
+  const sig = (g) => Object.keys(g.attributes).sort().map((k) => {
+    const a = g.attributes[k];
+    return a.isInterleavedBufferAttribute ? null : `${k}${a.itemSize}${a.normalized ? 'n' : ''}${a.array.constructor.name}`;
+  });
+  const parents = [];
+  root.traverse((o) => { if (o.children.length) parents.push(o); });
+  for (const p of parents) {
+    const buckets = new Map();
+    for (const c of p.children) {
+      if (!c.isMesh || c.isInstancedMesh || c.isSkinnedMesh || keep.has(c) || !c.visible || c.userData.isOutline) continue;
+      // (A single material draws every group, so groups don't matter)
+      const G = c.geometry;
+      if (Array.isArray(c.material) || c.material.transparent || G.morphAttributes.position || G.drawRange.count !== Infinity) continue;
+      if (c.children.some((k) => !k.userData.isOutline || keep.has(k) || k.children.length)) continue;
+      const a = sig(c.geometry);
+      if (a.includes(null)) continue;
+      const key = [c.material.uuid, c.castShadow, c.receiveShadow, c.renderOrder, c.frustumCulled, c.layers.mask, ...a].join('|');
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(c);
+    }
+    const lines = [];
+    let lineVis = true;
+    for (const list of buckets.values()) {
+      // A part alone with its material stays as it is, but its outline joins the joint's
+      if (list.length < 2) {
+        const c = list[0];
+        c.updateMatrix();
+        for (const o of [...c.children]) {
+          o.updateMatrix();
+          lines.push(bake(shape(c.geometry), _bm.multiplyMatrices(c.matrix, o.matrix)));
+          lineVis = o.visible;
+          c.remove(o);
+        }
+        continue;
+      }
+      const geos = [];
+      for (const c of list) {
+        c.updateMatrix();
+        geos.push(bake(c.geometry, c.matrix));
+        for (const o of c.children) {
+          o.updateMatrix();
+          lines.push(bake(shape(c.geometry), _bm.multiplyMatrices(c.matrix, o.matrix)));
+          lineVis = o.visible;
+        }
+        p.remove(c);
+      }
+      const m = new THREE.Mesh(mergeGeos(geos), list[0].material);
+      for (const k of ['castShadow', 'receiveShadow', 'renderOrder', 'frustumCulled']) m[k] = list[0][k];
+      m.layers.mask = list[0].layers.mask;
+      p.add(m);
+    }
+    if (lines.length) {
+      const o = new THREE.Mesh(mergeGeos(lines), outlineMat);
+      o.userData.isOutline = true;
+      o.visible = lineVis;
+      o.raycast = () => {};
+      p.add(o);
+    }
+  }
+  const out = [];
+  root.traverse((o) => { if (o.userData.isOutline) out.push(o); });
+  return out;
+}
+
+const _bm = new THREE.Matrix4();
+/** Just the shape of g, for an outline: it is drawn flat, so needs nothing else */
+function shape(g) {
+  const s = new THREE.BufferGeometry();
+  s.setAttribute('position', g.attributes.position);
+  s.setIndex(g.index);
+  return s;
+}
+/** A copy of g moved by matrix m, its triangles turned back the right way round if m mirrors */
+function bake(g, m) {
+  const b = g.clone().applyMatrix4(m);
+  if (m.determinant() < 0) {
+    if (b.index) {
+      const I = b.index.array;
+      for (let i = 0; i < I.length; i += 3) { const t = I[i + 1]; I[i + 1] = I[i + 2]; I[i + 2] = t; }
+    } else {
+      for (const a of Object.values(b.attributes)) {
+        const A = a.array, n = a.itemSize;
+        for (let i = 0; i < a.count; i += 3) for (let k = 0; k < n; k++) { const t = A[(i + 1) * n + k]; A[(i + 1) * n + k] = A[(i + 2) * n + k]; A[(i + 2) * n + k] = t; }
+      }
+    }
+  }
+  return b;
+}
+
+/** One geometry from several with the same attributes */
+function mergeGeos(list) {
+  if (list.some((g) => !g.index)) list = list.map((g) => (g.index ? g.toNonIndexed() : g));
+  const out = new THREE.BufferGeometry();
+  for (const k of Object.keys(list[0].attributes)) {
+    const a0 = list[0].attributes[k];
+    const arr = new a0.array.constructor(list.reduce((n, g) => n + g.attributes[k].array.length, 0));
+    let o = 0;
+    for (const g of list) { arr.set(g.attributes[k].array, o); o += g.attributes[k].array.length; }
+    out.setAttribute(k, new THREE.BufferAttribute(arr, a0.itemSize, a0.normalized));
+  }
+  if (list[0].index) {
+    const nv = list.reduce((n, g) => n + g.attributes.position.count, 0);
+    const idx = new (nv > 65535 ? Uint32Array : Uint16Array)(list.reduce((n, g) => n + g.index.count, 0));
+    let o = 0, base = 0;
+    for (const g of list) {
+      const I = g.index.array;
+      for (let i = 0; i < I.length; i++) idx[o + i] = I[i] + base;
+      o += I.length;
+      base += g.attributes.position.count;
+    }
+    out.setIndex(new THREE.BufferAttribute(idx, 1));
+  }
+  out.computeBoundingSphere();
+  out.computeBoundingBox();
   return out;
 }
 
