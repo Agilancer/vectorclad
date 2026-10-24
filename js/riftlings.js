@@ -386,6 +386,8 @@ export class RiftlingHorde {
   spawn(at, pk, lead = false) {
     if (!this.free.length) this.evict();
     if (!this.free.length) return null;
+    // The lowest free slot, so the instances drawn (resize()) stay few
+    this.free.sort((a, b) => b - a);
     const v = pk.v, slot = this.free.pop();
     // A little variety in size; the leader stands taller
     const scale = rand(0.94, 1.06) * (v.bulk || 1) * (lead ? 1.12 : 1);
