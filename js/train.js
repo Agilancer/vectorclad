@@ -252,17 +252,18 @@ export class Train {
     if (w.collider) { this.world.removeCollider(w.collider); w.collider = null; }
   }
 
-  /** Whether anything still holds up a settled wreck: ground, deck, rubble or another wreck under its lowest corners */
+  /** Whether anything still holds up a settled wreck: ground, deck, rubble or another wreck touching any of its corners */
   supported(w) {
-    const m = (x) => this.m(x);
-    let low = Infinity;
-    const P = this.probes().map((p0) => p0.clone().applyQuaternion(w.q).add(w.pos));
-    for (const p of P) low = Math.min(low, p.y);
-    for (const p of P) {
-      if (p.y > low + m(0.6)) continue;
-      if (this.world.groundHeight(p.x, p.z, p.y + m(0.6), m(0.3)) > p.y - m(0.8)) return true;
+    const m = (x) => this.m(x), c = w.collider;
+    // (not counting its own box)
+    if (c) c.walk = true;
+    let held = false;
+    for (const p0 of this.probes()) {
+      const p = _s.copy(p0).applyQuaternion(w.q).add(w.pos);
+      if (this.world.groundHeight(p.x, p.z, p.y + m(0.6), m(0.3)) > p.y - m(0.3)) { held = true; break; }
     }
-    return false;
+    if (c) c.walk = false;
+    return held;
   }
 
   /**
