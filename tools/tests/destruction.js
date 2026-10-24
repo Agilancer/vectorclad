@@ -137,6 +137,7 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
           cells: b.cells, y: +b.x.y.toFixed(1), v: +b.v.length().toFixed(2), w: +b.w.length().toFixed(2), sleep: b.sleeping,
           tilt: +(Math.acos(Math.min(1, Math.abs(b.R[4]))) * 57.3).toFixed(1), lean: [+b.R[1].toFixed(2), +b.R[7].toFixed(2)],
           hinge: b.hinge ? +(b.hinge.ang * 57.3).toFixed(1) : undefined,
+          dark: b.s.power.U.uPow.value.x >= 0 ? 'cut' : 'lit',
         }));
       },
       /** The structure of owner o: cells left and the top of what still stands (m) */
@@ -344,6 +345,74 @@ const run = (name) => !want.length || want.includes(name) || want.includes('all'
     const e = await page.evaluate(() => { const P = window.__mech.P; return { pos: [+P.pos.x.toFixed(1), +P.pos.y.toFixed(2), +P.pos.z.toFixed(1)], inside: +(((P.pos.x - Walk.fx) * -Walk.dx + (P.pos.z - Walk.fz) * -Walk.dz) / window.__mech.destruct.M).toFixed(1) }; });
     console.log('   end', JSON.stringify(e), '(inside: meters past the facade)');
     await shot('destruct_walk');
+  }
+
+  if (run('ceilings')) {
+    console.log('ceilings: facades peeled off a few floors of buildings of different themes; then a blast inside, then a piece cut loose');
+    const r = await page.evaluate(async () => {
+      const m = window.__mech, D = m.destruct, M = D.M;
+      const C = await import(new URL('js/destruct/ceilings.js', document.baseURI).href);
+      // One building of each theme near the plaza, tall enough for a few floors
+      const seen = new Set(), picks = [];
+      for (const o of T.near('building', 22, 120, 700)) {
+        if ((o.box[3] - o.box[0]) < 16 * M || (o.box[5] - o.box[2]) < 16 * M) continue;
+        const name = C.houseStyle(o).name;
+        if (seen.has(name)) continue;
+        seen.add(name); picks.push({ o, name });
+      }
+      window.Ceil = { picks };
+      return picks.map((p) => p.name);
+    });
+    console.log('  ', JSON.stringify(r));
+    const peel = (k) => page.evaluate((k) => {
+      const m = window.__mech, D = m.destruct, M = D.M, { o } = Ceil.picks[k];
+      const s = D.activate(o), B = o.box, [dx, dz] = o.face || (o.face = T.side(o));
+      const cx = (B[0] + B[3]) / 2, cz = (B[2] + B[5]) / 2;
+      const fx = dx ? (dx > 0 ? B[3] : B[0]) : cx, fz = dz ? (dz > 0 ? B[5] : B[2]) : cz;
+      const W = Math.min(22 * M, (dx ? B[5] - B[2] : B[3] - B[0]) * 0.8);
+      // The facade only, 1.3 m deep, from 5 m to 21 m up: the rooms behind it stay whole
+      for (let u = 0; u < 1.3 * M; u += 0.4 * M) for (let w = -W / 2; w <= W / 2; w += 0.4 * M) for (let h = 5 * M; h < 21 * M; h += 0.4 * M) {
+        D.damageSphere(s, fx - dx * u + (dz ? w : 0), h, fz - dz * u + (dx ? w : 0), 0.45 * M, 9999, { chunks: 0 });
+      }
+      // (the peeling isn't a hit: its jolt doesn't count against the lights)
+      D.jolts();
+      s.power.U.uOut.value.forEach((v) => v.set(0, 0, 0, 0));
+      s.power.U.uPow.value.set(-1, -99, 0, 1);
+      // From across the street, low, looking up into it
+      m.cam.free = { pos: [fx + dx * 16 * M + dz * 3 * M, 3 * M, fz + dz * 16 * M + dx * 3 * M], look: [fx - dx * 6 * M, 15 * M, fz - dz * 6 * M], fov: 60 };
+      window.Ceil.cur = { s, fx, fz, dx, dz };
+      return { name: Ceil.picks[k].name, cells: s.count };
+    }, k);
+    for (let k = 0; k < Math.min(r.length, +(process.env.CEIL_N || 9)); k++) {
+      console.log('   peel', JSON.stringify(await peel(k)));
+      await wait(600);
+      await shot(`ceilings_${k}_${r[k]}`);
+      // Close, a storey up, looking in under a ceiling
+      if (k === 0) {
+        await page.evaluate(() => { const m = window.__mech, M = m.destruct.M, { fx, fz, dx, dz } = Ceil.cur; m.cam.free = { pos: [fx + dx * 4 * M, 12 * M, fz + dz * 4 * M], look: [fx - dx * 12 * M + dz * 4 * M, 14.5 * M, fz - dz * 12 * M + dx * 4 * M], fov: 70 }; });
+        await wait(100);
+        await shot(`ceilings_${k}_${r[k]}_close`);
+      }
+    }
+    // A blast in the last one's rooms: flicker and an outage round it
+    await page.evaluate(() => {
+      const { s, fx, fz, dx, dz } = Ceil.cur, M = window.__mech.destruct.M;
+      T.explode(fx - dx * 5 * M, 11 * M, fz - dz * 5 * M, 'bazooka');
+    });
+    await wait(250); await shot('ceilings_blast_0.25s');
+    await wait(1500); await shot('ceilings_blast_1.75s');
+    console.log('   power', JSON.stringify(await page.evaluate(() => { const P = Ceil.cur.s.power.U; return { pow: P.uPow.value.toArray().map((v) => +v.toFixed(2)), out: P.uOut.value.filter((v) => v.w > 0).length }; })));
+    // Sliced through just over the opened floors: what breaks away loses its supply and goes dark
+    await page.evaluate(() => {
+      const M = window.__mech.destruct.M, k = Ceil.picks.findIndex((p) => p.o.struct === Ceil.cur.s);
+      const B = Ceil.picks[k].o.box;
+      T.cut(Ceil.picks[k].o, (23 * M - B[1]) / (B[4] - B[1]), 1.0, 1.2);
+    });
+    for (let k = 0; k < 3; k++) {
+      await wait(500 + k * 400);
+      await shot(`ceilings_cut_${k}`);
+      console.log('   pieces', JSON.stringify(await page.evaluate(() => window.__mech.destruct.physics.bodies.filter((b) => b.cells > 200).map((b) => ({ cells: b.cells, cutAt: +b.s.power.U.uPow.value.x.toFixed(2) })).slice(0, 4))), 'time', await page.evaluate(() => +window.__mech.destruct.time.toFixed(2)));
+    }
   }
 
   if (run('el')) {

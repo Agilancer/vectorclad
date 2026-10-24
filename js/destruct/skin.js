@@ -12,7 +12,8 @@ import { SOLID, GONE } from './grid.js';
 // building's shadowed inside.
 // ---------------------------------------------------------------------------
 
-const MASK_GLSL = /* glsl */`
+/** The cell mask and its look-ups (the faces shader reads them too) */
+export const MASK_FUNCS = /* glsl */`
 uniform highp sampler3D uMask;
 uniform highp sampler2D uLut;
 uniform vec3 uLutMin;
@@ -20,8 +21,6 @@ uniform vec3 uLutScale;
 uniform float uLutW;
 uniform vec3 uOff;
 uniform vec3 uDim;
-varying vec3 vBack;
-varying vec3 vObjN;
 float dLut(float p, int row) {
   float f = clamp((p - uLutMin[row]) * uLutScale[row], 0.0, uLutW - 1.001);
   int i = int(f);
@@ -36,6 +35,10 @@ float dSolid(vec3 c) {
 }
 float dHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 `;
+const MASK_GLSL = /* glsl */`
+varying vec3 vBack;
+varying vec3 vObjN;
+${MASK_FUNCS}`;
 
 const MASK_MAIN = /* glsl */`
   vec3 dvb = vec3(dLut(vBack.x, 0), dLut(vBack.y, 1), dLut(vBack.z, 2)) - uOff;

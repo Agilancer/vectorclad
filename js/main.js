@@ -10,6 +10,7 @@ import { Input } from './input.js';
 import { HUD, Hangar } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
 import { Destruction } from './destruct/destruct.js';
+import { setCeilingTextures } from './destruct/ceilings.js';
 import { titleDone, portraitPhone } from './title/title.js';
 
 const V3 = THREE.Vector3;
@@ -259,7 +260,8 @@ async function init() {
   });
   world.spiders = spiders;
   spiders.camPos = camera.position;
-  // Everything in the city can be shot apart (js/destruct)
+  // Everything in the city can be shot apart (js/destruct), down to the lights in its ceilings
+  setCeilingTextures(tex.ceiling, tex.ceilingGlow);
   const D = (world.destruct = new Destruction({ scene, world, city: world.city, fx, sound, renderer, M: 1 / METERS, mobile: isTouch }));
   D.player = P;
   D.spiders = spiders;

@@ -14,15 +14,17 @@ export async function loadTextures(renderer, onProgress) {
   manager.onProgress = (_url, loaded, total) => onProgress && onProgress(loaded / total);
   const loader = new THREE.TextureLoader(manager);
   const cityKeys = Object.keys(ATLASES);
-  const [body, weapons, spider, spiderGlow, ...cityList] = await Promise.all([
+  const [body, weapons, spider, spiderGlow, ceiling, ceilingGlow, ...cityList] = await Promise.all([
     loader.loadAsync('textures/body.jpg'),
     loader.loadAsync('textures/weapons.jpg'),
     loader.loadAsync('textures/spider.jpg'),
     loader.loadAsync('textures/spider-glow.jpg'),
+    loader.loadAsync('textures/ceiling.jpg'),
+    loader.loadAsync('textures/ceiling-glow.jpg'),
     ...cityKeys.map((k) => loader.loadAsync(ATLASES[k].url)),
   ]);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  for (const t of [body, weapons, spider, spiderGlow, ...cityList]) {
+  for (const t of [body, weapons, spider, spiderGlow, ceiling, ceilingGlow, ...cityList]) {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = aniso;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
@@ -31,7 +33,7 @@ export async function loadTextures(renderer, onProgress) {
   weapons.userData.sheet = WEAPON_SHEET;
   const city = {};
   cityKeys.forEach((k, i) => { city[k] = cityList[i]; });
-  return { body, weapons, spider, spiderGlow, city };
+  return { body, weapons, spider, spiderGlow, ceiling, ceilingGlow, city };
 }
 
 // ---------------------------------------------------------------------------
