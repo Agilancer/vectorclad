@@ -17,13 +17,15 @@ import { CAR_SKINS } from './kitTiles.js';
 // Traffic keeps to the moving lanes (the curb lanes are for parking): one way
 // up and down the avenues, one way or two way on the cross streets. Cars
 // follow the car ahead, turn at intersections where the streets allow, stop
-// for the mech and for wrecks, rubble and fallen trees in their way, and new
-// ones keep coming in out of sight to replace those lost.
+// for the mech and for wrecks, rubble and fallen trees in their way. The
+// traffic is kept round the mech: new cars come in out of its sight a few
+// blocks off, and cars that have driven far away are taken off to come back.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
 const N = 28; // stations along a car, as measured
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new V3(), _p = new V3(), _d = new V3(), _up = new V3(0, 1, 0), _col = new THREE.Color();
+const _view = new THREE.Frustum(), _vm = new THREE.Matrix4(), _sph = new THREE.Sphere();
 const rand = (a, b) => a + Math.random() * (b - a);
 const pickR = (a) => a[Math.floor(Math.random() * a.length)];
 
@@ -208,7 +210,8 @@ export class Cars {
         }
       }
     }
-    this.maxMoving = 180;
+    // Heavy traffic: the streets round the mech full of it
+    this.maxMoving = 480;
     const cap = spots.length + this.maxMoving + 40;
     const { mat, depth } = carMaterials(atlas, skin);
     const geo = carGeometry();
@@ -315,14 +318,42 @@ export class Cars {
     return car;
   }
 
-  /** Keep the streets busy: new cars out of the mech's sight, and wrecks cleared away once out of it */
-  respawn(dt, P) {
+  /**
+   * Keep the streets round the mech busy: new cars come in out of its sight, 120 to 650 m off;
+   * cars that have driven farther away, out of view, are taken off to come back near; and wrecks
+   * are cleared away once nobody is near to see it
+   */
+  respawn(dt, P, cam) {
     this.spawnT -= dt;
     if (this.spawnT > 0) return;
     this.spawnT = 0.5;
-    const m = (x) => this.city.m(x), L = this.city.L;
-    const live = this.moving.filter((c) => c.state === 0).length;
-    for (let k = 0; k < (live < this.maxMoving * 0.5 ? 6 : 2) && live + k < this.maxMoving; k++) {
+    const m = (x) => this.city.m(x), L = this.city.L, D = this.world.destruct;
+    if (cam) {
+      // (as it is this frame: it may have turned since it was last drawn)
+      cam.updateMatrixWorld();
+      _view.setFromProjectionMatrix(_vm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    }
+    // In view, as far as the haze lets a car be made out
+    const seen = (x, z) => cam && Math.hypot(x - cam.position.x, z - cam.position.z) < m(1400) && _view.intersectsSphere(_sph.set(_p.set(x, m(1), z), m(6)));
+    let live = 0, recycled = 0;
+    for (const car of this.moving) {
+      if (car.gone) continue;
+      if (car.state !== 0) {
+        // Wrecks that burned out a while ago go once nobody is near
+        car.dead = (car.dead || 0) + 0.5;
+        if (car.dead > 60 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(200) && !seen(car.pos.x, car.pos.z)) this.remove(car);
+        continue;
+      }
+      car.hidden = !seen(car.pos.x, car.pos.z);
+      if (recycled < 4 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(800) && car.hidden) { this.remove(car); recycled++; continue; }
+      live++;
+    }
+    // At the start the streets are filled at once, in view or not (nothing to see pop in yet)
+    const first = !this.filled;
+    this.filled = true;
+    if (first) cam = null;
+    const want = Math.min(this.maxMoving - live, first ? this.maxMoving : live < this.maxMoving * 0.6 ? 20 : 6);
+    for (let tries = 0, k = 0; k < want && tries < (first ? 6000 : 150); tries++) {
       const l = pickR(this.lanes);
       // Between two crossings, not in one
       const cross = this.crossings(l), j = Math.floor(Math.random() * (cross.length - 1));
@@ -331,14 +362,14 @@ export class Cars {
       const along = rand(a, b), x = l.ave ? l.c : along, z = l.ave ? along : l.c;
       if (z < L.sts[0].z1) continue;
       const d = Math.hypot(x - P.x, z - P.z);
-      if (d < m(120) || d > m(900)) continue;
-      this.spawnOn(l, along);
-    }
-    // Wrecks that burned out a while ago go once nobody is near
-    for (const car of this.moving) {
-      if (car.state === 0 || car.gone) continue;
-      car.dead = (car.dead || 0) + 0.5;
-      if (car.dead > 60 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(200)) this.remove(car);
+      // Most of them within a few blocks, a few farther out to fill the streets into the haze
+      if (d < m(120) || d > m(650) || (d > m(400) && Math.random() < 0.65) || seen(x, z)) continue;
+      // Not into rubble or a fallen tree: the car's length clear, down at bumper height
+      const fx = l.ave ? 0 : 1, fz = l.ave ? 1 : 0;
+      if (D && (D.solidAt(x, m(0.6), z) || D.solidAt(x - fx * m(3), m(0.6), z - fz * m(3)) || D.solidAt(x + fx * m(3), m(0.6), z + fz * m(3)))) continue;
+      const h = this.world.raycast(_d.set(x - fx * m(3) * l.dir, m(0.6), z - fz * m(3) * l.dir), _s.set(fx * l.dir, 0, fz * l.dir), m(12), { targets: false, trees: true });
+      if (h && h.normal.y < 0.7) continue;
+      if (this.spawnOn(l, along)) k++;
     }
     if (this.moving.some((c) => c.gone)) this.moving = this.moving.filter((c) => !c.gone);
   }
@@ -433,7 +464,7 @@ export class Cars {
     if (!this.world) return;
     this.time += dt;
     const P = ctx.player, m = (x) => this.city.m(x);
-    if (P) this.respawn(dt, P);
+    if (P) this.respawn(dt, P, ctx.camera);
     for (const car of this.moving) {
       if (car.gone || car.state !== 0) continue;
       if (!car.curve && car.next === undefined) this.plan(car);
@@ -465,7 +496,7 @@ export class Cars {
         if (car.along < l.lo - m(10) || car.along > l.hi + m(10)) { this.remove(car); continue; }
       }
       // Stuck behind something for long, out of sight: give up and go
-      if (car.stuck > 25 && P && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(220)) { this.remove(car); continue; }
+      if (car.stuck > 25 && car.hidden && P && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(220)) { this.remove(car); continue; }
       this.bounds(car);
       car.collider.min.set(car.min.x, 0, car.min.z);
       car.collider.max.set(car.max.x, m(1.8), car.max.z);
