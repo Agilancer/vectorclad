@@ -1,0 +1,134 @@
+[
+  {
+    "index": 1,
+    "file": "01-heavy-torso-armor.png",
+    "style": "Heavy torso armor: large broad matte black ceramic-composite plates, beveled gold perimeter trim, occasional solid satin gold rectangular reinforcement panels, orderly repeating square panel geometry",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-e49e3a1c-694f-4f63-8354-711a41989e8d.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Heavy torso armor: large broad matte black ceramic-composite plates, beveled gold perimeter trim, occasional solid satin gold rectangular reinforcement panels, orderly repeating square panel geometry",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "b57a9cf63f6d022f51bebfe85d339100841b7f74e83df403bec93300b370626a",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 2,
+    "file": "02-layered-shoulder-armor.png",
+    "style": "Layered shoulder armor: overlapping angular matte black armor scales, narrow inset gold edge lines, a few solid gold chevron-shaped protective plates, balanced repeating geometric pattern",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-1f5d2ef4-349d-4c01-a611-1f7afc766534.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Layered shoulder armor: overlapping angular matte black armor scales, narrow inset gold edge lines, a few solid gold chevron-shaped protective plates, balanced repeating geometric pattern",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "969be5fbb24af5a8a498fd4009327fc5928b399f02acd2787b9dae2cf27fadd3",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 3,
+    "file": "03-leg-and-shin-armor.png",
+    "style": "Leg and shin armor: long rectangular matte black armored plates, gold longitudinal rails and corner guards, occasional solid satin gold knee-style reinforcement panels, repeated technical surface",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-2f661350-1f6c-4b37-87c1-ae9255451c2d.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Leg and shin armor: long rectangular matte black armored plates, gold longitudinal rails and corner guards, occasional solid satin gold knee-style reinforcement panels, repeated technical surface",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "202f07260ddc4054de353c7bed2b74ec4fb581bb5735720e7852882e9c0540e5",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 4,
+    "file": "04-compact-mechanical-joints.png",
+    "style": "Compact mechanical joints: matte black circular joint covers and recessed concentric ring panels, gold ring inlays, solid gold circular bearing covers, regular repeating industrial layout",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-51fdb995-5d4b-4986-ad30-e49c00a4c51b.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Compact mechanical joints: matte black circular joint covers and recessed concentric ring panels, gold ring inlays, solid gold circular bearing covers, regular repeating industrial layout",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "407bf9cdd36c2b0bcca8e29d0c6a1c448c9f0ff08be64be6654a35c0b92c07d9",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 5,
+    "file": "05-vented-engine-armor.png",
+    "style": "Vented engine armor: matte black louvered vent fields and solid black service panels, gold vent surrounds and thin trims, a few solid gold access covers, repeating modular surface",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-3701ef53-34a1-467d-a5b2-81876049adfc.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Vented engine armor: matte black louvered vent fields and solid black service panels, gold vent surrounds and thin trims, a few solid gold access covers, repeating modular surface",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "7284b724882f3857986ed6a62a9e08bc7c567daefbac35381f487d26c220c469",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 6,
+    "file": "06-hexagonal-armor.png",
+    "style": "Hexagonal armor: tightly tessellated matte black hexagon plates, fine gold seams and occasional solid satin gold hexagonal plates, repeating honeycomb armor material",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-858e0564-6249-43c2-9f0d-7b37f9578b65.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Hexagonal armor: tightly tessellated matte black hexagon plates, fine gold seams and occasional solid satin gold hexagonal plates, repeating honeycomb armor material",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "f89603435bb433ce18204a2baa3b36092bbdcc81b74bef3611feea45bfaf5563",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 7,
+    "file": "07-elite-ceremonial-armor.png",
+    "style": "Elite ceremonial armor: broad matte black panels with restrained engraved geometric gold inlay, thick satin gold reinforcement bands and solid gold corner plates, no symbols or lettering",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-39cae94d-387b-4210-8f91-978237cde314.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Elite ceremonial armor: broad matte black panels with restrained engraved geometric gold inlay, thick satin gold reinforcement bands and solid gold corner plates, no symbols or lettering",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "83f599678888683bbf94aa66892241c7f83a1589f636f54870aaeabb1a82b38d",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 8,
+    "file": "08-battle-worn-armor.png",
+    "style": "Battle worn armor: matte black angular panels with subtle fine scratches and restrained edge wear, intact gold trim, occasional solid gold replaceable panels, no exposed silver, repeating industrial layout",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-a9c75fd3-50ad-4083-8fb3-b94b856f3ef0.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Battle worn armor: matte black angular panels with subtle fine scratches and restrained edge wear, intact gold trim, occasional solid gold replaceable panels, no exposed silver, repeating industrial layout",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "88e45355e14769ac3be4b7a826c6ef36edb303414cfbcf8e32d08ea4948de94a",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 9,
+    "file": "09-fine-technical-armor.png",
+    "style": "Fine technical armor: small dense matte black segmented plates and recessed service seams, thin gold circuit-like geometric inlay with no text or symbols, solid gold small rectangular cover plates",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-343bafaa-0e71-4089-8964-589fd2474743.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Fine technical armor: small dense matte black segmented plates and recessed service seams, thin gold circuit-like geometric inlay with no text or symbols, solid gold small rectangular cover plates",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "010c9c4ba7c43046bb1b56cec0c7ef0f33d0d29dc60d66ca8ea2fcfbec82d5c8",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 10,
+    "file": "10-heavy-siege-armor.png",
+    "style": "Heavy siege armor: thick matte black interlocking beveled square plates, bold gold structural borders, alternating occasional solid satin gold heavy armor plates, repeating high contrast mechanical surface",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-e286ddf9-54e6-4a36-b831-9bc4f52cf0ac.png",
+    "prompt": "Use case: photorealistic-natural. Asset type: videogame giant mech / robot armor seamless base-color material texture page. Generate ONE high resolution square texture, request 2048x2048 pixels. Full bleed continuous repeating material surface viewed perfectly front-on orthographic, like a scanned flat armor surface. CRITICAL: the entire image must tile seamlessly on all four outer edges, matching left/right and top/bottom panel geometry and colors, evenly distributed detail and no focal point or outer frame. This is ONE continuous seamless texture page, not a collage or swatch grid; no gutters, borders or atlas separators. Matte deep black armor dominates approximately 75 percent; rich warm gold edge trim and solid gold pieces approximately 25 percent. Gold has a restrained satin material finish with real warm gold color, no mirror reflections or extreme highlights. Fine realistic physical surface detail, precise crisp machined geometry, restrained microtexture, panel seams and small recessed fasteners. Neutral flat diffuse albedo illumination, no directional lighting, no cast shadows or baked ambient occlusion. Avoid any reflected scenery, glare, bloom or lens effects. No whole robot, limbs, face, character, weapons, background, perspective, text, logos, emblems, numbers, labels or watermark. Same detailed realistic game texture style as the earlier architectural texture sheets. Surface design: Heavy siege armor: thick matte black interlocking beveled square plates, bold gold structural borders, alternating occasional solid satin gold heavy armor plates, repeating high contrast mechanical surface",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "cf7ed225aabdcac36ceec95b81b1d550aa422872d931b24bb006dbe4923a75a5",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 11,
+    "file": "11-plain-matte-black.png",
+    "style": "plain-matte-black",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-d87fcc6f-411e-45b6-8100-89f8de95820f.png",
+    "prompt": "Generate ONE high resolution square seamless videogame material texture page, request 2048x2048. Full bleed flat orthographic material scan, continuous solid material matching all outer edges for seamless repetition. Uniform matte deep black powder coated mech armor surface with extremely subtle fine physical micrograin. Completely even neutral diffuse albedo lighting and consistent color across the entire page. NO PANELS, NO SEAMS, NO BOLTS, NO RIVETS, NO TRIM, NO VENTS, NO GEOMETRY, NO DECORATION, NO BORDER, no gradients, no reflections, no highlights, no shadows, no text, no symbols, no background. This is a plain base material texture, not an object. Preserve extremely restrained realistic surface detail only.",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "0d1445f1ed4eb1fc020efb64526c6f02d17db658c628d973bc50b127a007c2a5",
+    "generator": "Built-in ImageGen"
+  },
+  {
+    "index": 12,
+    "file": "12-plain-satin-gold.png",
+    "style": "plain-satin-gold",
+    "source": "C:\\Users\\agila\\.codex\\generated_images\\01a16c54-dcd9-7473-b715-4c8282838667\\exec-50d4c492-e8f7-450f-8423-25bb9affa3e1.png",
+    "prompt": "Generate ONE high resolution square seamless videogame material texture page, request 2048x2048. Full bleed flat orthographic material scan, continuous solid material matching all outer edges for seamless repetition. Uniform rich warm solid gold metal surface with extremely subtle satin micrograin, muted luster, no strong shine. Completely even neutral diffuse albedo lighting and consistent color across the entire page. NO PANELS, NO SEAMS, NO BOLTS, NO RIVETS, NO TRIM, NO VENTS, NO GEOMETRY, NO DECORATION, NO BORDER, no gradients, no reflections, no highlights, no shadows, no text, no symbols, no background. This is a plain base material texture, not an object. Preserve extremely restrained realistic surface detail only.",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "6148021f56b9cb6ee1d6100e524deff9dce0c8c64d2033241d236888970ce8ec",
+    "generator": "Built-in ImageGen"
+  }
+]

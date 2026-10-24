@@ -338,7 +338,7 @@ export class Thruster {
  * Move every vertex through fn(v, n), where n is the vertex position normalized
  * to 0..1 inside the bounding box, then give the result flat, faceted normals.
  */
-function warp(geo, fn) {
+export function warp(geo, fn) {
   if (geo.index) geo = geo.toNonIndexed();
   geo.computeBoundingBox();
   const bb = geo.boundingBox, size = bb.getSize(new V3());
@@ -359,14 +359,14 @@ function warp(geo, fn) {
  * from zs[0] at the back to zs[1] at the front, and ys[0] at the bottom to
  * ys[1] at the top, so edges taper to a point.
  */
-function blade(pts, width, zs = [1, 1], ys = [1, 1], bevel = 0.02) {
+export function blade(pts, width, zs = [1, 1], ys = [1, 1], bevel = 0.02) {
   return warp(sidePrism(pts, width, bevel), (v, n) => {
     v.x *= (zs[0] + (zs[1] - zs[0]) * n.z) * (ys[0] + (ys[1] - ys[0]) * n.y);
   });
 }
 
 /** loft() run along Z: sections { z, w, h, c?, x?, y? }, w wide and h tall, centered on x/y. */
-function loftZ(secs) {
+export function loftZ(secs) {
   return loft(secs.map((s) => ({ y: s.z, w: s.w, d: s.h, c: s.c, x: s.x, z: -(s.y || 0) }))).rotateX(Math.PI / 2);
 }
 
@@ -375,7 +375,7 @@ function loftZ(secs) {
 // ---------------------------------------------------------------------------
 
 let pistonGeo, pistonMats;
-class Piston {
+export class Piston {
   constructor(parentA, posA, parentB, posB, r, mats, barrel) {
     if (!pistonGeo) {
       pistonGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
@@ -924,7 +924,8 @@ export class Mech {
     const ch = Math.cos(heading), sh = Math.sin(heading);
     const rp = this.root.position, ground = st.ground ?? rp.y;
     const home = (i, idle, out) => {
-      const ox = idle ? IDLE_FEET[i].x : LEG_SIDE[i] * GAIT.homeX, oz = idle ? IDLE_FEET[i].z : 0;
+      const IF = this.idleFeet || IDLE_FEET;
+      const ox = idle ? IF[i].x : LEG_SIDE[i] * GAIT.homeX, oz = idle ? IF[i].z : 0;
       return out.set(rp.x + ox * ch + oz * sh, ground, rp.z - ox * sh + oz * ch);
     };
     for (let i = 0; i < 2; i++) if (!F[i].init) { home(i, true, F[i].pos); F[i].init = true; }

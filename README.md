@@ -130,6 +130,32 @@ Weapons, from the weapon sheet:
 - **μMP-24 Micro Missile Pod**: 24 swarming micro missiles (shoulder or leg)
 - **RX-S Shield**: left forearm, raised with the left trigger
 
+## The Sovereign (work in progress)
+
+BK-09 Sovereign is a second mech, black and gold, modeled after a piece of reference art.
+It isn't in the game yet; look at it on its own turntable at `tools/sovereign.html`
+(serve the repository root as above, then open `/tools/sovereign.html`). The buttons
+switch camera presets (`ref` matches the reference art's angle), spin it, put the SR-9
+Regalia rifle in its hands and raise it to aim. URL parameters are listed at the top of
+`tools/sovereign-viewer.js`.
+
+It is built on the Vanguard's rig (`js/sovereign.js` extends `Mech` and replaces its
+part builders), so it walks, dashes and jumps the same way. Two great binders stand off
+its back, their tops swept forward over the shoulders and their lower leaves trailing to
+the hips, each ending in a cannon port. Long blade skirts hang to its shins, its legs end
+in spikes with saw-toothed champagne heel fins, and champagne plates cover its shoulders
+and outer arms over brass machinery. Its arms aim with IK: the gun arm points the forearm
+down the line of sight, the free hand takes the foregrip, and an idle gun sits at a low ready.
+
+Its textures come from the black-and-gold pack in `assets/black-gold-mech-textures`.
+`python3 tools/build_mech_textures.py` turns them into the 1024 px WebPs in
+`textures/sovereign/`, with a metal/rough map for each paneled page (its gold trim shines,
+its black plate stays matte) and a champagne grade of the satin gold. Plain matte black
+covers the big plates; the paneled pages go on the boxy and mechanical parts.
+
+`node tools/tests/sovereign.js [view...]` saves screenshots of the turntable to
+`tools/tests/out/` (same `BASE_URL` and `THREE_DIR` settings as the destruction test).
+
 ## The city
 
 Port Meridian: a 10 x 10 grid of blocks on a peninsula between two rivers and a harbor,
@@ -646,6 +672,7 @@ in the hangar settings.
 | `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
+| `js/sovereign.js` | The BK-09 Sovereign on the Vanguard's rig, its materials, arm IK and SR-9 rifle |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/city.js` | Port Meridian: street grid, buildings, roofs, parks, street furniture, cars, elevated railway and highway, waterfront, bridges, distant scenery |
@@ -663,6 +690,8 @@ in the hangar settings.
 | `js/destruct/ceilings.js` | Ceiling themes, per-floor layouts, the ceiling and room-lighting shader, and the lights' power: flicker, outages, pieces going dark |
 | `js/ceilingTiles.js` | Generated: slots of the ceiling atlas and the theme tags of its fixtures, tiles and vents |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
+| `tools/sovereign.html`, `tools/sovereign-viewer.js` | Turntable for the Sovereign |
+| `tools/tests/sovereign.js` | Screenshots of the Sovereign turntable from several angles |
 | `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions and the millipede |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
 | `js/mediums.js` | Medium spider-frames: variants, bridging between roofs, gear, shield domes, repair and tractor beams, thrown boulders |
@@ -683,6 +712,7 @@ in the hangar settings.
 | `tools/build_spider_atlas.py` | Traces the spider parts out of their sheets and packs them into an atlas and glow map |
 | `tools/build_ceiling_atlas.py` | Cuts the light fixtures, ceiling tiles and vents out of their sheets and packs them into the ceiling atlas and glow map |
 | `tools/build_music.py` | Encodes the soundtrack WAVs to the MP3s in `audio/music/` |
+| `tools/build_mech_textures.py` | Builds the Sovereign's textures and metal/rough maps from the black-and-gold pack |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
 directions by its normal and maps it into the region chosen for that direction,
