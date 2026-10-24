@@ -432,7 +432,8 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
   below. Walls a cell thick and columns that a collapse left standing free topple a moment
   later, if they are taller than they could stand unbraced (about 16 times their thickness,
   8 to 18 m; steel twice that). Masts, poles and parapets built that way are left alone. Skin
-  backed by nothing that is left disappears with it.
+  backed by nothing that is left disappears with it, torn edges and all: cladding hangs into a
+  hole only from wall still standing, so a felled tower leaves no outline of itself in the air.
 - **Falling pieces are rigid bodies** (`physics.js`). Each is a voxel grid with mass and
   inertia summed over its cells. It collides through probes on its outer corners against
   the street, unbroken buildings, damaged ones and other pieces, with friction, warm
