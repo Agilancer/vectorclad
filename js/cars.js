@@ -211,7 +211,7 @@ export class Cars {
       }
     }
     // Heavy traffic: the streets round the mech full of it
-    this.maxMoving = 480;
+    this.maxMoving = 700;
     const cap = spots.length + this.maxMoving + 40;
     const { mat, depth } = carMaterials(atlas, skin);
     const geo = carGeometry();
@@ -319,7 +319,7 @@ export class Cars {
   }
 
   /**
-   * Keep the streets round the mech busy: new cars come in out of its sight, 60 to 650 m off;
+   * Keep the streets round the mech busy: new cars come in out of its sight, 60 to 550 m off;
    * cars that have driven farther away, out of view, are taken off to come back near; and wrecks
    * are cleared away once nobody is near to see it
    */
@@ -345,7 +345,7 @@ export class Cars {
         continue;
       }
       car.hidden = !seen(car.pos.x, car.pos.z);
-      if (recycled < 4 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(800) && car.hidden) { this.remove(car); recycled++; continue; }
+      if (recycled < 4 && Math.hypot(car.pos.x - P.x, car.pos.z - P.z) > m(700) && car.hidden) { this.remove(car); recycled++; continue; }
       live++;
     }
     // At the start the streets are filled at once, in view or not (nothing to see pop in yet)
@@ -363,7 +363,7 @@ export class Cars {
       if (z < L.sts[0].z1) continue;
       const d = Math.hypot(x - P.x, z - P.z);
       // Most of them within a few blocks, a few farther out to fill the streets into the haze
-      if (d < m(first ? 25 : 60) || d > m(650) || (d > m(400) && Math.random() < 0.65) || seen(x, z)) continue;
+      if (d < m(first ? 25 : 60) || d > m(550) || (d > m(350) && Math.random() < 0.7) || seen(x, z)) continue;
       // Not into rubble or a fallen tree: the car's length clear, down at bumper height
       const fx = l.ave ? 0 : 1, fz = l.ave ? 1 : 0;
       if (D && (D.solidAt(x, m(0.6), z) || D.solidAt(x - fx * m(3), m(0.6), z - fz * m(3)) || D.solidAt(x + fx * m(3), m(0.6), z + fz * m(3)))) continue;
