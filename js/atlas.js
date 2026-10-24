@@ -328,6 +328,12 @@ export const PAINTS = [
   { id: 'crimson', name: 'Crimson', armor: '#9a3633', second: '#322d2c', frame: '#56504c', trim: '#d39a45', eye: '#ffe08a' },
   { id: 'scout', name: 'Field Khaki', armor: '#a39a83', second: '#55524c', frame: '#6c675e', trim: '#d6d0bf', eye: '#3fd2ff' },
   { id: 'storm', name: 'Storm Indigo', armor: '#4f5a78', second: '#2c303b', frame: '#5a6175', trim: '#a3acc0', eye: '#ff8a3a' },
+  { id: 'zeus', name: 'Zeus Maroon', armor: '#7a2335', accent: '#e8e6e2', second: '#34353c', frame: '#5d6068', trim: '#d9a53e', eye: '#62ff9a', port: '#f08a2a' },
+  { id: 'neozeon', name: 'Neo Red', armor: '#b5252b', accent: '#e9e6df', second: '#3b3537', frame: '#605a58', trim: '#d7a84a', eye: '#ff5ab8', port: '#d8b27a' },
+  { id: 'zombot', name: 'Hazard Orange', armor: '#e2712a', accent: '#e4e1d8', second: '#3a3b40', frame: '#5e5f65', trim: '#2b2c30', eye: '#7dff4f', port: '#ffb14a' },
+  { id: 'onyx', name: 'Onyx Red', armor: '#363f57', accent: '#c02a31', second: '#1d2028', frame: '#474b55', trim: '#c9343a', eye: '#4fc6ff', port: '#ff6a3a' },
+  { id: 'violet', name: 'Violet Lancer', armor: '#5b3a8c', accent: '#ecebf0', second: '#2e2c38', frame: '#5b5866', trim: '#d9b04a', eye: '#7dfcff', port: '#ffb85a' },
+  { id: 'lextre', name: 'Orbital Copper', armor: '#3a3d44', accent: '#b8743f', second: '#24262b', frame: '#565a62', trim: '#c98a4a', eye: '#ffb24a', port: '#e89a52' },
 ];
 
 export const SKINS = [
@@ -357,6 +363,8 @@ export function makeMaterials(tex) {
     // Unpainted white plates (knee caps, chin guards), the same in every scheme
     white: std({ map: body, bumpMap: body, bumpScale: 2.5, roughness: 0.5, metalness: 0.15, color: 0xd9dbdf }),
     nozzle: std({ color: 0x55575c, roughness: 0.3, metalness: 0.9 }),
+    // The lining of vernier ports
+    port: std({ color: 0xd2a868, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide }),
     eye: new THREE.MeshBasicMaterial({ color: 0x7dffb6, toneMapped: false }),
     sensor: new THREE.MeshBasicMaterial({ color: 0xff3048, toneMapped: false }),
     lens: std({ color: 0x0c1a22, roughness: 0.05, metalness: 0.9, emissive: 0x0a5a7a, emissiveIntensity: 0.6 }),
@@ -383,7 +391,8 @@ export function makeMaterials(tex) {
 export function applyPaint(mats, paint) {
   mats.armor.color.set(paint.armor);
   mats.second.color.set(paint.second);
-  mats.accent.color.set(paint.armor);
+  mats.accent.color.set(paint.accent || paint.armor);
+  mats.port.color.set(paint.port || '#d2a868');
   mats.frame.color.set(paint.frame);
   mats.vent.color.set(paint.trim);
   mats.trim.color.set(paint.trim);

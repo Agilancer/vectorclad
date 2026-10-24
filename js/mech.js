@@ -465,6 +465,7 @@ export class Mech {
     this.pistons = [];
     this.mounts = {};
     this.hipPads = [];
+    this.skirts = []; // extra skirt plates: { g, leg, k, x0 }, lifted with that leg's thigh
     this.w = { gait: 0, air: 0, dash: 0, crouch: 0, aim: [0, 0], shield: 0, reload: [0, 0], recoil: [0, 0], slash: [0, 0], legYaw: 0, twist: 0 };
     this.prevCos = 1;
 
@@ -483,6 +484,7 @@ export class Mech {
     if (this.legs[1].mount) m.legL = this.legs[1].mount;
     // Arm lengths for the arm IK: shoulder to elbow, elbow to the grip in the hand
     for (const A of this.arms) {
+      if (A.pauldron && A.pauldronLag !== undefined) A.pauldronRest = A.pauldron.quaternion.clone();
       A.upper = A.elbow.position.length();
       A.fore = _ga.copy(A.hand.position).add(A.mount.position).length();
     }
@@ -774,11 +776,11 @@ export class Mech {
         if (plant > 0.001) L.ankle.quaternion.slerpQuaternions(_q3, _q2, blendFK);
         else L.ankle.quaternion.copy(_q2);
       } else L.ankle.quaternion.copy(_q3);
-      // Front skirt plate follows the thigh
-      if (this.hipPads[i]) {
-        _gb.set(0, -1, 0).applyQuaternion(L.hip.quaternion);
-        this.hipPads[i].rotation.x = Math.min(0, -Math.atan2(_gb.z, -_gb.y)) * 0.45;
-      }
+      // Skirt plates follow the thigh as it swings forward
+      _gb.set(0, -1, 0).applyQuaternion(L.hip.quaternion);
+      const lift = Math.min(0, -Math.atan2(_gb.z, -_gb.y));
+      if (this.hipPads[i]) this.hipPads[i].rotation.x = lift * 0.45;
+      for (const sk of this.skirts) if (sk.leg === i) sk.g.rotation.x = sk.x0 + lift * sk.k;
     }
 
     // --- torso ---
@@ -856,10 +858,6 @@ export class Mech {
       A.sh.rotateX(w.recoil[i] * 0.16);
       A.elbow.rotation.x = Math.min(0, elx - w.recoil[i] * 0.35);
       A.hand.rotation.x = -0.05 + w.recoil[i] * 0.12;
-      if (A.pauldron) {
-        _ga.set(0, -1, 0).applyQuaternion(A.sh.quaternion);
-        A.pauldron.rotation.x = 0.4 * Math.atan2(_ga.z, -_ga.y);
-      }
     }
     // The free hand takes the foregrip of the gun in the other
     if (st.support && this.mounts.rightHand) {
@@ -874,6 +872,17 @@ export class Mech {
         A.sh.quaternion.slerp(_q3, k);
         A.elbow.rotation.x += (A.ikEl - A.elbow.rotation.x) * k;
         A.hand.rotation.x += (0.5 - A.hand.rotation.x) * k;
+      }
+    }
+    // Pauldrons ride the upper arm; big shoulder blocks (pauldronLag) stay partly level with the chest
+    for (const A of this.arms) {
+      if (!A.pauldron) continue;
+      if (A.pauldronLag !== undefined) {
+        A.pauldron.quaternion.copy(A.pauldronRest);
+        A.pauldron.quaternion.premultiply(_q1.identity().slerp(_q2.copy(A.sh.quaternion).invert(), A.pauldronLag));
+      } else {
+        _ga.set(0, -1, 0).applyQuaternion(A.sh.quaternion);
+        A.pauldron.rotation.x = 0.4 * Math.atan2(_ga.z, -_ga.y);
       }
     }
 

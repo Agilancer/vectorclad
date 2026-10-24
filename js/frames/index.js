@@ -56,8 +56,8 @@ export const FRAMES = [
   {
     id: 'revenant', code: 'KR-11', name: 'Revenant', class: 'medium', make: (m, g) => new Revenant(m, g),
     ap: 1120, walk: 7.2, dash: 35, kick: 14, boost: 0.95, regen: 1, jump: 14.5, climb: 1, weight: 1.1,
-    slots: SIX, paint: 'steel',
-    blurb: 'Knight-pattern duelist in layered plate, a mono-eye sweeping behind its visor. Built to close in and cut.',
+    slots: SIX, paint: 'zeus',
+    blurb: 'Lancer-pattern duelist: V-fin head, binder shoulders and a winged flight pack. Snipes from range, then closes in and cuts.',
     presets: [
       { name: 'Revenant', slots: { rightHand: ['railgun', 'gunmetal'], leftHand: ['blade', 'gunmetal'], shoulderL: ['drones', 'gunmetal'], shoulderR: ['hydra', 'gunmetal'], legL: ['missilePod', 'gunmetal'], legR: ['missilePod', 'gunmetal'] } },
       { name: 'Executioner', slots: { rightHand: ['blade', 'crimson'], leftHand: ['blade', 'crimson'], shoulderL: ['vulcanPod', 'crimson'], shoulderR: ['vulcanPod', 'crimson'], legL: ['mines', 'crimson'], legR: ['mines', 'crimson'] } },
@@ -67,8 +67,8 @@ export const FRAMES = [
   {
     id: 'goliath', code: 'HV-90', name: 'Goliath', class: 'heavy', make: (m, g) => new Goliath(m, g),
     ap: 1750, walk: 5.8, dash: 29, kick: 11, boost: 0.6, regen: 0.8, jump: 12.5, climb: 0.85, weight: 1.8,
-    slots: [...SIX, 'hipL', 'hipR'], paint: 'storm',
-    blurb: 'Hunched brawler with a gorilla\'s reach, shoulders above its head and pods on its hips. Carries heavy-class weapons.',
+    slots: [...SIX, 'hipL', 'hipR'], paint: 'onyx',
+    blurb: 'Hunched brawler in layered plate with a gorilla\'s reach: shoulders above its head, binders on its back and pods on its hips. Carries heavy-class weapons.',
     presets: [
       { name: 'Goliath', slots: { rightHand: ['machineGun', 'navy'], leftHand: ['bazooka', 'navy'], shoulderL: ['artillery', 'navy'], shoulderR: ['heavyPod', 'navy'], legL: ['missilePod', 'navy'], legR: ['missilePod', 'navy'], hipL: ['microPod', 'navy'], hipR: ['microPod', 'navy'] } },
       { name: 'Juggernaut', slots: { rightHand: ['shotgun', 'gunmetal'], leftHand: ['flamer', 'gunmetal'], shoulderL: ['vulcanPod', 'gunmetal'], shoulderR: ['vulcanPod', 'gunmetal'], legL: ['mines', 'gunmetal'], legR: ['mines', 'gunmetal'], hipL: ['missilePod', 'gunmetal'], hipR: ['missilePod', 'gunmetal'] } },
@@ -78,8 +78,8 @@ export const FRAMES = [
   {
     id: 'bastion', code: 'TK-40', name: 'Bastion', class: 'heavy', make: (m, g) => new Bastion(m, g),
     ap: 2000, walk: 5.2, dash: 26, kick: 10, boost: 0.55, regen: 0.75, jump: 11.5, climb: 0.8, weight: 2.1,
-    slots: [...SIX, 'backC', 'hipL', 'hipR'], paint: 'desert',
-    blurb: 'Walking fortress in slab armor, with a turret head and a weapons deck on its back. The slowest and toughest frame; carries heavy-class weapons.',
+    slots: [...SIX, 'backC', 'hipL', 'hipR'], paint: 'neozeon',
+    blurb: 'Commander-pattern fortress in swollen armor studded with verniers, a mono-eye under its crest and a weapons deck on its back. The slowest and toughest frame; carries heavy-class weapons.',
     presets: [
       { name: 'Bastion', slots: { rightHand: ['railgun', 'gunmetal'], leftHand: ['shield', 'gunmetal'], shoulderL: ['heavyPod', 'gunmetal'], shoulderR: ['heavyPod', 'gunmetal'], legL: ['missilePod', 'gunmetal'], legR: ['missilePod', 'gunmetal'], backC: ['artillery', 'gunmetal'], hipL: ['microPod', 'gunmetal'], hipR: ['microPod', 'gunmetal'] } },
       { name: 'Citadel', slots: { rightHand: ['beamRifle', 'white'], leftHand: ['beamCannon', 'white'], shoulderL: ['drones', 'white'], shoulderR: ['drones', 'white'], legL: ['microPod', 'white'], legR: ['microPod', 'white'], backC: ['orbital', 'white'], hipL: ['mines', 'white'], hipR: ['mines', 'white'] } },

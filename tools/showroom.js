@@ -3,7 +3,7 @@
 //   frame=<id>|lineup   which frame, or all six side by side
 //   preset=<n>          which of the frame's presets to equip (default 0)
 //   pose=idle|walk|dash|air|aim|slash|shield
-//   paint=<paint id>    yaw=<radians> pitch=<radians> dist=<units>   rack=1 (every weapon), rack=new, rack=<weapon id>
+//   paint=<paint id>    bare=1 (no weapons)    yaw=<radians> pitch=<radians> dist=<units>   rack=1 (every weapon), rack=new, rack=<weapon id>
 // window.__show drives it from a test.
 import * as THREE from '../js/three.js';
 import { makeMaterials, applyPaint, PAINTS, addOutline, glowTexture } from '../js/atlas.js';
@@ -78,21 +78,21 @@ function clear() {
   units.length = 0;
 }
 
-function addFrame(frame, x, presetIdx = 0) {
-  const mech = frame.make(mats, glowTex);
+function addFrame(frame, x, presetIdx = 0, M = mats) {
+  const mech = frame.make(M, glowTex);
   mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   const preset = frame.presets[presetIdx] || frame.presets[0];
-  for (const slot of slotsFor(frame)) {
+  for (const slot of qs.get('bare') ? [] : slotsFor(frame)) {
     const [wid, skin] = preset.slots[slot.id] || [null];
     if (!wid || !WEAPONS[wid] || !allowedFor(slot, frame).includes(wid)) continue;
-    const { model, mount } = mountWeapon(slot, wid, skin, mats);
+    const { model, mount } = mountWeapon(slot, wid, skin, M);
     addOutline(model.group, 0.022);
     mech.attach(mount, model.group);
   }
   mech.root.position.set(x, 0, 0);
   scene.add(mech.root);
   const gun = (id) => !!id && id !== 'shield' && id !== 'blade' && !!WEAPONS[id];
-  const R = (preset.slots.rightHand || [])[0], L = (preset.slots.leftHand || [])[0];
+  const [R, L] = qs.get('bare') ? [] : [(preset.slots.rightHand || [])[0], (preset.slots.leftHand || [])[0]];
   const u = { frame, mech, x, z: 0, hasShield: L === 'shield', armed: [gun(R), gun(L)], support: gun(R) && !L };
   units.push(u);
   return u;
@@ -101,8 +101,12 @@ function addFrame(frame, x, presetIdx = 0) {
 function show(id, presetIdx = +(qs.get('preset') || 0)) {
   clear();
   if (id === 'lineup') {
-    FRAMES.forEach((f, i) => addFrame(f, (i - (FRAMES.length - 1) / 2) * 9.5));
-    applyPaint(mats, PAINTS.find((p) => p.id === (qs.get('paint') || 'lynx')));
+    // Each frame in its own scheme (or all in paint=)
+    FRAMES.forEach((f, i) => {
+      const M = makeMaterials({ body, weapons });
+      applyPaint(M, PAINTS.find((p) => p.id === (qs.get('paint') || f.paint)) || PAINTS[0]);
+      addFrame(f, (i - (FRAMES.length - 1) / 2) * 9.5, 0, M);
+    });
   } else {
     const f = frameById(id);
     addFrame(f, 0, presetIdx);
