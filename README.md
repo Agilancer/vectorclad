@@ -257,7 +257,7 @@ runs back north out of the city.
 It brakes to a stop for the mech standing on the track, and for a train stopped ahead of it,
 so trains held up queue behind each other (and the next one waits to come in; one coming to
 the end of the line stops clear of the crossover while another turns back over it). Running,
-its cars are solid: shots strike them, and the mech can stand on them.
+its cars are solid to shots: they strike them and blow up on them.
 
 Wherever the deck has been shot away under it, or a wreck is lying on the line, it derails,
 and a blast that reaches the train throws the cars it hits off the rails. The cars stay
