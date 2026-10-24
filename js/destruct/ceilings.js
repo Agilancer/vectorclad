@@ -148,6 +148,8 @@ export function floorTable(g, H) {
     // Every floor a little its own: shifted, the odd one turned or respaced
     if (r() < 0.15) t.rot = 1 - t.rot;
     if (r() < 0.2) t.Sb = Math.max(2, t.Sb + (r() < 0.5 ? -1 : 1));
+    // Rows a little farther apart: about 30% fewer fixtures than a full grid at these spacings
+    t.Sb = Math.round(t.Sb / 0.7);
     const offA = irange(r, 0, t.Sa - 1), offB = irange(r, 0, t.Sb - 1);
     const stain = r() < 0.5 ? H.stain : H.stain * 0.3;
     const alt = stain > 0.02 ? H.stainTile : H.tileAlt;
