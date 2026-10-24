@@ -142,8 +142,8 @@ hangar mid-fight: it keeps the same share of its armor. The frame list is in
 The hangar sets the loadout for six hardpoints (both hands, both shoulders, both
 legs), the frame, a frame paint scheme (the Vanguard's; the Obsidian wears its own finish),
 and one of eight colorways per weapon. It has five
-presets and settings for sound, music, shadows, ink outlines, look sensitivity, inverted
-look and render resolution. Before a drop it is the loadout screen, with **Deploy** and
+presets and settings for sound, music, [graphics](#graphics), shadows, ink outlines, look
+sensitivity, inverted look and render resolution. Before a drop it is the loadout screen, with **Deploy** and
 a way back to the frames; in a fight it pauses the game. The loadout and settings are saved in `localStorage`
 under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 
@@ -160,6 +160,55 @@ Weapons, from the weapon sheet:
 - **HMP-8 Heavy Missile Pod**: 8 large missiles (shoulder)
 - **μMP-24 Micro Missile Pod**: 24 swarming micro missiles (shoulder or leg)
 - **RX-S Shield**: left forearm, raised with the left trigger
+
+## Graphics
+
+The hangar's **Graphics** setting picks how each frame is drawn (`js/post.js`):
+
+| Setting | |
+| --- | --- |
+| **Low** | The scene straight to the screen. Phones and tablets start here. |
+| **High** | Bloom on everything that glows, heat shimmer round it, glare round the sun, a light grade and vignette, and red closing in from the edges as the mech is hit |
+| **Ultra** | High, plus ambient occlusion, god rays and a sun shadow map twice as sharp |
+| **Auto** | Ultra to begin with, then a setting lower whenever play stays under about 45 frames a second for four seconds. The default on desktop. |
+
+- **The same picture underneath.** High and Ultra draw the scene into an offscreen target
+  exactly as Low draws it onto the canvas: tone-mapped and sRGB-encoded in the shaders (three
+  does that for the canvas and XR targets only, so the target says it is one), into plain
+  RGBA8 so blending works the same too, with MSAA. Every hand-tuned shader keeps its
+  colors, and the effects go on top.
+- **Only what glows blooms.** Materials that skip tone mapping (eyes, sensors, tracers,
+  bolts) and additive ones (beams, thruster plumes, fire, flashes, the spiders' eyes) are
+  drawn again each frame, alone, into a glow target that shares the scene's depth, so walls
+  still hide them. The glow is blurred down a six-level mip chain and back up and added over
+  the scene, so the sky and sunlit concrete never bloom. The wider levels of the same blur
+  drive the heat shimmer.
+- **Depth does the rest.** The sun's glare is as strong as the share of its disc that shows
+  past the buildings, read from the depth buffer. On Ultra, god rays smear the open sky out
+  from the sun, and ambient occlusion samples a hemisphere round each pixel at half
+  resolution, with normals rebuilt from depth and a blur that keeps to surfaces at the same
+  depth. Neither draws the scene again.
+
+On every setting:
+
+- **Haze.** three's linear fog is reworked for every material through its shader chunks
+  (`js/world.js`): measured along the ray, not the view axis, so it doesn't shift as the
+  camera turns; thickest along the ground and thinning with height, so tower tops stand out
+  of it; warm toward the sun and cool away from it.
+- **Clouds.** Fair-weather cumulus drift across the sky, lit from the sun's side, gray
+  underneath, thinning into the haze toward the horizon.
+- **Drawing less.** Besides the cars and trees (below):
+  - The spiders' instanced parts, eyes and silk are drawn only up to the highest slot in
+    use, not for all 64 spiders (the scorpions already were).
+  - The frame and its weapons are a few hundred meshes, each with its outline, each drawn
+    again for the sun's shadow. Meshes under the same joint with the same material are
+    merged into one, and each joint's outlines into one (`batchRigid()` in `js/atlas.js`):
+    what code still moves, hides or recolors (pistons, thrusters, hatches, barrels) is left
+    alone. The Vanguard goes from about 500 draw calls to 260. Outlines no longer cast
+    shadows.
+  - Instanced meshes with nothing in them (furniture before a building breaks open, spider
+    parts between waves, stumps, idle particles) are taken off the camera's layer, so they
+    don't bind their shaders every frame for nothing.
 
 ## The city
 
@@ -209,7 +258,7 @@ that (about 1.71 m per game unit), and the city is laid out in real meters.
   - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
   - Running into a tree rips it out of the ground, leaving a stump, and it tumbles and rolls away. Walk or dash into a fallen tree to kick it along.
   - Any shot, blast or beam that hits a tree knocks it loose and sets it burning, and so do spider fire, a Scorcher's flames and the burning ground they leave. A burning tree chars and drops its leaves, and sets alight any tree it rolls into.
-- **Trees:** twelve species, each with its own bark and foliage from the bark-and-foliage sheets (`assets/bark-and-foliage`) and its own crown: round heads of leafy clumps on oaks, maples, beeches and lindens, vase-shaped elms, slender birches with pale bark, columnar poplars, tiered pines, spruces and firs, conical cedars, and redwoods with long bare trunks. Every tree is sized and shaped a little differently. The streets and parks have the broadleaf kinds and the odd pine; the forest has them all. Trees are drawn in chunks of the city, so whole chunks drop out of view and out of the sun's shadow pass.
+- **Trees:** twelve species, each with its own bark and foliage from the bark-and-foliage sheets (`assets/bark-and-foliage`) and its own crown: round heads of leafy clumps on oaks, maples, beeches and lindens, vase-shaped elms, slender birches with pale bark, columnar poplars, tiered pines, spruces and firs, conical cedars, and redwoods with long bare trunks. Every tree is sized and shaped a little differently. The streets and parks have the broadleaf kinds and the odd pine; the forest has them all. Trees are drawn in chunks of the city, so whole chunks drop out of view and out of the sun's shadow pass, and chunks more than 450 m off draw coarser clumps, cones and trunks over the same instances.
 - **Scenery:** skylines on the far shores of both rivers, uptown towers to the north led by a twisting supertall, and out in the harbor a lighthouse on a rocky islet and a line of wind turbines whose rotors turn.
   - A suspension bridge across the east river: H towers on pile caps in the water, a deck stiffened by trusses, main cables and hangers, anchorages, and an approach rising from the seawall on piers.
   - A cable-stayed bridge across the west river, north of the playable area: A-frame pylons with fans of stays, and approaches on piers at both shores.
@@ -228,7 +277,9 @@ pixels, which drops the sheets' soft fringes, and the plan strip loses its mirro
 measures the side profile and plan at 28 stations from bumper to bumper. The car's sides follow the painted silhouette, wheels,
 arches, windshield and roof line included, its top wears the plan strip and its ends the
 fascias. All cars share one topology and one draw call: the vertex shader reads each
-instance's skin from a data texture and moves the vertices to fit it.
+instance's skin from a data texture and moves the vertices to fit it. Each frame only the
+cars in view (out to 1.2 km), and those near the mech whose shadows can fall in view, are
+copied into that draw; the rest of the city's thousand-odd cars cost nothing.
 
 - **Parked cars** line the curb lanes of every street.
 - **Traffic** keeps to the middle lanes, one way along the avenues and one way or two way
@@ -834,7 +885,7 @@ in the hangar settings.
 | --- | --- |
 | `js/regions.js` | Pixel rectangles of the panels used from each texture sheet |
 | `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
-| `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
+| `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, ink outlines and merging rigid parts, paints and skins |
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
 | `js/frames.js` | The frames in the hangar (FS-07A Vanguard, HV-02 Obsidian): armor, speeds, boost, and how each is built |
 | `assets/heavy-frame/heavy-mech.js` | The HV-02 Obsidian: new armor on the stock rig (subclasses `Mech`) |
@@ -848,7 +899,8 @@ in the hangar settings.
 | `js/train.js` | The El's trains: the route, derailing where the track is gone or blocked, wrecks as rigid boxes that pile up |
 | `js/kitTiles.js` | Generated: the facade, storefront and roof kits, tree tiles and car skins with their measured outlines |
 | `js/cityTiles.js` | Generated: atlas layouts, tile positions, the facade, ground and structure panels and kits, and the traced outlines of solid structure pieces |
-| `js/world.js` | Sky, lights, spatial collision grid (colliders, moving cars and trees), raycasts (through voxel structures and falling pieces), damage routing, filling broken buildings |
+| `js/post.js` | Post-processing for High and Ultra: the offscreen scene, the glow pass and bloom, heat shimmer, sun glare, god rays, ambient occlusion, the grade |
+| `js/world.js` | Sky and clouds, haze, lights, spatial collision grid (colliders, moving cars and trees), raycasts (through voxel structures and falling pieces), damage routing, filling broken buildings |
 | `js/destruct/destruct.js` | Destruction: activating structures, damage, structural checks (islands, bending sections, chunks, spans, remnants), tipping on hinges, breaking away, crushing, shattering, rendering budgets |
 | `js/destruct/grid.js` | Voxel grids on lines snapped to the original surfaces, materials, ray marching and push-out |
 | `js/destruct/voxelize.js` | Turns a city owner's recorded volumes into walls, floors, columns, cores and rooms |
