@@ -1,6 +1,6 @@
 import * as THREE from '../../js/three.js';
 import { Mech } from '../../js/mech.js';
-import { addOutline } from '../../js/atlas.js';
+import { addOutline, frontPrism } from '../../js/atlas.js';
 import { citadelKit } from './citadel-kit.js';
 
 // Fresh procedural geometry. No source STL vertices, surfaces or gun geometry.
