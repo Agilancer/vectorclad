@@ -17,10 +17,10 @@ const _q = new THREE.Quaternion();
 
 export const WEAPONS = {
   beamRifle: { name: 'BR-07 Beam Rifle', short: 'BEAM RIFLE', slots: ['hand'], kind: 'beam', ammo: 16, reload: 2.6, rate: 0.3, dmg: 30, speed: 330, color: 0xff4fc8, desc: 'Fast mega-particle bolts. Precise and reliable.' },
-  bazooka: { name: 'HB-90 Hyper Bazooka', short: 'BAZOOKA', slots: ['hand'], kind: 'rocket', ammo: 5, reload: 3.4, rate: 0.95, dmg: 90, splash: 6.3, speed: 120, desc: 'Heavy unguided rockets with a wide blast.' },
+  bazooka: { name: 'HB-90 Hyper Bazooka', short: 'BAZOOKA', slots: ['hand'], kind: 'rocket', ammo: 5, reload: 3.4, rate: 0.95, dmg: 90, splash: 6.3, blastFx: 0.7, speed: 120, desc: 'Heavy unguided rockets with a wide blast.' },
   machineGun: { name: 'MG-79 Machine Gun', short: 'MACHINE GUN', slots: ['hand'], kind: 'bullet', ammo: 90, reload: 2.4, rate: 0.075, dmg: 6, speed: 400, spread: 0.012, desc: 'Rotary 90 mm. Sustained suppressing fire.' },
   shotgun: { name: 'SC-12 Shotgun Cannon', short: 'SHOTGUN', slots: ['hand'], kind: 'pellet', ammo: 6, reload: 2.8, rate: 0.75, dmg: 9, pellets: 10, spread: 0.055, speed: 320, desc: 'Ten-pellet spread. Devastating up close.' },
-  grenade: { name: 'GL-6 Grenade Launcher', short: 'GRENADES', slots: ['hand'], kind: 'grenade', ammo: 8, reload: 3, rate: 0.42, dmg: 55, splash: 4.9, speed: 80, desc: 'Rotary drum of arcing high-explosive shells.' },
+  grenade: { name: 'GL-6 Grenade Launcher', short: 'GRENADES', slots: ['hand'], kind: 'grenade', ammo: 8, reload: 3, rate: 0.42, dmg: 55, splash: 4.9, blastFx: 0.7, speed: 80, desc: 'Rotary drum of arcing high-explosive shells.' },
   beamCannon: { name: 'MBC-2 Mega Beam Cannon', short: 'BEAM CANNON', slots: ['hand', 'shoulder'], kind: 'mega', ammo: 3, reload: 4.5, rate: 2.2, charge: 0.6, duration: 1.4, dps: 150, color: 0xffb84a, desc: 'Charged sustained beam that cuts through everything.' },
   vulcanPod: { name: 'VP-4 Vulcan Pod', short: 'VULCAN', slots: ['shoulder'], kind: 'bullet', ammo: 200, reload: 3, rate: 0.05, dmg: 4, speed: 420, spread: 0.022, desc: 'Shoulder gatling. Fires with the cannon trigger.' },
   missilePod: { name: 'MP-6 Missile Pod', short: 'MISSILES', slots: ['shoulder', 'leg'], kind: 'missile', missiles: 6, cols: 3, rows: 2, dmg: 34, splash: 5, mscale: 1, interval: 0.09, reloadTime: 6, speed: 95, desc: 'Six homing missiles behind an armored hatch.' },
@@ -800,16 +800,19 @@ export class WeaponSystem {
   // --- simulation ----------------------------------------------------------------
 
   explode(pos, def, scale, normal) {
-    this.fx.explosion(pos, scale, { normal });
+    // A blast cut down from what it was (blastFx: the bazooka's and the grenade's, to 70%) looks
+    // it too: fireball, flash, light, sparks and shake
+    this.fx.explosion(pos, scale * (def.blastFx || 1), { normal });
     this.sound.explosion(pos, scale);
     this.world.damageRadius(pos, def.splash || 4, def.dmg);
-    // A crater in whatever it went off against, a little into the surface (twice the old size)
+    // A crater in whatever it went off against, a little into the surface (twice the old size);
+    // the slabs it tears off are thrown out along that surface
     const D = this.world.destruct;
     if (D) {
       const R = ((def.splash || 4) * 0.6) / D.M;
       _p.copy(pos);
       if (normal) _p.addScaledVector(normal, -R * D.M * 0.25);
-      D.blast(_p, R, 90 + def.dmg * 2.6);
+      D.blast(_p, R, 90 + def.dmg * 2.6, { normal });
     }
   }
 

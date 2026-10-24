@@ -122,10 +122,10 @@ under `vectorclad.*` keys (saves from earlier builds under `fs07.*` still load).
 Weapons, from the weapon sheet:
 
 - **BR-07 Beam Rifle**: fast pink beam bolts
-- **HB-90 Hyper Bazooka**: heavy rockets with back-blast and smoke trails (a 30% tighter blast than it used to have)
+- **HB-90 Hyper Bazooka**: heavy rockets with back-blast and smoke trails (a 30% tighter blast than it used to have, and a fireball, flash and shake to match)
 - **MG-79 Machine Gun**: spinning rotary barrels and tracers
 - **SC-12 Shotgun Cannon**: ten-pellet spread
-- **GL-6 Grenade Launcher**: rotating drum, arcing shells (blast 30% tighter, like the bazooka's; the missile pods keep theirs)
+- **GL-6 Grenade Launcher**: rotating drum, arcing shells (blast 30% tighter and drawn 30% smaller, like the bazooka's; the missile pods keep theirs)
 - **MBC-2 Mega Beam Cannon**: charge, then a sustained beam (hand or shoulder)
 - **VP-4 Vulcan Pod**: shoulder gatling
 - **MP-6 Missile Pod**: 6 homing missiles behind an opening hatch (shoulder or leg)
@@ -344,8 +344,10 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
 
   Spider fire chips the city too, but less: plasma bolts, lasers, mortar shells and
   skitterer blasts.
-  - Outer walls are built a little tougher than the rest: every cell facing the outside
-    has a quarter more hit points.
+  - A building's outer walls are built a little tougher than the rest: a cell facing the
+    street feels every hit as if it were a little farther off, so the holes in them come out
+    about an eighth smaller, whatever made them (the El, the highway and props are not
+    toughened). A machine gun held on a stone wall still breaks it through.
 - **Holes are cut to the pixel.** A damaged structure keeps the triangles it was drawn
   with as a skin. A 3D mask texture, one texel per cell, drops every fragment whose cell is
   gone, with torn cladding at the edges and scorch around them, and the shadow map uses the
@@ -428,9 +430,15 @@ physics in `js/trees.js`.) It lives in `js/destruct/`.
 - **Rubble and dust:** up to 2,400 tumbling chunks (900 on touch devices), shaped by
   material: rocks, glass shards, timber splinters and steel rods. Collapses throw out dust
   surges, and straining levels groan and shed grit before they go.
-- **Shrapnel:** explosions also tear big chunks off what they hit, slabs of wall and floor
-  one to three meters across and lengths of twisted steel, thrown hard out of the crater:
-  one for about every twelve cubic meters blown away, so a bigger hole throws more.
+- **Shrapnel:** explosions also tear big slabs off what they hit: pieces of wall and floor
+  one to four meters across, each showing the broken face of what it was made of (brick,
+  stone, concrete, panel, timber; curtain wall only when the wall was all glass), and
+  lengths of steel. There is one for about every 3.5 square meters of wall and floor blown
+  away, so together they add up to the hole (past 48 in a frame, 18 on touch devices, fewer
+  and bigger ones). They are thrown out along the face the blast hit, fanned out and a
+  little up, so they leave the building and rain on the street, where they come down on
+  their broad faces and lie for half a minute (up to 420 at once, 160 on touch devices). A
+  slab over 2 m that comes down hard crushes the people, furniture and cars under it.
 - **What's inside comes out:** people and furniture fill the floors round a hole and spill
   out of it (see **People** under **The city**).
 - **The mech walks into what it breaks open.** It stands on broken floors and climbs
@@ -770,7 +778,7 @@ in the hangar settings.
 | `js/destruct/skin.js` | Original triangles lifted out of the city meshes, masked per pixel by a 3D cell texture (and in shadows) |
 | `js/destruct/mesher.js` | Greedy mesher for broken faces and the rooms behind them, chunk by chunk |
 | `js/destruct/physics.js` | Rigid voxel bodies: probes, contacts, sequential-impulse solver, hinges, sleep |
-| `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle |
+| `js/destruct/debris.js` | Instanced rubble chunks that tumble, bounce and settle; the big slabs explosions tear off, which land on their broad faces and crush what is under them |
 | `js/destruct/textures.js` | Painted atlas for broken materials, office floors, ceiling tile and plaster; the broken faces' material |
 | `js/destruct/ceilings.js` | Ceiling themes, per-floor layouts, the ceiling and room-lighting shader, and the lights' power: flicker, outages, pieces going dark |
 | `js/ceilingTiles.js` | Generated: slots of the ceiling atlas and the theme tags of its fixtures, tiles and vents |
