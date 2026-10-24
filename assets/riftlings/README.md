@@ -30,7 +30,7 @@ These are visual pose animations. Screaming does not include audio. Leaping incl
 
 ## Integration into VECTORCLAD
 
-The module accepts the existing Three.js namespace and the game's runtime meters-per-unit value. It has no build step, model loader, external texture dependency or runtime animation-mixer requirement. This package is stored under `assets/riftlings/`. Adding it does not automatically spawn creatures or change game behavior.
+The module accepts the existing Three.js namespace and the game's runtime meters-per-unit value. It has no build step, model loader, external texture dependency or runtime animation-mixer requirement. This package is stored under `assets/riftlings/`. The game runs its swarms from `js/riftlings.js`: see [Riftlings](../../README.md#riftlings) in the main README.
 
 ```js
 import * as THREE from './three.js';

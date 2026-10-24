@@ -6,6 +6,7 @@ import {
 import { ScorpionNest, SCORPIONS, SCORPION_MIX } from './scorpions.js';
 import { MediumKin, MEDIUMS, MEDIUM_MIX } from './mediums.js';
 import { Millipede } from './millipede.js';
+import { RiftlingHorde } from './riftlings.js';
 
 // ---------------------------------------------------------------------------
 // Spider-frames: six-legged climbing machines that swarm the city.
@@ -166,8 +167,9 @@ const SPIDER_RIG = {
 export class SpiderSwarm {
   /**
    * cb: { onWave(n), onWaveClear(n), onKill(spider), onPlayerHit(amount, fromPos, kind), onSpawn() }
+   * mobile: draw the riftlings at their lower detail
    */
-  constructor({ scene, world, fx, sound, tex, glowTex, cb }) {
+  constructor({ scene, world, fx, sound, tex, glowTex, cb, mobile = false }) {
     this.scene = scene;
     this.world = world;
     this.fx = fx;
@@ -196,6 +198,8 @@ export class SpiderSwarm {
     this.med = new MediumKin(this, { scene, tex, cap: CAP });
     // The millipede boss (js/millipede.js)
     this.mill = new Millipede(this, { scene, tex, glowTex });
+    // Riftling packs (js/riftlings.js), up to a hundred of them alongside each wave
+    this.rift = new RiftlingHorde(this, { scene, mobile });
 
     // Materials and instanced parts, palette-swapped per spider
     const mat = (this.mat = paletteMaterial(tex.spider, tex.spiderGlow));
@@ -290,7 +294,7 @@ export class SpiderSwarm {
   }
 
   get alive() { return this.list.reduce((n, s) => n + (s.alive ? 1 : 0), 0) + (this.mill.active ? 1 : 0); }
-  get hostiles() { return this.alive + Math.max(0, this.toSpawn || 0); }
+  get hostiles() { return this.alive + Math.max(0, this.toSpawn || 0) + this.rift.hostiles; }
   get boss() { return this.mill.bar || this.list.find((s) => s.boss && s.alive) || null; }
 
   // ---- game flow -------------------------------------------------------------------
@@ -313,6 +317,7 @@ export class SpiderSwarm {
     this.nest.clear();
     this.med.clear();
     this.mill.clear();
+    this.rift.clear();
     this.toSpawn = 0;
     this.millDue = false;
   }
@@ -332,8 +337,9 @@ export class SpiderSwarm {
         this.bossDue = !this.millDue && this.wave % BOSS_EVERY === 0;
         if (this.bossDue) this.toSpawn++;
         if (this.millDue) this.toSpawn = Math.round(this.toSpawn * 0.5);
+        this.rift.startWave(this.wave, this.millDue);
         // Variants joining the fight this wave, for the wave banner
-        const fresh = MIX.filter((m) => m[2] === this.wave).map((m) => KINDS[m[0]].name);
+        const fresh = [...MIX.filter((m) => m[2] === this.wave).map((m) => KINDS[m[0]].name), ...this.rift.joining(this.wave)];
         const boss = this.millDue ? 'MILLIPEDE' : this.bossDue ? KINDS.brood.name : null;
         this.cb.onWave && this.cb.onWave(this.wave, fresh, boss);
       }
@@ -353,7 +359,7 @@ export class SpiderSwarm {
         this.toSpawn -= this.spawnPack(n, ctx, id);
         this.spawnT = this.spawnEvery * rand(0.6, 1.4);
       }
-      if (this.toSpawn <= 0 && alive === 0) {
+      if (this.toSpawn <= 0 && alive === 0 && this.rift.done) {
         this.phase = 'lull';
         this.phaseT = 7;
         this.cb.onWaveClear && this.cb.onWaveClear(this.wave);
@@ -628,6 +634,7 @@ export class SpiderSwarm {
     this.nest.update(dt, ctx);
     this.med.update(dt, ctx);
     this.mill.update(dt, ctx);
+    this.rift.update(dt, ctx);
     for (const key in this.parts) {
       this.parts[key].instanceMatrix.needsUpdate = true;
       if (this.parts[key].instanceColor) this.parts[key].instanceColor.needsUpdate = true;

@@ -4,7 +4,9 @@ A three.js tech demo for VECTORCLAD: an Armored Core-style mech, the FS-07A Vang
 the HV-02 Obsidian heavy frame, flown in from the harbor under a heavy lifter and set down
 in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
 that climb the towers and swarm in growing waves, and scorpion-frames that dig up
-out of the streets to claw and sting at it. Every tenth wave brings a black
+out of the streets to claw and sting at it, while swarms of up to a hundred
+eight-foot riftlings run it down in packs of one color, leap onto its hull and burst
+there. Every tenth wave brings a black
 robotic millipede long enough to lie across several city blocks. Packs of dropships set
 allied tanks down in the streets to hunt them too. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. The city is alive:
@@ -28,8 +30,9 @@ npx http-server -p 8080 .
 three.js 0.170.0 loads from jsDelivr, so the first load needs a network connection.
 
 Add `?wave=N` to the URL to start the fight at wave N, with every kind that has
-joined by then (every spider and scorpion is in by wave 7). `?wave=10` starts
-with [the millipede](#the-millipede).
+joined by then (every spider and scorpion is in by wave 7, every
+[riftling](#riftlings) pack by wave 3). `?wave=10` starts with
+[the millipede](#the-millipede).
 
 ## Deploy
 
@@ -528,7 +531,8 @@ growing:
   of sight, 75 to 230 units away, on walls and roofs, and the gap between packs
   shrinks each wave. New kinds join as the waves go on, and a Broodmother leads
   every fifth wave, except every tenth, when [the millipede](#the-millipede)
-  comes instead. Clearing a wave patches 30% of the mech's armor.
+  comes instead. Every wave also brings a swarm of [riftlings](#riftlings).
+  Clearing a wave patches 30% of the mech's armor.
 - **Variants:** each kind has its own palette, proportions, tactics and weapon.
   Every one of them has the same glowing red eyes.
 
@@ -679,6 +683,52 @@ fourth channel on the palette's accent that makes the paint itself glow.
 
 Every part is an `InstancedMesh`, drawn only up to the highest scorpion slot in
 use, so the 24 scorpions that can be alive at once cost about a dozen draw calls.
+
+## Riftlings
+
+Eight-foot, six-limbed predators (the asset in `assets/riftlings/`) that pour into the
+streets with every wave: a swarm a dozen bigger each time, 16 on wave 1 and a hundred
+from wave 8 (half that on the millipede's waves). It comes as one surge a few seconds
+into the wave, pack after pack a second or two apart, each pack of one color and from
+out of sight: up the streets from 85 to 210 units away, or over the rooftops from 60 to
+160. Alone they're frail (one rifle bolt, or two
+machine-gun rounds), but they're fast and many, and a wave isn't clear until the last
+of its swarm is dead.
+
+- **Hunting:** a pack's leader screams the pack on, and it runs at the mech by the
+  streets, round the blocks in its way. Close in, it comes straight on. Low walls and
+  cars it hops, low buildings it climbs up and over, and when the mech is up on a roof
+  it climbs the wall to it.
+- **Leap and latch:** in range, a riftling crouches and leaps at the hull, leading the
+  mech (so a dash at the right moment makes it miss). It clings where it struck, head
+  up and claws in, for about a second, turning and moving with the mech and clawing at
+  the armor (1.5 AP a stroke), then bursts with a wet splat in a spray of its color. On
+  the hull it's out of reach of the mech's own guns and locks.
+- **Shot dead:** it bursts in a smaller spray, collapses, lies a moment, then melts
+  away into a colored fume.
+
+| Pack | Color | From wave | Pack size | What sets it apart |
+| --- | --- | --- | --- | --- |
+| **Acid** | Green | 1 | 10 to 18 | The biggest, fastest packs: they run at twice the mech's walking speed and leap from 22 units. Every splat sprays acid that eats armor the way a Venomtail's venom does, and splats add up, to six seconds of it. |
+| **Blast** | Orange | 1 | 5 to 9 | Bloated, slower, glowing in pulses, and running in a tight clump behind their leader. Each one goes off like a grenade when it splats (21 AP) or is shot, killing whatever is close, so one shot into the clump sets the rest off in a ripple, and one going off on the hull blows the others there off it. |
+| **Shade** | Purple | 2 | 5 to 8 | Runs dark, its glow dimmed and no lock-on able to find it. The pack spreads out to surround the mech 24 units out, keeping low and ducking sideways out of the crosshair, until the leader screams: they light up and all pounce at once, from every side, where the shield can only turn away the ones in front. |
+| **Spire** | Blue | 3 | 5 to 8 | Comes over the rooftops, not the streets: climbs every wall in its way but the towers', bounds across the streets from roof to roof, and leaps at the mech from up high (44 units out) and straight off walls, so it can reach a mech up on a roof or in the air. Each latch shorts out 9 boost and stalls its regeneration. |
+
+`js/riftlings.js` runs them in the same waves as the spiders (`js/spiders.js`). They're
+drawn by the asset's own instanced swarm: one `InstancedMesh` for all of them, posed in
+the vertex shader from its thirteen clips baked into a pose texture, so a hundred cost
+one draw call, plus one for the soft contact shadows under them (the posed mesh can't
+cast real ones). Each riftling is a point on a street, a roof, a wall or the hull,
+pushed out of the buildings (the same push-out the mech uses), out of the mech's legs
+and away from each other. The way to the mech by street is a flow field: the city's
+footprint is a grid of 3-unit cells, blocked under buildings and walls, and a
+breadth-first search out from the mech's cell (searched again as it moves) gives every
+street cell its distance to the mech, so a riftling only has to head downhill to come
+round the blocks, never into a dead end. Clips follow what each one is
+doing, their speed matched to its own: idle and screaming at the muster, running and
+walking, stalking and crawling for the Shades, dodging, leaping (with the clip's own
+hop taken out, so the arc it flies is the real one), the climbing clip turned head up
+for walls and the hull, hit and death.
 
 ## The millipede
 
@@ -860,11 +910,14 @@ in the hangar settings.
 | `js/ceilingTiles.js` | Generated: slots of the ceiling atlas and the theme tags of its fixtures, tiles and vents |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
 | `tools/tests/allies.js` | Headless frame select, loadout, insertion, tank drops and the tanks' fight with the swarm: checks and screenshots |
-| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions and the millipede; which foe each one goes after (the mech or an ally) |
+| `tools/tests/riftlings.js` | Headless riftling packs: each color's hunt, latches, splats and tricks, a Blast chain, climbing to a roof, a swarm of a hundred: checks and screenshots |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions, riftlings and the millipede; which foe each one goes after (the mech or an ally) |
 | `js/allies.js` | The Kestrel H insertion, packs of Kestrels setting Bastion tanks down, tank driving and gunnery, what the swarm does to them, and the instanced fleets that draw them |
 | `js/vehicles/models.js` | The Kestrel dropship (and its Kestrel H heavy-lifter variant) and the Bastion armored carrier, from the Riftlings preview |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
 | `js/mediums.js` | Medium spider-frames: variants, bridging between roofs, gear, shield domes, repair and tractor beams, thrown boulders |
+| `js/riftlings.js` | Riftlings: the four packs, swarms in the waves, the flow field through the streets, wall sliding and climbing, leaps and roof-to-roof bounds, latching onto the hull, splats, blasts and acid, the Shades' ring and pounce, contact shadows |
+| `assets/riftlings/riftling.js` | The riftling model and its thirteen clips, baked into a pose texture and drawn as one instanced, GPU-posed swarm |
 | `js/millipede.js` | The millipede: rooftop route and drape, sectioned body, three-layer plate armor and reactor cores, legs, the head's flight, eye beams, ramming and finale |
 | `js/frameParts.js` | Shared by spiders, scorpions and the millipede: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, beams, the mech's hit capsule |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |

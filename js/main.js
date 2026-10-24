@@ -37,7 +37,8 @@ const HIT_SCALE = 1.5;
 const REGEN_DELAY = 4;
 const REGEN_RATE = 26;
 const SHIELD_ARC = 1.2;
-const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second
+const VENOM_DPS = 7;      // armor a Venomtail's venom eats per second (an Acid Riftling's acid too)
+const ACID_MAX = 6;       // most seconds of acid that splats can stack up on the hull
 
 // Boost gauge (0-100). Dashes and jump jets burn it at BOOST_DRAIN times their base
 // rates, so a full gauge lasts 2.5x as long; regen is unchanged, so a refill takes
@@ -218,7 +219,7 @@ async function init() {
     onHit: () => { if (!world.allyFire) hud.hit(false); },
   });
   spiders = new SpiderSwarm({
-    scene, world, fx, sound, tex, glowTex: fx.glowTex,
+    scene, world, fx, sound, tex, glowTex: fx.glowTex, mobile: isTouch,
     cb: {
       onWave: (n, fresh, boss) => {
         // Name what is new this wave: a boss, or the variants joining the fight
@@ -247,6 +248,12 @@ async function init() {
         if (!P.alive || mode !== 'play' || shielded(bearingOf(from))) return;
         if (P.venomT <= 0) hud.toast('VENOM · ARMOR CORRODING', 1.6);
         P.venomT = Math.max(P.venomT, dur);
+      },
+      // Acid Riftlings bursting on the hull: their acid eats armor like venom, each splat adding more
+      onAcid: (dur) => {
+        if (!P.alive || mode !== 'play') return;
+        if (P.venomT <= 0) hud.toast('ACID · ARMOR CORRODING', 1.6);
+        P.venomT = Math.min(ACID_MAX, Math.max(0, P.venomT) + dur);
       },
       onShock: (amount, from) => {
         if (!P.alive || mode !== 'play' || shielded(bearingOf(from))) return;
