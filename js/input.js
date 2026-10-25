@@ -205,6 +205,9 @@ export class Input {
       camera: e.has('KeyV'),
       // Hold G: climb out of the standing mech, or back into it (js/pilot.js)
       exit: k.has('KeyG'),
+      // Rides (js/rides.js): sink, and the Cheyenne's four weapon points
+      down: k.has('KeyC') || k.has('ControlLeft'),
+      slot1: e.has('Digit1'), slot2: e.has('Digit2'), slot3: e.has('Digit3'), slot4: e.has('Digit4'),
       wheel: this.wheel,
     };
     this.wheel = 0;
