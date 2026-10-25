@@ -6,8 +6,12 @@ import { canvasTexture } from './atlas.js';
 
 // ---------------------------------------------------------------------------
 // The millipede: a black war machine hundreds of meters long that crawls out of
-// an upright summoning portal (js/summons.js) and lies draped across several
-// city blocks.
+// an upright summoning portal (js/summons.js) and never stops crawling after.
+// It prowls the blocks round the mech, draped over the roofs: climbing over what
+// it can, boring through what is too tall to climb when it can't turn away in
+// time, steering clear of its own coils when it can, and driving its feet into
+// the buildings it crawls over. Two turrets ride on its head, two on a section
+// halfway down and three on its tail.
 //
 // Its body is a chain of rigid sections. Each one carries three layers of armor
 // plates (black, then steel, then bronze) over a reactor core with a rainbow gem
@@ -16,7 +20,8 @@ import { canvasTexture } from './atlas.js';
 // own coils. Once a hole goes through all three layers the core is open to fire.
 //
 // While any core still burns, the head is too heavily armored to hurt. With the
-// last core gone it fires the thrusters in its neck, tears free, flies off, turns
+// last core gone the body dies where it lies; the head fires the thrusters in its
+// neck, tears free, flies off, turns
 // and hunts the mech with twin red beams from its eyes. Killed, it rams its way
 // through twenty or thirty buildings, climbs, spins up and blows apart.
 // ---------------------------------------------------------------------------
@@ -33,24 +38,30 @@ const SEG_LEN = 17;
 const HALF = SEG_LEN / 2;
 const GAP = 2.4;              // flexible joint between sections
 const TIP_LEN = 10;           // unarmored tail tip
-const NECK = 9;
+const NECK = 6.5;             // the last section's front to the middle of the head, which rides right up against it
 const SPAN = SEG_LEN + GAP;
 const SEG0 = TIP_LEN + GAP;   // where the first section starts, from the tail end
 const HEAD_S = SEG0 + SEGS * SPAN - GAP + NECK; // tail end to the head
 // It crawls out of an upright portal near the ground: the portal stands PORTAL_S along its route,
-// just ahead of the head, and the whole body crawls ARRIVE through it, at CRAWL
+// just ahead of the head, and the whole body is through once it has crawled ARRIVE
 const PORTAL_S = HEAD_S + 12;
 const ARRIVE = PORTAL_S + 3;
-const CRAWL = 16;
+// On the prowl: it never stops, and plans its way LOOK ahead of its head
+const CRAWL = 15, BORE_CRAWL = 8;   // crawling, and tunnelling
+const LOOK = 72;
+const CLIMB = 46;             // the most it climbs at once; anything taller it bores through
+const UP_SLOPE = 1, DOWN_SLOPE = 1.3; // steepest it climbs, and drapes down after a roof
+const TURN = 1 / 32;          // its tightest turn, radians per unit crawled
+const PROWL = [70, 150];      // how far round the mech it roams
 
 // Armor: ROWS plates round the top and sides (ARC radians each way from the top), COLS along each section
 const ROWS = 7, COLS = 6, ARC = 1.95;
 const DTH = (2 * ARC) / ROWS, DZ = SEG_LEN / COLS;
 const PER_SEG = ROWS * COLS;
 const LAYERS = [
-  { r: 5.7, thick: 0.8, hp: 40 },    // black outer shell
-  { r: 4.85, thick: 0.72, hp: 50 },  // steel
-  { r: 4.05, thick: 0.66, hp: 60 },  // bronze
+  { r: 5.7, thick: 0.8, hp: 10 },    // black outer shell
+  { r: 4.85, thick: 0.72, hp: 12 },  // steel
+  { r: 4.05, thick: 0.66, hp: 15 },  // bronze
 ];
 const R_OUT = LAYERS[0].r;
 const R_BELLY = 4.7;          // the keel along its underside (it never comes off)
@@ -60,6 +71,25 @@ const LIFT = 4.4;             // the body's axis above what it lies on
 const SLOPE = 0.65;           // steepest it drapes from one roof down to the next
 const FEMUR = 7, TIBIA = 8.6;
 const FRAGS = 48;             // flying armor plates per layer
+
+// Turrets: where they ride (the head, the section halfway down, the tail tip), in that frame's
+// coordinates (x right, y up, z forward), tilted outward by tilt round the axis; and their guns
+const MID = SEGS >> 1;
+const TURRETS = [
+  { on: 'head', at: [-3.4, 2.5, -1.2], tilt: 0.6, gun: 'plasma', size: 1 },
+  { on: 'head', at: [3.4, 2.5, -1.2], tilt: -0.6, gun: 'plasma', size: 1 },
+  { on: MID, at: [0, 6.2, -4.4], tilt: 0, gun: 'gatling', size: 1.15 },
+  { on: MID, at: [0, 6.2, 4.4], tilt: 0, gun: 'gatling', size: 1.15 },
+  { on: 'tip', at: [0, 4.3, 1.8], tilt: 0, gun: 'fan', size: 0.85 },
+  { on: 'tip', at: [-2.8, 2.1, -0.6], tilt: 0.95, gun: 'fan', size: 0.8 },
+  { on: 'tip', at: [2.8, 2.1, -0.6], tilt: -0.95, gun: 'fan', size: 0.8 },
+];
+const GUNS = {
+  plasma: { burst: 3, gap: 0.24, cool: [2.4, 3.6], speed: 46, spread: (d) => 0.6 + d * 0.02 },
+  gatling: { burst: 12, gap: 0.07, cool: [3, 4.4], speed: 75, spread: (d) => 1.4 * (0.6 + d * 0.02) },
+  fan: { burst: 2, gap: 0.4, cool: [3.2, 4.8], speed: 40, fan: true, spread: (d) => 0.3 + d * 0.008 },
+};
+const TURRET_HP = 90;
 
 // Eye beams
 const EYE = { charge: 0.9, fire: 3.2, cool: [2.4, 4], dps: 16, track: 15 };
@@ -296,6 +326,7 @@ export class Millipede {
     const clip = (m) => { if (m && m.material && !clipped.has(m.material)) { clipped.add(m.material); m.material.clippingPlanes = [this.clip]; m.material.clipShadows = true; } };
     for (const m of [...this.tiles, ...this.fragMesh, this.frame, this.belly, this.collars, this.tipMesh, ...Object.values(this.legParts)]) clip(m);
     this.head.group.traverse(clip);
+    for (const T of this.turrets) T.base.traverse(clip);
   }
 
   /** How far p is out in front of the portal it is crawling out of (negative: still behind it) */
@@ -397,6 +428,7 @@ export class Millipede {
     }
 
     this.head = this.buildHead(map, glow);
+    this.turrets = this.buildTurrets(map);
     // Eye beams: a white-hot core in a red glow, and thin aiming lines while they charge
     this.eyeBeams = [0, 1].map(() => {
       const core = beamMesh(0xff2a18), glowB = beamMesh(0xff1008), line = beamMesh(0xff2020);
@@ -407,6 +439,54 @@ export class Millipede {
 
   makeLeg(F, side, z) {
     return { F, side, z, hip: new V3(), foot: new V3(), from: new V3(), to: new V3(), t: 1, dur: 0.35, dangle: false, phase: Math.random() * 6 };
+  }
+
+  /** The turrets: a base, a domed housing that turns, and twin barrels that lift; each a target of its own */
+  buildTurrets(map) {
+    const dark = new THREE.MeshStandardMaterial({ color: 0x16171b, metalness: 0.75, roughness: 0.4, map });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x34373e, metalness: 0.9, roughness: 0.3 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 0.12, 0.08), toneMapped: false });
+    const baseGeo = new THREE.CylinderGeometry(1.2, 1.55, 0.8, 14).translate(0, 0.4, 0);
+    const houseGeo = new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1.15, 0.85, 1.3);
+    const gunGeo = merge([
+      new THREE.BoxGeometry(1.6, 0.75, 0.9),
+      ...[-0.45, 0.45].flatMap((x) => [
+        new THREE.CylinderGeometry(0.2, 0.25, 3.2, 8).rotateX(Math.PI / 2).translate(x, 0, 1.6),
+        new THREE.CylinderGeometry(0.3, 0.3, 0.5, 8).rotateX(Math.PI / 2).translate(x, 0, 3.15),
+      ]),
+    ]);
+    const eyeGeo = new THREE.SphereGeometry(0.24, 10, 8).scale(1.6, 0.7, 1);
+    return TURRETS.map((def) => {
+      const base = new THREE.Group(), yaw = new THREE.Group(), pitch = new THREE.Group();
+      const mesh = (geo, mat, parent) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; parent.add(m); return m; };
+      mesh(baseGeo, dark, base);
+      yaw.position.y = 0.8;
+      base.add(yaw);
+      mesh(houseGeo, dark, yaw);
+      mesh(eyeGeo, eyeMat, yaw).position.set(0, 0.5, 0.95);
+      pitch.position.set(0, 0.3, 0.45);
+      yaw.add(pitch);
+      mesh(gunGeo, steel, pitch);
+      const off = new THREE.Matrix4().compose(new V3(...def.at), new THREE.Quaternion().setFromAxisAngle(new V3(0, 0, 1), def.tilt), new V3().setScalar(def.size));
+      if (def.on === 'head') {
+        base.position.set(...def.at);
+        base.rotation.z = def.tilt;
+        base.scale.setScalar(def.size);
+        this.head.group.add(base);
+      } else {
+        base.visible = false;
+        this.scene.add(base);
+      }
+      const T = {
+        def, F: def.on === 'head' ? null : def.on === 'tip' ? this.tip : this.segs[def.on], base, yaw, pitch, off,
+        alive: false, hp: TURRET_HP, cool: 0, burst: 0, burstT: 0, side: 0, ang: 0, kick: 0, los: false, losT: 0,
+      };
+      T.t = {
+        kind: 'millipede', name: 'MILLIPEDE TURRET', alive: false, stealth: true, pos: new V3(), vel: new V3(), radius: 1.9 * def.size, turret: true,
+        hit: (amount, point) => this.turretHit(T, amount, point),
+      };
+      return T;
+    });
   }
 
   buildHead(map, glow) {
@@ -536,7 +616,7 @@ export class Millipede {
   get bar() {
     if (!this.active) return null;
     const B = this.barObj, H = this.head;
-    if (H.state === 'arrive' || H.state === 'perched') {
+    if (H.state === 'crawl') {
       B.hp = this.cores; B.maxHp = SEGS;
       B.bossLabel = `MILLIPEDE · REACTOR CORES ${this.cores}/${SEGS}`;
     } else {
@@ -639,12 +719,120 @@ export class Millipede {
     return best;
   }
 
+  /** The point of its way s along it (from where its tail started), at the height it lies at there */
   routeAt(s, out) {
-    const R = this.route, f = clamp(s / R.ds, 0, R.n - 1.001), i = Math.floor(f), t = f - i;
+    const R = this.route, f = clamp(s / R.ds - R.base, 0, R.x.length - 1.001), i = Math.floor(f), t = f - i;
     out.x = R.x[i] + (R.x[i + 1] - R.x[i]) * t;
     out.z = R.z[i] + (R.z[i + 1] - R.z[i]) * t;
     out.y = R.h[i] + (R.h[i + 1] - R.h[i]) * t;
     return out;
+  }
+
+  /** Like topAt, but what is left of a building that has been broken into */
+  surfAt(x, z, r) {
+    const D = this.world.destruct;
+    let h = 0;
+    this.world.query(x - r, z - r, x + r, z + r, (c) => {
+      if (!c.building || c.max.y <= h) return;
+      if (c.vox && D) { if (!c.vox.dead) h = Math.max(h, D.floorUnder(c.vox, x, z, c.max.y + 1, r, 0)); }
+      else h = c.max.y;
+    });
+    return h;
+  }
+
+  /** Keep its way planned LOOK ahead of its head, and forget it behind its tail */
+  plan(P) {
+    const R = this.route;
+    while ((R.base + R.x.length - 1) * R.ds < this.sH + LOOK) this.extend(P);
+    const drop = Math.floor((this.sH - HEAD_S) / R.ds) - R.base - 8;
+    if (drop > 40) {
+      for (const a of [R.x, R.z, R.h, R.bore]) a.splice(0, drop);
+      R.base += drop;
+    }
+  }
+
+  /**
+   * One more step of its way: turned toward where it is steering, as sharply as it can, and laid over
+   * what is there. Off a roof it drapes down no more steeply than DOWN_SLOPE; up onto one it climbs
+   * no more steeply than UP_SLOPE, raising the way still ahead of its head to meet it; anything more
+   * than CLIMB above it, it bores through level (its head tears the tunnel as it gets there), and it
+   * rides up over its own body where that will still be lying when it gets there.
+   */
+  extend(P) {
+    const R = this.route, W = this.walk, ds = R.ds, i = R.x.length - 1;
+    if (W.steerIn-- <= 0) { W.steerIn = 3; W.want = this.steer(P, R.x[i], R.z[i], R.h[i]); }
+    W.hd += clamp(wrap(W.want - W.hd), -TURN * ds, TURN * ds);
+    const x = R.x[i] + Math.cos(W.hd) * ds, z = R.z[i] + Math.sin(W.hd) * ds;
+    const g = this.surfAt(x, z, 4), over = this.overSelf(x, z, (R.base + i + 1) * ds), prev = R.h[i];
+    let h = Math.max(g, prev - DOWN_SLOPE * ds), bore = 0;
+    if (g - prev > CLIMB || (R.bore[i] && g > prev + 1)) { h = prev; bore = 1; }
+    if (over > h) { h = over; bore = 0; }
+    R.x.push(x); R.z.push(z); R.h.push(h); R.bore.push(bore);
+    const head = Math.ceil(this.sH / ds) - R.base;
+    for (let j = R.h.length - 2; j > head && !R.bore[j]; j--) {
+      const need = R.h[j + 1] - UP_SLOPE * ds;
+      if (R.h[j] >= need) break;
+      R.h[j] = need;
+    }
+  }
+
+  /** How high its way must lie at (x, z), s along it, to pass over the body it will find there */
+  overSelf(x, z, s) {
+    const R = this.route, ds = R.ds, r2 = (R_OUT * 2 + 1) ** 2;
+    const j0 = Math.max(0, Math.ceil((s - HEAD_S) / ds) - R.base), j1 = Math.min(R.x.length - 1, Math.floor((s - 40) / ds) - R.base);
+    let top = 0;
+    for (let j = j0; j <= j1; j++) {
+      const dx = R.x[j] - x, dz = R.z[j] - z;
+      if (dx * dx + dz * dz < r2) top = Math.max(top, R.h[j] + R_OUT * 2 + 1);
+    }
+    return top;
+  }
+
+  /** Whether (x, z) is close by its body as it lies now */
+  nearSelf(x, z) {
+    const R = this.route, ds = R.ds, r2 = (R_OUT * 2 + 4) ** 2;
+    const j0 = Math.max(0, Math.ceil((this.sH - HEAD_S) / ds) - R.base), j1 = Math.min(R.x.length - 1, Math.floor((this.sH - 30) / ds) - R.base);
+    for (let j = j0; j <= j1; j += 3) {
+      const dx = R.x[j] - x, dz = R.z[j] - z;
+      if (dx * dx + dz * dz < r2) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Which way to steer from (x0, z0), where its way lies at h0: toward a spot it is prowling to round
+   * the mech, picked anew now and then, but of nine headings the one whose next 54 units ask least:
+   * little climbing, nothing too tall to climb (it would have to bore), not over its own body, nor
+   * back behind its portal, nor out of the city
+   */
+  steer(P, x0, z0, h0) {
+    const W = this.walk, B = this.world.bounds;
+    if (this.time > W.goalT || Math.hypot(W.goal.x - x0, W.goal.z - z0) < 35) {
+      const a = Math.random() * Math.PI * 2, r = rand(...PROWL);
+      W.goal.set(clamp(P.pos.x + Math.cos(a) * r, B.minX + 40, B.maxX - 40), 0, clamp(P.pos.z + Math.sin(a) * r, B.minZ + 40, B.maxZ - 40));
+      W.goalT = this.time + rand(12, 22);
+    }
+    const toGoal = Math.atan2(W.goal.z - z0, W.goal.x - x0), step = 6;
+    let best = W.hd, bc = Infinity;
+    for (let k = -4; k <= 4; k++) {
+      const a = W.hd + k * 0.3;
+      let c = Math.abs(wrap(a - toGoal)) * 14 + Math.abs(k) * 1.5;
+      let hd = W.hd, x = x0, z = z0, h = h0;
+      for (let d = step; d <= 54; d += step) {
+        hd += clamp(wrap(a - hd), -TURN * step, TURN * step);
+        x += Math.cos(hd) * step; z += Math.sin(hd) * step;
+        const w = 1 - d / 90;
+        if (x < B.minX + 30 || x > B.maxX - 30 || z < B.minZ + 30 || z > B.maxZ - 30) c += 80 * w;
+        const g = this.topAt(x, z, 4);
+        if (g - h > CLIMB) c += 45 * w;
+        else { if (g > h) c += (g - h) * 0.25 * w; h = Math.max(g, h - DOWN_SLOPE * step); }
+        if (this.nearSelf(x, z)) c += 30 * w;
+        if (this.portal && this.ahead(_g.set(x, h + LIFT, z)) < 30) c += 150 * w;
+        if (P.alive && Math.hypot(x - P.pos.x, z - P.pos.z) < 25) c += 12 * w;
+      }
+      if (c < bc) { bc = c; best = a; }
+    }
+    return best;
   }
 
   // ---- coming and going --------------------------------------------------------------------
@@ -652,10 +840,17 @@ export class Millipede {
   /** Start it crawling out of its portal along a route from planPortal. False if it's already here. */
   spawn(plan) {
     if (this.active || !plan) return false;
-    this.route = plan.route;
+    // Its way so far: the planned route out through the portal, LOOK past it; it plans the rest as it goes
+    const R = plan.route, n = Math.min(R.n, Math.ceil((PORTAL_S + LOOK) / R.ds) + 1);
+    this.route = { x: Array.from(R.x.subarray(0, n)), z: Array.from(R.z.subarray(0, n)), h: Array.from(R.h.subarray(0, n)), bore: new Array(n).fill(0), ds: R.ds, base: 0 };
+    const hd = Math.atan2(R.z[n - 1] - R.z[n - 2], R.x[n - 1] - R.x[n - 2]);
+    this.walk = { hd, want: hd, steerIn: 0, goal: new V3(), goalT: 0 };
+    this.sH = HEAD_S;
+    this.speed = CRAWL;
+    this.punch = 0;
+    this.punchFresh = 0;
     this.portal = plan.portal;
     this.clip.setFromNormalAndCoplanarPoint(this.portal.normal, this.portal.pos);
-    this.off = ARRIVE;
     this.active = true;
     this.time = 0;
     this.cores = SEGS;
@@ -677,7 +872,7 @@ export class Millipede {
     this.tipMesh.visible = true;
     for (let i = 0; i < SEGS + 4; i++) this.collars.setMatrixAt(i, ZERO);
     const H = this.head;
-    Object.assign(H, { state: 'arrive', hp: HEAD_HP, flash: 0, throttle: 0, bite: 0, burst: 0, ram: null, spin: 0, spinA: 0, warned: false });
+    Object.assign(H, { state: 'crawl', hp: HEAD_HP, flash: 0, throttle: 0, bite: 0, burst: 0, ram: null, spin: 0, spinA: 0, warned: false, placed: false, boring: false, boreT: 0, flinch: 0 });
     H.cool.fan = rand(3, 5); H.cool.bite = 0; H.cool.roar = rand(5, 9);
     H.laser.phase = 'idle'; H.laser.cool = 3;
     H.t.alive = true;
@@ -687,9 +882,15 @@ export class Millipede {
     this.layout();
     if (this.portal) this.hideBehind();
     this.recolor();
-    const L = this.segs[SEGS - 1];
-    H.pos.copy(L.b).addScaledVector(L.fwd, NECK * 0.85).addScaledVector(UP, 6.5);
-    this.face(L.fwd, 1);
+    this.placeHead(0);
+    for (const T of this.turrets) {
+      Object.assign(T, { alive: true, hp: TURRET_HP, cool: rand(1, 3), burst: 0, ang: 0, kick: 0, los: false, losT: 0 });
+      T.base.visible = true;
+      T.yaw.rotation.y = 0;
+      T.t.alive = true;
+      T.t.stealth = true;
+      this.world.targets.push(T.t);
+    }
     for (const leg of this.legs) { this.hipOf(leg); this.plant(leg, true); }
     this.sound.millipedeRoar(H.pos);
     return true;
@@ -707,6 +908,7 @@ export class Millipede {
     }
     const i = this.world.targets.indexOf(this.head.t);
     if (i >= 0) this.world.targets.splice(i, 1);
+    for (const T of this.turrets) this.dropTurret(T);
     this.head.group.visible = false;
     this.head.state = 'off';
     for (const B of this.eyeBeams) B.core.visible = B.glow.visible = B.line.visible = false;
@@ -740,7 +942,7 @@ export class Millipede {
 
   /** Place every section along the route, as far in as it has crawled */
   layout() {
-    const s0 = ARRIVE - this.off;
+    const s0 = this.sH - HEAD_S;
     this.place(this.tip, s0, s0 + TIP_LEN);
     for (const seg of this.segs) this.place(seg, s0 + seg.s, s0 + seg.s + SEG_LEN);
     this.writeBody();
@@ -793,29 +995,7 @@ export class Millipede {
     };
     joint(this.tip.b, this.segs[0].a, this.tip.gone || this.segs[0].gone);
     for (let i = 1; i < SEGS; i++) joint(this.segs[i - 1].b, this.segs[i].a, this.segs[i - 1].gone || this.segs[i].gone);
-    this.collarN = n;
-    this.collars.instanceMatrix.needsUpdate = true;
-  }
-
-  /** The neck, a curve of three sleeves from the front section up to the head, while it's attached */
-  writeNeck(show) {
-    const L = this.segs[SEGS - 1], H = this.head;
-    const P0 = L.b, P3 = _c.set(0, -0.3, -9).applyQuaternion(H.q).add(H.pos);
-    const P1 = _d.copy(P0).addScaledVector(L.fwd, 4), P2 = _e.copy(P3).addScaledVector(H.fwd, -4);
-    const bez = (u, out) => {
-      const v = 1 - u;
-      return out.copy(P0).multiplyScalar(v * v * v).addScaledVector(P1, 3 * v * v * u).addScaledVector(P2, 3 * v * u * u).addScaledVector(P3, u * u * u);
-    };
-    for (let k = 0; k < 3; k++) {
-      const i = this.collarN + k;
-      if (!show) { this.collars.setMatrixAt(i, ZERO); continue; }
-      const A = bez(k / 3 - 0.02, _a), B = bez((k + 1) / 3 + 0.02, _b);
-      _g.subVectors(B, A);
-      const len = _g.length() + 1.5;
-      _q.setFromUnitVectors(UP, _g.normalize());
-      this.collars.setMatrixAt(i, _m.compose(_n.addVectors(A, B).multiplyScalar(0.5), _q, _s.set(0.95, len, 0.95)));
-    }
-    this.collars.count = this.collarN + 3;
+    this.collars.count = n;
     this.collars.instanceMatrix.needsUpdate = true;
   }
 
@@ -848,7 +1028,7 @@ export class Millipede {
     return leg.hip.copy(F.c).addScaledVector(F.right, leg.side * 3.9).addScaledVector(F.up, -2.6).addScaledVector(F.fwd, leg.z);
   }
 
-  /** Find a hold for a foot: on the roof beside it, straight down, a wall alongside, or nothing (it dangles) */
+  /** Find a hold for a foot: on the roof beside it, straight down, a wall alongside, or nothing (it dangles). A step drives the foot into a building. */
   plant(leg, now = false) {
     const F = leg.F, hip = leg.hip;
     const dirs = [
@@ -860,13 +1040,27 @@ export class Millipede {
     let hold = null;
     for (const [d, max] of dirs) {
       const h = this.world.raycast(hip, d, max, { targets: false });
-      if (h) { hold = h.point; break; }
+      if (h) { hold = h.point; if (!now) this.puncture(h, d); break; }
     }
     leg.dangle = !hold;
     const to = hold || this.danglePoint(leg, _e);
     leg.from.copy(now ? to : leg.foot);
     leg.to.copy(to);
     if (now) { leg.foot.copy(to); leg.t = 1; } else { leg.t = 0; leg.dur = rand(0.28, 0.4); }
+  }
+
+  /**
+   * A foot comes down on a building and its point goes in. Breaking into a building still whole turns it
+   * into pieces, which is costly, so only every so often; one already broken into, up to eight a second.
+   */
+  puncture(h, dir) {
+    const D = this.world.destruct;
+    if (!D || !(h.struct || (h.collider && h.collider.owner))) return;
+    if (h.struct) { if (this.punch < 1) return; this.punch--; }
+    else { if (this.punchFresh > 0) return; this.punchFresh = 0.6; }
+    D.bullet(h, { radius: 1.5, power: 160, dir, speed: 4, chunks: 3 });
+    this.fx.sparksBurst(h.point, h.normal, 5, 0xffc070, 18);
+    if (Math.random() < 0.3) this.sound.crash(h.point, 0.35);
   }
 
   danglePoint(leg, out) {
@@ -876,6 +1070,8 @@ export class Millipede {
 
   updateLegs(dt, moving) {
     let steps = 0;
+    this.punch = Math.min(8, this.punch + dt * 8);
+    this.punchFresh -= dt;
     for (const leg of this.legs) {
       if (leg.F.gone) continue;
       this.hipOf(leg);
@@ -1024,7 +1220,7 @@ export class Millipede {
           if (seg.hp[j] <= 0) continue;
           const rc = LAYERS[k].r - LAYERS[k].thick / 2;
           const d = Math.hypot(rc * sn - lx, rc * cs - ly, z - lz);
-          if (d < radius) this.hurtTile(seg, k, cell, amount * (1 - d / radius) * (covered ? 0.2 : 1), null);
+          if (d < radius) this.hurtTile(seg, k, cell, amount * (1 - d / radius) * (covered ? 0.35 : 1), null);
           covered = true;
         }
       }
@@ -1123,7 +1319,7 @@ export class Millipede {
     const H = this.head;
     if (H.t.stealth || H.hp <= 0) {
       if (point) this.clang(point, 1);
-      if (!H.warned && (H.state === 'perched' || H.state === 'arrive')) {
+      if (!H.warned && H.state === 'crawl') {
         H.warned = true;
         this.alert('HEAD ARMOR IMPERVIOUS · DESTROY THE REACTOR CORES', 3);
       }
@@ -1154,37 +1350,52 @@ export class Millipede {
   eyePos(i, out) { return out.copy(this.head.eyeLocal[i]).applyQuaternion(this.head.q).add(this.head.pos); }
   mouth(out) { return out.set(0, -2.2, 8).applyQuaternion(this.head.q).add(this.head.pos); }
 
-  /** Up on its neck at the front of the body, watching the mech */
-  perch(dt, P, arriving) {
+  /** Right up against the front of the body, looking along its way */
+  placeHead(dt) {
     const H = this.head, L = this.segs[SEGS - 1];
-    const base = _a.copy(L.b).addScaledVector(L.fwd, NECK * 0.85).addScaledVector(UP, 6.5);
-    base.y = Math.max(base.y, this.topAt(base.x, base.z, 6) + 7);
-    base.y += Math.sin(this.time * 1.2) * 0.5;
-    H.flinch = Math.max(0, (H.flinch || 0) - dt * 1.5);
-    base.addScaledVector(L.fwd, -H.flinch * 3).addScaledVector(UP, H.flinch * 2);
-    H.pos.lerp(base, damp(arriving ? 14 : 4, dt));
-    // Turn to the mech, as far as its neck allows
-    const yaw0 = Math.atan2(L.fwd.x, L.fwd.z);
-    let yaw = yaw0, pitch = -0.1;
-    if (!arriving && P.alive) {
-      _b.subVectors(P.chest, H.pos);
-      yaw = yaw0 + clamp(wrap(Math.atan2(_b.x, _b.z) - yaw0), -1.25, 1.25);
-      pitch = clamp(Math.atan2(_b.y, Math.hypot(_b.x, _b.z)), -0.65, 0.4);
-    }
-    _c.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-    this.face(_c, damp(3, dt), Math.sin(this.time * 0.9) * 0.08);
-    if (arriving) return;
-    // Volleys of plasma fans, and a bite for anything that comes too close
-    const cool = H.cool, sees = P.alive && this.sw.clearLine(this.mouth(_d), P.chest);
+    const dir = _e.subVectors(this.routeAt(this.sH, _e), L.b).addScaledVector(UP, LIFT);
+    if (dir.lengthSq() < 1e-4) dir.copy(L.fwd);
+    dir.normalize();
+    H.flinch = Math.max(0, H.flinch - dt * 1.5);
+    H.pos.copy(L.b).addScaledVector(dir, NECK - H.flinch * 1.5).addScaledVector(L.up, H.flinch * 1.2);
+    this.face(dir, H.placed ? damp(10, dt) : 1, Math.sin(this.time * 0.9) * 0.06);
+    H.placed = true;
+  }
+
+  /** Crawling: the head leads, tunnels where its way bores through, bites what it runs into */
+  ride(dt, P) {
+    const H = this.head, R = this.route;
+    this.placeHead(dt);
+    const i = Math.round(this.sH / R.ds) - R.base;
+    H.boring = false;
+    for (let j = Math.max(0, i - 2); j <= i + 4 && j < R.bore.length; j++) if (R.bore[j]) H.boring = true;
+    if (H.boring) this.bore(dt);
+    const cool = H.cool;
     for (const k in cool) cool[k] -= dt;
-    this.fans(dt, P, sees);
     if (P.alive && cool.bite <= 0 && capsuleDist(this.mouth(_d), P.pos) < 9) {
       cool.bite = 2.4;
       H.bite = 1;
       this.sw.cb.onPlayerHit && this.sw.cb.onPlayerHit(38, H.pos.clone(), 'crush');
       this.sound.clawSnap(_d);
     }
-    if (cool.roar <= 0) { cool.roar = rand(9, 15); this.sound.millipedeRoar(H.pos, 0.6); H.bite = 0.6; }
+    if (cool.roar <= 0) { cool.roar = rand(9, 15); this.sound.millipedeRoar(H.pos, 0.6); H.bite = Math.max(H.bite, 0.6); }
+  }
+
+  /** The hooks of its face tear a tunnel through a building too tall to climb */
+  bore(dt) {
+    const H = this.head, fx = this.fx, D = this.world.destruct;
+    H.bite = Math.max(H.bite, 0.5 + 0.5 * Math.abs(Math.sin(this.time * 7)));
+    if ((H.boreT -= dt) > 0) return;
+    H.boreT = 0.22;
+    const p = _d.copy(H.pos).addScaledVector(H.fwd, 9);
+    let solid = false;
+    this.world.query(p.x - 6, p.z - 6, p.x + 6, p.z + 6, (b) => { if (b.building && p.y < b.max.y + 4 && p.y > b.min.y - 4) solid = true; });
+    if (!solid) return;
+    if (D) D.blast(p, 13, 1500, { chunks: 8 });
+    fx.dust(p, 1.8, 7);
+    fx.sparksBurst(p, _a.copy(H.fwd).negate(), 12, 0xffc070, 40);
+    if (Math.random() < 0.45) this.sound.crash(p, 1.6);
+    fx.onShake(p, 0.5);
   }
 
   fans(dt, P, sees) {
@@ -1262,11 +1473,10 @@ export class Millipede {
     H.bite = Math.max(0, H.bite - dt * 2.5);
     let throttle = 0;
     switch (H.state) {
-      case 'arrive': this.perch(dt, P, true); break;
-      case 'perched': this.perch(dt, P, false); break;
+      case 'crawl': this.ride(dt, P); break;
       case 'ignite': {
         // Thrusters spool up while it strains against its neck
-        this.perch(dt, P, false);
+        this.placeHead(dt);
         throttle = Math.min(1, H.stateT / 1.2);
         H.pos.addScaledVector(UP, Math.sin(H.stateT * 40) * 0.08);
         if (Math.random() < dt * 20) fx.sparksBurst(this.segs[SEGS - 1].b, UP, 3, 0xffc070, 20);
@@ -1275,7 +1485,6 @@ export class Millipede {
           const p = this.segs[SEGS - 1].b;
           fx.explosion(_a.copy(p).addScaledVector(UP, 2), 1.6);
           this.sound.explosion(p, 1.4);
-          this.writeNeck(false);
           H.state = 'launch';
           H.stateT = 0;
           H.t.stealth = false;
@@ -1569,6 +1778,7 @@ export class Millipede {
     const H = this.head, fx = this.fx, p = H.pos.clone(), D = this.world.destruct;
     H.state = 'gone';
     H.group.visible = false;
+    for (const T of this.turrets) if (!T.F) this.dropTurret(T);
     this.endLaser();
     const i = this.world.targets.indexOf(H.t);
     if (i >= 0) this.world.targets.splice(i, 1);
@@ -1650,6 +1860,7 @@ export class Millipede {
 
   finish() {
     this.active = false;
+    for (const T of this.turrets) this.dropTurret(T);
     for (const m of [...this.tiles, this.frame, this.belly, this.collars, ...Object.values(this.legParts)]) m.visible = false;
     this.tipMesh.visible = false;
     for (const seg of this.segs) {
@@ -1670,22 +1881,24 @@ export class Millipede {
       if ((e.t -= dt) <= 0) { this.events.splice(i, 1); e.fn(); }
     }
     if (!this.active) return;
-    let moving = false;
-    if (H.state === 'arrive') {
-      // Crawling in, slowing as it settles
-      this.off = Math.max(0, this.off - CRAWL * clamp(this.off / 30, 0.2, 1) * dt);
-      moving = true;
+    // While a core still burns it never stops crawling: slower where it tunnels
+    const moving = H.state === 'crawl';
+    if (moving) {
+      this.speed += ((H.boring ? BORE_CRAWL : CRAWL) - this.speed) * damp(2, dt);
+      this.sH += this.speed * dt;
+      this.plan(P);
       this.layout();
-      if (this.portal) this.hideBehind();
-      if (Math.random() < dt * 2) this.sound.crash(this.segs[Math.floor(Math.random() * SEGS)].c, 0.5);
-      if (this.off <= 0) { H.state = 'perched'; this.endPortal(); this.sound.millipedeRoar(H.pos); }
+      if (this.portal) {
+        this.hideBehind();
+        if (this.sH - HEAD_S > ARRIVE) { this.endPortal(); this.sound.millipedeRoar(H.pos); }
+      }
+      if (Math.random() < dt * 0.8) this.sound.crash(this.segs[Math.floor(Math.random() * SEGS)].c, 0.5);
     }
     if (H.state !== 'gone') this.updateHead(dt, P);
-    const attached = H.state === 'arrive' || H.state === 'perched' || H.state === 'ignite';
-    this.writeNeck(attached);
     this.updateLegs(dt, moving);
     this.renderLegs();
     this.renderHead();
+    this.updateTurrets(dt, P);
     // Gems turn and pulse; struck plates fade back
     this.gemMat.uniforms.uTime.value = this.time;
     for (const seg of this.segs) {
@@ -1702,6 +1915,84 @@ export class Millipede {
       seg.halo.material.color.setHSL((this.time * 0.15 + seg.i * 0.1) % 1, 1, 0.55);
       seg.halo.scale.setScalar(10 + 2 * Math.sin(this.time * 2.3 + seg.i) + seg.coreFlash * 6);
     }
+  }
+
+  // ---- turrets ----------------------------------------------------------------------------------
+
+  /**
+   * Each turret rides its frame, turns its housing and lifts its barrels toward the mech, and fires
+   * bursts once it's on target with a clear line. The body's stop when the body dies; the head's
+   * keep on while the head hunts.
+   */
+  updateTurrets(dt, P) {
+    const H = this.head, sw = this.sw;
+    if (H.state !== 'gone') H.group.updateMatrixWorld(true);
+    for (const T of this.turrets) {
+      if (!T.alive) continue;
+      if (T.F) {
+        if (T.F.gone) { this.dropTurret(T); continue; }
+        _m.multiplyMatrices(T.F.M, T.off).decompose(T.base.position, T.base.quaternion, T.base.scale);
+        T.base.updateMatrixWorld(true);
+      }
+      const o = T.yaw.getWorldPosition(T.t.pos);
+      T.t.stealth = this.ahead(o) < 1;
+      const live = T.F ? H.state === 'crawl' : H.state === 'crawl' || H.state === 'turn' || H.state === 'attack';
+      if (T.t.stealth || !live || !P.alive) { T.burst = 0; continue; }
+      // The mech's chest, led, in the base's own frame
+      const W = GUNS[T.def.gun], d = o.distanceTo(P.chest);
+      _a.copy(P.chest).addScaledVector(P.vel, (d / W.speed) * 0.75).sub(o).applyQuaternion(T.base.getWorldQuaternion(_q).invert());
+      const yw = Math.atan2(_a.x, _a.z), pw = clamp(Math.atan2(_a.y, Math.hypot(_a.x, _a.z)), -0.9, 1.3);
+      T.yaw.rotation.y += clamp(wrap(yw - T.yaw.rotation.y), -2.4 * dt, 2.4 * dt);
+      T.ang += clamp(pw - T.ang, -1.6 * dt, 1.6 * dt);
+      T.kick = Math.max(0, T.kick - dt * 6);
+      T.pitch.rotation.x = -T.ang;
+      T.pitch.position.z = 0.45 - T.kick * 0.35;
+      T.base.updateMatrixWorld(true);
+      if ((T.losT -= dt) <= 0) { T.losT = rand(0.25, 0.4); T.los = d < 240 && sw.clearLine(o, P.chest); }
+      T.cool -= dt;
+      const on = Math.abs(wrap(yw - T.yaw.rotation.y)) < 0.15 && Math.abs(pw - T.ang) < 0.15;
+      if (T.burst <= 0 && T.cool <= 0 && T.los && on && sw.bolts.length < 220) { T.burst = W.burst; T.burstT = 0; T.cool = rand(...W.cool); }
+      if (T.burst > 0 && (T.burstT -= dt) <= 0) {
+        T.burst--;
+        T.burstT = W.gap;
+        // From one barrel, then the other
+        T.side = 1 - T.side;
+        const m = T.pitch.localToWorld(_b.set(T.side ? 0.45 : -0.45, 0, 3.4));
+        const aim = _c.copy(P.chest).addScaledVector(P.vel, (m.distanceTo(P.chest) / W.speed) * 0.75);
+        if (W.fan) for (const y of [-0.12, 0, 0.12]) sw.shoot(T.def.gun, m, _e.copy(aim).sub(m).applyAxisAngle(UP, y).add(m), W.spread(d));
+        else sw.shoot(T.def.gun, m, aim, W.spread(d));
+        T.kick = 1;
+      }
+    }
+  }
+
+  turretHit(T, amount, point) {
+    if (!T.alive) return false;
+    T.hp -= amount;
+    if (point) {
+      this.fx.sparksBurst(point, _a.subVectors(point, T.t.pos).normalize(), 6, 0xff6040, 24);
+      this.sound.metalHit(point, 0.6);
+    }
+    if (T.hp > 0) return false;
+    // Shot off
+    const p = T.t.pos.clone(), D = this.world.destruct;
+    this.dropTurret(T);
+    this.fx.explosion(p, 0.9);
+    this.sound.explosion(p, 0.8);
+    if (D) for (let i = 0; i < 3; i++) D.debris.spawn(p.x, p.y, p.z, rand(-8, 8), rand(6, 14), rand(-8, 8), 0.5, 8, rand(6, 10));
+    const left = this.turrets.filter((t) => t.alive).length;
+    this.alert(left ? `MILLIPEDE TURRET DESTROYED · ${left} LEFT` : 'MILLIPEDE TURRETS DESTROYED', 1.6);
+    this.sw.cb.onKill && this.sw.cb.onKill({ name: 'MILLIPEDE TURRET', v: {}, pos: p, kind: 'millipede' });
+    return true;
+  }
+
+  /** Gone: off the body and out of the targets */
+  dropTurret(T) {
+    T.alive = T.t.alive = false;
+    T.burst = 0;
+    T.base.visible = false;
+    const i = this.world.targets.indexOf(T.t);
+    if (i >= 0) this.world.targets.splice(i, 1);
   }
 
   renderHead() {
