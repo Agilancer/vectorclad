@@ -2161,12 +2161,14 @@ export class City {
       this.cur = this.chunkOf((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2);
       const xs0 = B.x0 - L.aveWalk + m(0.8), xs1 = B.x1 + L.aveWalk - m(0.8);
       const zs0 = B.z0 - L.stWalk + m(0.8), zs1 = B.z1 + L.stWalk - m(0.8);
-      // Lights and street trees along the side streets
+      // Lights and street trees along the side streets, each kept on its own block's sidewalk (the
+      // last step's offsets would otherwise reach past the corner into the avenue)
+      const onBlock = (x) => x < B.x1 - m(3);
       for (let x = B.x0 + m(14); x < B.x1 - m(10); x += m(46)) {
         streetLight(x, zs0, 0, -1);
-        streetLight(x + m(23), zs1, 0, 1);
-        if (B.playable && r() < 0.55) this.streetTree(x + m(10), zs0 + m(0.6));
-        if (B.playable && r() < 0.55) this.streetTree(x + m(33), zs1 - m(0.6));
+        if (onBlock(x + m(23))) streetLight(x + m(23), zs1, 0, 1);
+        if (B.playable && r() < 0.55 && onBlock(x + m(10))) this.streetTree(x + m(10), zs0 + m(0.6));
+        if (B.playable && r() < 0.55 && onBlock(x + m(33))) this.streetTree(x + m(33), zs1 - m(0.6));
       }
       for (let z = B.z0 + m(20); z < B.z1 - m(10); z += m(60)) {
         streetLight(xs0, z, -1, 0);
