@@ -118,6 +118,31 @@ Missiles lock onto targets inside the dashed circle. A salvo spreads its missile
 across every lock; with nothing locked they fly to the crosshair. Leg pods pop
 their missiles almost straight up so they arc over the ground in front of the feet.
 
+### On foot
+
+With the mech standing still on the ground, hold `G` to climb out. Back beside the frame,
+hold `G` again to climb in. The pilot wears thick sci-fi armor with a jetpack and a
+grappling hook on the right forearm, and carries a small copy of the mech's beam rifle in
+a dark finish. On foot the armor gauge is the pilot's own (60 points); the frame keeps
+what it had.
+
+| Action | Keyboard / mouse |
+| --- | --- |
+| Fire the rifle | Left mouse |
+| Grappling hook: fire / let go (keeps the momentum) | Right mouse |
+| Sticky grenade | `Q` (or `E`) |
+| Jump; press again in the air to light the jetpack | `Space` |
+| Jetpack dash | `Shift` |
+| First person / over-the-shoulder third person | Mouse wheel |
+
+The view starts in first person, the rifle held in the right hand. The wheel pulls back to
+a close over-the-shoulder view of the little armored pilot. The jetpack and dash burn the
+mech's boost gauge at 1.5 times the frame's rate. The grappling hook reaches about a city
+block. It reels the pilot in fast on a rope that won't stretch, so it swings round corners
+like a pendulum. Let go mid-swing to keep the speed, then fire it again in a new direction.
+A sticky grenade sticks to whatever it hits and, after a short blinking fuse, blows out the
+one square tile of wall or floor it is stuck to.
+
 ## Summoning
 
 This is still a tech demo and a sandbox: there are no waves, and nothing attacks
@@ -1045,6 +1070,7 @@ in the hangar settings.
 | `js/city.js` | Port Meridian: street grid, buildings, houses and row houses, roofs, parks, the forest, street furniture, elevated railway and highway, waterfront, bridges, distant scenery |
 | `js/trees.js` | Trees: species, textured trunks and crowns instanced by chunk, uprooting, rigid-body tumbling and rolling, burning |
 | `js/cars.js` | Cars: bodies shaped to their skins in the vertex shader, parked cars, lane-following traffic that turns and respawns |
+| `js/pilot.js` | The pilot on foot: the armored model, the first person arm and rifle, jetpack movement, the grappling hook, sticky grenades |
 | `js/people.js` | People: fifty models, the rig and its animations, sidewalk walkers, panic, building occupants, falls and splats |
 | `js/furniture.js` | Furniture: sixteen modeled pieces, furnishing broken floors, thrown and tumbling pieces |
 | `js/train.js` | The El's trains: the route, derailing where the track is gone or blocked, wrecks as rigid boxes that pile up |

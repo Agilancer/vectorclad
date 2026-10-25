@@ -823,6 +823,76 @@ export class Destruction {
   }
 
   /**
+   * A sticky grenade: blows out one square tile of the wall or floor it stuck to, sizeM a side and
+   * up to depthM into it, and nothing round it. Falls back to a small bite on moving pieces.
+   */
+  tile(hit, dir, sizeM, depthM) {
+    if (!hit) return 0;
+    let s = hit.struct, p = hit.point, n = hit.normal;
+    if (!s) {
+      const c = hit.collider;
+      if (!c || !c.owner || !dir) return 0;
+      s = this.activate(c.owner);
+      if (!s) return 0;
+      const back = 2;
+      const from = _c.copy(p).addScaledVector(dir, -back);
+      const r = this.rayStruct(s, from, dir, back + 6 * this.M);
+      if (!r) return 0;
+      p = _d.copy(from).addScaledVector(dir, r.t);
+      n = _b.set(r.nx, r.ny, r.nz);
+    }
+    if (s.body) return this.bullet(hit, { radius: sizeM / 2, power: 400, dir, speed: 6, chunks: 6 });
+    const g = s.g, M = this.M, h = (sizeM * M) / 2, d = depthM * M;
+    const N = [n.x, n.y, n.z];
+    const ax = Math.abs(N[0]) >= Math.abs(N[1]) && Math.abs(N[0]) >= Math.abs(N[2]) ? 0 : Math.abs(N[1]) >= Math.abs(N[2]) ? 1 : 2;
+    const sg = Math.sign(N[ax]) || 1;
+    const c = [p.x, p.y, p.z], lo = [c[0] - h, c[1] - h, c[2] - h], hi = [c[0] + h, c[1] + h, c[2] + h];
+    // Square across the face, from just outside it to depthM in
+    lo[ax] = sg > 0 ? c[ax] - d : c[ax] - 0.05 * M;
+    hi[ax] = sg > 0 ? c[ax] + 0.05 * M : c[ax] + d;
+    const x0 = lineIndexClamped(g.xs, lo[0]), x1 = lineIndexClamped(g.xs, hi[0]);
+    const y0 = lineIndexClamped(g.ys, lo[1]), y1 = lineIndexClamped(g.ys, hi[1]);
+    const z0 = lineIndexClamped(g.zs, lo[2]), z1 = lineIndexClamped(g.zs, hi[2]);
+    let removed = 0, spawned = 0, sx = 0, sy = 0, sz = 0, glass = 0, steel = 0, other = 0;
+    const o = { speed: 7, chunks: 8 };
+    for (let y = y0; y <= y1; y++) {
+      const wy = g.cy(y);
+      if (wy < lo[1] || wy > hi[1]) continue;
+      for (let z = z0; z <= z1; z++) {
+        const wz = g.cz(z);
+        if (wz < lo[2] || wz > hi[2]) continue;
+        for (let x = x0; x <= x1; x++) {
+          const wx = g.cx(x);
+          if (wx < lo[0] || wx > hi[0]) continue;
+          const i = x + g.nx * (z + g.nz * y), m = g.mat[i];
+          if (m < SOLID) continue;
+          s.hp[i] = 0;
+          removed++;
+          sx += wx; sy += wy; sz += wz;
+          const name = MATS[m].name;
+          if (name === 'glass' || name === 'light') glass++; else if (name === 'steel') steel++; else other++;
+          if (spawned < o.chunks && this.frame.chunks < 140) {
+            spawned++;
+            this.frame.chunks++;
+            this.chunkFrom(s, wx, wy, wz, N[0] * h, N[1] * h, N[2] * h, o.speed, m, o);
+          }
+          this.removeCell(s, i, false);
+        }
+      }
+    }
+    if (removed) {
+      const B = s.maskBox || (s.maskBox = [x0, y0, z0, x1 + 1, y1 + 1, z1 + 1]);
+      B[0] = Math.min(B[0], x0); B[1] = Math.min(B[1], y0); B[2] = Math.min(B[2], z0); B[3] = Math.max(B[3], x1 + 1); B[4] = Math.max(B[4], y1 + 1); B[5] = Math.max(B[5], z1 + 1);
+      this.jolted(s, sx / removed, sy / removed, sz / removed, removed, h);
+      const q = this.toWorld(s, sx / removed, sy / removed, sz / removed, _a);
+      this.burstFx(q, removed, glass, steel, other, o);
+      if (this.onCarve) this.onCarve(s, c[0], c[1], c[2], h, removed);
+      this.wakeNear(s, c[0], c[1], c[2], h);
+    }
+    return removed;
+  }
+
+  /**
    * An explosion at p: radius in meters, power at its middle. Activates whatever it reaches,
    * carves craters into structures and pieces and throws pieces about.
    */
