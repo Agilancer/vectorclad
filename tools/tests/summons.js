@@ -6,7 +6,7 @@
 // one-minute cooldown), drops (every kind summoned at once: portals 800 ft ahead in open sky, every
 // monster out of its portal and on its feet), rain (200 Acid riftlings come down and latch onto the mech;
 // prints how long it took), millipede (it crawls out of its upright portal, clipped until it is
-// through, and the portal closes behind it), all (default).
+// through, the portal closes behind it, and it keeps crawling, shooting and breaking into buildings), all (default).
 // Writes screenshots to tools/tests/out/summons-*.png. Rendering is skipped between shots, so it
 // runs on a software GL.
 //
@@ -174,7 +174,29 @@ const census = (page) => page.evaluate(() => {
     await page.evaluate(() => { window.__mech.cam.free = null; });
     await advance(page, 30);
     const end = await page.evaluate(() => ({ state: window.__mech.spiders.mill.head.state, portal: !!window.__mech.spiders.mill.portal, portals: window.__mech.portals.busy }));
-    check(end.state === 'perched' && !end.portal && end.portals === 0, `through and settled (${end.state}), portal closed`);
+    check(end.state === 'crawl' && !end.portal && end.portals === 0, `through and crawling on (${end.state}), portal closed`);
+    // It never stops: its head keeps going, its turrets shoot, its feet go into the buildings
+    const where = () => page.evaluate(() => {
+      const m = window.__mech, L = m.spiders.mill, H = L.head.pos, P = m.P.pos;
+      return { x: H.x, z: H.z, sH: L.sH, toMech: Math.hypot(H.x - P.x, H.z - P.z), turrets: L.turrets.filter((t) => t.alive).length,
+        bolts: m.spiders.bolts.length, structs: m.world.destruct ? m.world.destruct.structs.length : 0, bores: L.route.bore.reduce((n, b) => n + b, 0) };
+    });
+    const w0 = await where();
+    let bolts = 0, far = 0;
+    for (let k = 0; k < 6; k++) {
+      await advance(page, 5);
+      const w = await where();
+      bolts = Math.max(bolts, w.bolts);
+      far = Math.max(far, w.toMech);
+    }
+    const w1 = await where();
+    check(w1.sH - w0.sH > 300, `still crawling: ${Math.round(w1.sH - w0.sH)} units in 30 s, head ${Math.round(Math.hypot(w1.x - w0.x, w1.z - w0.z))} from where it was, at most ${Math.round(far)} from the mech`);
+    check(w1.turrets === 7 && bolts > 0, `${w1.turrets} turrets, up to ${bolts} bolts in the air`);
+    check(w1.structs > w0.structs || w1.structs > 0, `buildings broken into: ${w1.structs} (bored ${w1.bores} steps of the way planned now)`);
+    const c = await page.evaluate(() => { const H = window.__mech.spiders.mill.head.pos; return [H.x, H.y, H.z]; });
+    await page.evaluate((c) => { window.__mech.cam.free = { pos: [c[0] + 60, c[1] + 45, c[2] + 60], look: [c[0], c[1] - 4, c[2]], fov: 60 }; }, c);
+    await shot(page, 'millipede-crawling');
+    await page.evaluate(() => { window.__mech.cam.free = null; });
     check(!errors.length, `no page errors${errors.length ? '\n' + errors.join('\n') : ''}`);
     await ctx.close();
   }

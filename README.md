@@ -608,7 +608,8 @@ draws the ceilings per pixel in the broken faces' shader, so they cost no geomet
   the fixture, its spacing, whether rows run end to end or stagger, and which way they
   run. Every floor then shifts, turns or respaces it and mixes its own tiles and vents.
   The lowest floor is a lobby of bright, widely spaced panels, and now and then a vacant
-  floor is left dark. The layouts are a float texture with one texel per grid layer, which
+  floor is left dark. Fixtures are set sparsely: twice the spacing of a real office each
+  way (rows run end to end sit four times as far apart), a quarter as many lights. The layouts are a float texture with one texel per grid layer, which
   the shader decodes.
 - **The fixtures light the rooms.** Floors, walls and columns add the light of the four
   fixtures of the ceiling over them, with the fixtures' tint, and the tiles round a fixture
@@ -846,24 +847,35 @@ for walls and the hull, hit and death.
 ## The millipede
 
 Summoned, a black robotic millipede hundreds of feet long crawls out of an upright
-portal (see [Summoning](#summoning)) along the rooftops and settles draped across two or three city blocks near the mech: it lies on the
-roofs, sags over the streets between them, and grips roofs and facades with two
-pairs of legs under each of its ten armored sections.
+portal (see [Summoning](#summoning)) along the rooftops, and never stops crawling.
+Draped over the roofs and sagging over the streets between them, it grips roofs and
+facades with two pairs of legs under each of its ten armored sections.
+
+- **On the prowl:** it doesn't come straight for the mech. It roams the blocks round
+  it, 120 to 250 m out, heading for one spot and then another. It climbs over what
+  it can, up to about 75 m at once; anything taller it bores straight through with
+  the hooks on its face, slowing as it tunnels, when it can't turn away in time. It
+  would rather not crawl over its own coils, but rides up over them when it must.
+- **A menace:** every step drives a foot into the building under it, punching holes in
+  roofs and facades, and its head bites anything it runs into.
+- **Turrets:** two on its head, two on the section halfway down its body and three
+  on its tail. They turn to track the mech and fire plasma bursts (head), gatling
+  bursts (middle) and fans of bolts (tail) whenever they have a clear line. Each
+  can be locked onto and shot off; three beam rifle hits or a bazooka does it.
 
 - **Armor:** each section carries three layers of plates: black, then steel, then
   bronze. Weapons break plates off one at a time (they tumble off the body), the
-  outer ones first; a plate with another still over it takes only a fifth of a
-  blast. Nothing else wears them down: not the roofs it lies on, not its own
+  outer ones first; a plate is gone after a beam rifle hit or two or three machine gun
+  rounds, and a plate with another still over it takes a third of a blast. Nothing else wears them down: not the roofs it lies on, not its own
   coils. The keel underneath never comes off.
 - **Reactor cores:** a hole through all three layers over the middle of a section
   opens its reactor core, a rainbow gem in a cage. A few more hits destroy it and
   the section goes dark. Roughly four bazooka hits per core, or a missile salvo on
   one spot.
-- **The head** can't be hurt while any core still burns. Raised on its neck at the
-  front of the body, it watches the mech, fires five-bolt plasma fans and bites
-  anything that comes close.
-- **Breaking loose:** with the last core gone, thrusters in its neck light, the
-  head tears free, climbs, flies off a fair way, turns and hunts the mech from the
+- **The head** can't be hurt while any core still burns. It rides right up against
+  the front of the body and leads it.
+- **Breaking loose:** with the last core gone the body dies where it lies. Thrusters
+  in its neck light, the head tears free, climbs, flies off a fair way, turns and hunts the mech from the
   air with twin solid red beams from its eyes. They charge for a second, then burn
   for three, dragging after the mech (walking won't shake them, dashing will) and
   carving through whatever buildings they cross. The head takes 1900 damage,
@@ -877,14 +889,26 @@ The boss bar counts its reactor cores, then the head's armor.
 
 ### How it's built
 
-`js/millipede.js` plans its route from its portal (see [Summoning](#summoning)):
+`js/millipede.js` plans its first stretch from its portal (see [Summoning](#summoning)):
 a straight run back through the portal for the body still to come, and a gentle
 arc forward from it. Over the arc it lays the tightest drape: the lowest line over
 every roof it passes that never slopes more steeply than 0.65, starting from the
 portal's height. Of 90 tries it takes the one in view of the mech that lies most
-on roofs, low and smooth, and clear of the mech, then crawls the body out along it. Each section is a rigid piece laid along the drape
-and lifted until it clears every roof under it, with a ribbed sleeve over each
-joint.
+on roofs, low and smooth, and clear of the mech.
+
+From then on the head leads and the body follows its trail, which it plans 72 units
+ahead of the head as it goes, a step at a time. Every few steps it tries nine
+headings, each turned as sharply as it can (no tighter than a 32-unit radius), and
+scores the next 54 units of each: how far it bends from the spot it's prowling to,
+how much it would climb, whether anything is too tall to climb (it would have to
+bore), whether it would pass over its own body, back behind its portal or out of
+the city. Each new step drapes down off a roof no more steeply than 1.3, climbs no
+more steeply than 1 (raising the stretch still ahead of the head to meet a roof),
+bores level through anything more than 46 units above it, and rises over its own
+body where that will still be lying when the head gets there. Where the trail
+bores, the head blasts a tunnel ahead of itself. The trail behind the tail is
+forgotten. Each section is a rigid piece laid along the trail and lifted until it
+clears every roof under it, with a ribbed sleeve over each joint.
 
 The 1260 plates are curved tiles in three instanced meshes, one per layer. Shots
 are tested against each section analytically: the ray moves into the section's
@@ -894,7 +918,11 @@ hole. Blasts reach every plate in range, shielded by whatever is still on top.
 The legs reuse the spider atlas plates and two-bone IK, finding holds on roofs,
 walls or nothing (they dangle). The head is built from primitives with the body's
 own plates on its crown; it's a target of its own, armored until the cores are
-gone.
+gone. The turrets are targets of their own too, each riding its frame (the head,
+the middle section, the tail tip) and turning in its own base's frame. A foot that
+comes down on a building carves a small hole: up to eight a second in buildings
+already broken into, and only one every 0.6 s that breaks into a whole one, which
+is costly.
 
 ## Insertion
 
@@ -1043,7 +1071,7 @@ in the hangar settings.
 | `js/mediums.js` | Medium spider-frames: variants, bridging between roofs, gear, shield domes, repair and tractor beams, thrown boulders |
 | `js/riftlings.js` | Riftlings: the four packs, coming through the portals, the flow field through the streets, wall sliding and climbing, leaps and roof-to-roof bounds, latching onto the hull, splats, blasts and acid, the Shades' ring and pounce, squashing and bowling over, contact shadows |
 | `assets/riftlings/riftling.js` | The riftling model and its thirteen clips, baked into a pose texture and drawn as one instanced, GPU-posed swarm |
-| `js/millipede.js` | The millipede: rooftop route and drape, sectioned body, three-layer plate armor and reactor cores, legs, the head's flight, eye beams, ramming and finale |
+| `js/millipede.js` | The millipede: its first route out of the portal, then its endless prowl (steering, climbing, boring, the drape), sectioned body, three-layer plate armor and reactor cores, legs that punch into buildings, turrets, the head's flight, eye beams, ramming and finale |
 | `js/frameParts.js` | Shared by spiders, scorpions and the millipede: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, beams, the mech's hit capsule |
 | `js/spiderParts.js` | Generated: where each spider part sits in the spider atlas, with its traced outline |
 | `js/audio.js` | Synthesized Web Audio sound effects |
