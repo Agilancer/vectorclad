@@ -1,15 +1,18 @@
 import * as THREE from './three.js';
-import { workshop, createAPC } from './vehicles/models.js';
+import { workshop, createAPC, createDropship } from './vehicles/models.js';
 import { WEAPONS, buildWeaponModel } from './weapons.js';
 import { SKINS } from './atlas.js';
 
 // ---------------------------------------------------------------------------
-// Rides for the pilot on foot (js/pilot.js): a Kestrel gunship and a Bastion APC
+// Rides for the pilot on foot (js/pilot.js): the Kestrel (the allies' dropship, flown as a
+// hovering gunship), a Hornet attack helicopter and a Bastion APC
 // parked by the plaza, and any car in the city. Hold G beside one to get in and
 // again to get out.
-//   - Kestrel: WASD flies along the view, Space climbs, C (or Ctrl) sinks, Shift
-//     boosts. LMB fires the twin chin vulcans, RMB the HEAVY VULCAN (a rotary
-//     launcher of mini-rockets), Q one missile, E a salvo from every pod. 1-4
+//   - Kestrel: flies like the Hornet. LMB fires the twin plasma cannons in its chin
+//     turret, RMB a rocket barrage from its wing pods, Q one homing missile, E a salvo.
+//   - Hornet: WASD flies along the view, Space climbs, C (or Ctrl) sinks, Shift
+//     boosts. LMB fires the twin chin vulcans, RMB the HEAVY VULCAN (faster, with
+//     bigger, faster rounds), Q one missile, E a salvo from every pod. 1-4
 //     swap the pod on each of the four weapon points.
 //   - APC: W/S drive, A/D steer, the turret follows the view. LMB fires its twin
 //     heavy vulcans.
@@ -25,7 +28,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const UP = new V3(0, 1, 0);
 const _a = new V3(), _b = new V3(), _c = new V3();
 
-/** Pods for the Kestrel's weapon points. rocketPod: unguided rockets from the same tubes. */
+/** Pods for the Hornet's weapon points. rocketPod: unguided rockets from the same tubes. */
 const POD_TYPES = ['missilePod', 'heavyPod', 'microPod', 'rocketPod'];
 const POD_DEFS = {
   missilePod: WEAPONS.missilePod, heavyPod: WEAPONS.heavyPod, microPod: WEAPONS.microPod,
@@ -33,14 +36,18 @@ const POD_DEFS = {
 };
 const POD_NAMES = { missilePod: 'MISSILE POD', heavyPod: 'HEAVY MISSILE POD', microPod: 'MICRO MISSILE POD', rocketPod: 'ROCKET POD' };
 const VULCAN = { kind: 'bullet', dmg: 4, speed: 420, rate: 0.045, spread: 0.014 };
-/** The heavy vulcan: a rotary launcher that spits mini-rockets like a minigun */
-const HEAVY = { kind: 'rocket', dmg: 12, splash: 2.6, speed: 150, rate: 0.065, spread: 0.02 };
+/** The Kestrel's guns: plasma bolts from the chin turret, unguided rockets and homing missiles from the wing pods */
+const PLASMA = { kind: 'beam', dmg: 22, speed: 330, rate: 0.13, color: 0x6fd8ff };
+const BARRAGE = { kind: 'rocket', dmg: 30, splash: 4, speed: 150, rate: 0.08 };
+const KESTREL_MSL = Object.assign({}, WEAPONS.missilePod, { name: 'Kestrel wing pod', missiles: 9, mscale: 1.15, interval: 0.06, reloadTime: 7, dmg: 45, splash: 6 });
+/** The heavy vulcan: a little faster than the vulcans, with bigger, faster rounds */
+const HEAVY = { kind: 'bullet', dmg: 9, speed: 540, rate: 0.038, spread: 0.012 };
 
-/** The Kestrel gunship: rigid four-blade rotor, stub wings with four pylons, a pusher prop */
-function createKestrelGunship(T, options) {
+/** The Hornet gunship: rigid four-blade rotor, stub wings with four pylons, a pusher prop */
+function createHornet(T, options) {
   const { box, cyl, hull, group, finish } = workshop(T, Object.assign({ color: 0x2c3330 }, options));
   const root = new T.Group();
-  root.name = 'VECTORCLAD / Kestrel gunship';
+  root.name = 'VECTORCLAD / Hornet gunship';
   const body = group(root, 'fuselage');
   hull(body, [[-8, 0.3, 1.4, 2.0], [-6.5, 0.75, 0.9, 2.9], [-3, 1.0, 0.7, 3.3], [1.5, 0.95, 0.8, 3.2], [4, 0.5, 1.5, 2.7], [9.2, 0.26, 1.9, 2.5]]);
   hull(body, [[-7.3, 0.42, 2.0, 2.55], [-5, 0.72, 2.6, 3.55], [-2.2, 0.66, 2.9, 3.6], [-1, 0.5, 3.0, 3.3]], 'glass');
@@ -81,9 +88,12 @@ function createKestrelGunship(T, options) {
 
 /** The rides' cards on the frame select (js/ui.js FrameSelect) */
 export const RIDE_CARDS = [
-  { id: 'kestrel', code: 'KG-56', name: 'Kestrel', role: 'Attack gunship · deploys on the coast',
+  { id: 'kestrel', code: 'KS-07', name: 'Kestrel', role: 'Hovering gunship · deploys on the coast',
+    stats: [['Armor', 0.85, '600 AP'], ['Speed', 0.95, '320 km/h'], ['Guns', 1, 'Plasma'], ['Pods', 1, '18 msl']],
+    blurb: 'The dropship that flies the mech in, flown as a gunship: twin plasma cannons in the chin turret, a rocket barrage from both wing pods and salvos of homing missiles. Comes in hovering over the seawall.' },
+  { id: 'hornet', code: 'AH-9', name: 'Hornet', role: 'Attack helicopter · deploys on the coast',
     stats: [['Armor', 0.6, '420 AP'], ['Speed', 1, '270 km/h'], ['Guns', 0.9, 'Vulcans'], ['Pods', 1, '4 points']],
-    blurb: 'Twin chin vulcans, a HEAVY VULCAN that pours out mini-rockets, and four weapon points for missile, micro missile, heavy missile or rocket pods (1-4 swap them in flight). Comes in hovering over the seawall.' },
+    blurb: 'Attack helicopter: twin chin vulcans, a HEAVY VULCAN (a faster cannon with bigger, faster rounds), and four weapon points for missile, micro missile, heavy missile or rocket pods (1-4 swap them in flight). Comes in over the seawall.' },
   { id: 'apc', code: 'BX-2', name: 'Bastion APC', role: 'Armored carrier · deploys on the edge of town',
     stats: [['Armor', 1, '700 AP'], ['Speed', 0.3, '80 km/h'], ['Guns', 1, 'Twin HV'], ['Pods', 0, '—']],
     blurb: 'Eight-wheeled and heavily armored, with a turret of twin heavy vulcans that follows your aim. Rolls in from the riverside on the east edge of town.' },
@@ -94,11 +104,26 @@ export class Rides {
     Object.assign(this, { scene, world, fx, sound, weapons, mats, M, hud });
     this.current = null;
     this.list = [];
-    this.heli = this.make('kestrel', createKestrelGunship(THREE, { metersPerUnit: meters }), { apMax: 420, camDist: 26, camUp: 5.5, radius: 5, height: 4.5, name: 'KG-56 KESTREL' });
+    this.kestrel = this.make('kestrel', createDropship(THREE, { metersPerUnit: meters }), { apMax: 600, camDist: 40, camUp: 8, radius: 9, height: 6, name: 'KS-07 KESTREL', fly: true, top: 50, boostTop: 90 });
+    this.heli = this.make('hornet', createHornet(THREE, { metersPerUnit: meters }), { apMax: 420, camDist: 26, camUp: 5.5, radius: 5, height: 4.5, name: 'AH-9 HORNET', fly: true, top: 42, boostTop: 75 });
     this.apc = this.make('apc', createAPC(THREE, { metersPerUnit: meters }), { apMax: 700, camDist: 17, camUp: 4.5, radius: 2.6, height: 3.2, name: 'BASTION APC' });
     this.podIds = ['missilePod', 'microPod', 'microPod', 'missilePod'];
     this.pods = [];
     for (let i = 0; i < 4; i++) this.mountPod(i, this.podIds[i]);
+    this.heli.pods = this.pods;
+    // The Kestrel's two wing pods, nine tubes each (facing ahead: +Z of each tube along the model's -Z)
+    this.kestrel.pods = ['weapon outrigger -1', 'weapon outrigger 1'].map((name) => {
+      const pod = this.kestrel.obj.getObjectByName(name).getObjectByName('rocket pod'), tubes = [];
+      for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+        const t = new THREE.Object3D();
+        t.position.set((col - 1) * 0.43, (row - 1) * 0.43, -2.3);
+        t.rotation.y = Math.PI;
+        pod.add(t);
+        tubes.push(t);
+      }
+      return { model: { tubes }, def: KESTREL_MSL, loaded: KESTREL_MSL.missiles, reloadT: 0, slot: { type: 'shoulder' } };
+    });
+    this.apc.pods = [];
     this.fireT = 0; this.heavyT = 0; this.barrel = 0; this.spinV = 0; this.cycle = 0;
     this.time = 0;
   }
@@ -115,10 +140,10 @@ export class Rides {
   park(spawn, yaw) {
     this.spawn = spawn.clone();
     const M = this.M, f = new V3(Math.sin(yaw), 0, Math.cos(yaw)), rt = new V3(-Math.cos(yaw), 0, Math.sin(yaw));
-    const spots = [[this.heli, -26, 10], [this.apc, 20, 6]];
+    const spots = [[this.heli, -26, 10], [this.apc, 20, 6], [this.kestrel, 0, -42]];
     for (const [r, side, ahead] of spots) {
       r.pos.copy(spawn).addScaledVector(rt, side * M).addScaledVector(f, ahead * M);
-      r.pos.y = this.world.groundHeight(r.pos.x, r.pos.z, 999, r.radius * M);
+      r.pos.y = this.world.groundHeight(r.pos.x, r.pos.z, 0.5, r.radius * M);
       r.yaw = yaw;
       r.home = { pos: r.pos.clone(), yaw };
       r.vel.set(0, 0, 0); r.speed = 0; r.ap = r.apMax;
@@ -128,14 +153,14 @@ export class Rides {
 
   /**
    * Deploying in a ride from the frame select: the APC on the east edge of town, on the riverside
-   * esplanade, facing into the streets; the Kestrel hovering over the seawall on the south coast,
+   * esplanade, facing into the streets; the Hornet hovering over the seawall on the south coast,
    * facing the city. Returns the ride.
    */
   deploy(kind) {
     const W = this.world, L = W.city.L, M = this.M, s = this.spawn;
-    const r = kind === 'kestrel' ? this.heli : this.apc;
-    if (r === this.heli) {
-      r.pos.set(s.x, 0, L.z1 + L.prom * 0.9);
+    const r = kind === 'kestrel' ? this.kestrel : kind === 'hornet' ? this.heli : this.apc;
+    if (r.fly) {
+      r.pos.set(s.x + (r === this.heli ? -60 * M : 0), 0, L.z1 + L.prom * 0.9);
       r.pos.y = W.groundHeight(r.pos.x, r.pos.z, 999, r.radius * M) + 28 * M;
       r.yaw = Math.PI;
       r.rotor = 1;
@@ -154,7 +179,8 @@ export class Rides {
   reset() {
     this.current = null;
     for (const r of this.list) if (r.home) { r.pos.copy(r.home.pos); r.yaw = r.home.yaw; r.vel.set(0, 0, 0); r.speed = 0; r.ap = r.apMax; this.place(r); }
-    for (const p of this.pods) p.loaded = p.def.missiles;
+    for (const r of this.list) for (const p of r.pods) { p.loaded = p.def.missiles; p.reloadT = 0; }
+    this.queue = [];
   }
 
   mountPod(i, id) {
@@ -208,7 +234,7 @@ export class Rides {
     P.pos.copy(r.pos);
     P.vel.set(0, 0, 0);
     this.sound.hatch(r.pos);
-    this.hud.toast(r.kind === 'kestrel' ? 'KESTREL · LMB VULCANS · RMB HEAVY VULCAN · Q/E PODS · 1-4 SWAP PODS' : r.kind === 'apc' ? 'APC · LMB TWIN HEAVY VULCAN' : 'CAR STOLEN · W/S DRIVE · A/D STEER', 3.5);
+    this.hud.toast(r.kind === 'kestrel' ? 'KESTREL · LMB PLASMA CANNONS · RMB ROCKET BARRAGE · Q/E MISSILES' : r.kind === 'hornet' ? 'HORNET · LMB VULCANS · RMB HEAVY VULCAN · Q/E PODS · 1-4 SWAP PODS' : r.kind === 'apc' ? 'APC · LMB TWIN HEAVY VULCAN' : 'CAR STOLEN · W/S DRIVE · A/D STEER', 3.5);
   }
 
   /** Out the side; the ride stays where it is */
@@ -231,10 +257,10 @@ export class Rides {
     const r = this.current;
     this.time += dt;
     if (!playing) c = { move: { x: 0, y: 0 } };
-    if (r.kind === 'kestrel') this.fly(dt, c, P, r); else this.drive(dt, c, P, r);
+    if (r.fly) this.fly(dt, c, P, r); else this.drive(dt, c, P, r);
     P.pos.copy(r.pos);
     P.vel.copy(r.vel);
-    P.grounded = r.kind !== 'kestrel';
+    P.grounded = !r.fly;
     P.bodyYaw = r.yaw;
     r.ap = P.ap;
     if (playing) this.shoot(dt, c, r, aim);
@@ -246,7 +272,7 @@ export class Rides {
     const M = this.M, W = this.world;
     const f = _a.set(Math.sin(P.yaw), 0, Math.cos(P.yaw)), rt = _b.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
     const boost = !!c.dash;
-    const top = (boost ? 75 : 42) * M;
+    const top = (boost ? r.boostTop : r.top) * M;
     const want = _c.set(0, 0, 0).addScaledVector(f, c.move.y || 0).addScaledVector(rt, c.move.x || 0);
     if (want.lengthSq() > 1) want.normalize();
     want.multiplyScalar(top);
@@ -257,8 +283,8 @@ export class Rides {
     r.yaw = r.yaw + wrap(P.yaw - r.yaw) * (1 - Math.exp(-3 * dt));
     // Lean into the motion
     const lf = r.vel.x * Math.sin(r.yaw) + r.vel.z * Math.cos(r.yaw), ll = r.vel.x * -Math.cos(r.yaw) + r.vel.z * Math.sin(r.yaw);
-    r.tilt = damp(r.tilt, clamp(lf / (75 * M), -1, 1) * 0.3, 4, dt);
-    r.roll = damp(r.roll, clamp(ll / (42 * M), -1, 1) * 0.35, 4, dt);
+    r.tilt = damp(r.tilt, clamp(lf / (r.boostTop * M), -1, 1) * 0.3, 4, dt);
+    r.roll = damp(r.roll, clamp(ll / (r.top * M), -1, 1) * 0.35, 4, dt);
     const prevY = r.pos.y;
     r.pos.addScaledVector(r.vel, dt);
     const bx = r.pos.x, bz = r.pos.z;
@@ -274,6 +300,15 @@ export class Rides {
     this.sound.setThrust(0.35 + r.rotor * 0.35 + (boost ? 0.25 : 0), dt);
     // Downwash on the ground below
     const alt = r.pos.y - g;
+    r.airborne = alt > 1.5 * M;
+    // The Kestrel's engines burn behind it
+    if (r === this.kestrel) {
+      for (const sx of [-2.55, 2.55]) {
+        r.obj.localToWorld(_a.set(sx, 3.95, 5.7));
+        const k = 0.5 + (boost ? 0.5 : 0);
+        this.fx.fire.emit(_a.x, _a.y, _a.z, r.vel.x - Math.sin(r.yaw) * 10 * M, r.vel.y, r.vel.z - Math.cos(r.yaw) * 10 * M, 0.07, 0.9 * k, 0.3, 0.35, 0.6, 1.0, 0.6, 0.5, 0.3, 0.8, 0, 2);
+      }
+    }
     if (alt < 18 * M && Math.random() < 0.6) this.fx.dust(_a.set(r.pos.x + rand(-4, 4) * M, g, r.pos.z + rand(-4, 4) * M), 0.6 * (1 - alt / (18 * M)) + 0.3, 2);
   }
 
@@ -315,8 +350,32 @@ export class Rides {
         this.heavyT = HEAVY.rate * 0.9;
         const gun = r.obj.getObjectByName('twin gun');
         gun.localToWorld(_a.set((this.barrel++ % 2 ? 0.3 : -0.3), 0, -1.85));
-        this.heavyRocket(_a, aim);
+        this.heavyRound(_a, aim);
       }
+      return;
+    }
+    if (r.kind === 'kestrel') {
+      const chin = r.obj.getObjectByName('chin turret');
+      if (c.fireR && this.fireT <= 0) {
+        this.fireT = PLASMA.rate;
+        chin.localToWorld(_a.set(this.barrel++ % 2 ? 0.3 : -0.3, -0.1, -1.4));
+        const dir = this.aimDir(_a, aim, 0.004);
+        W.spawnBolt(_a.clone(), dir, PLASMA);
+        this.fx.muzzle(_a, dir, PLASMA.color, 1);
+        this.sound.beam(_a);
+      }
+      if (c.fireL && this.heavyT <= 0) {
+        this.heavyT = BARRAGE.rate;
+        const pod = r.pods[this.barrel % 2], t = pod.model.tubes[(this.cycle++) % 9];
+        t.getWorldPosition(_a);
+        const dir = this.aimDir(_a, aim, 0.03);
+        W.spawnRocket(_a.clone(), dir, BARRAGE, 'rocket');
+        W.rockets[W.rockets.length - 1].obj.scale.setScalar(1.6);
+        this.fx.muzzle(_a, dir, 0xffa040, 0.8);
+        this.sound.rocket(_a);
+        this.barrel++;
+      }
+      this.firePods(dt, c, r, aim);
       return;
     }
     const P = r.obj.userData.parts;
@@ -333,23 +392,37 @@ export class Rides {
     if (c.fireL && this.heavyT <= 0 && this.spinV > 12) {
       this.heavyT = HEAVY.rate;
       P.spin.localToWorld(_a.set(0, 0, -2));
-      this.heavyRocket(_a, aim);
+      this.heavyRound(_a, aim);
     }
-    // Missile pods
-    const target = this.pickTarget(aim);
+    this.firePods(dt, c, r, aim);
+    // Number keys swap the pod on each weapon point
+    for (let i = 0; i < 4; i++) {
+      if (!c['slot' + (i + 1)]) continue;
+      const id = POD_TYPES[(POD_TYPES.indexOf(this.podIds[i]) + 1) % POD_TYPES.length];
+      this.mountPod(i, id);
+      this.heli.pods = this.pods;
+      this.hud.toast(`WEAPON POINT ${i + 1} · ${POD_NAMES[id]}`, 1.6);
+      this.sound.click();
+    }
+  }
+
+  /** Missile pods: Q one missile from the fullest pod, E everything left; they reload once empty */
+  firePods(dt, c, r, aim) {
+    const target = this.pickTarget(aim), pods = r.pods;
     if (c.missile) {
-      const pod = this.pods.filter((p) => p.loaded > 0)[this.cycle++ % Math.max(1, this.pods.filter((p) => p.loaded > 0).length)];
+      const ready = pods.filter((p) => p.loaded > 0);
+      const pod = ready[this.cycle++ % Math.max(1, ready.length)];
       if (pod) this.launch(pod, target, aim, 0); else this.sound.empty();
     }
     if (c.salvo) {
       let any = false;
-      this.pods.forEach((p, pi) => {
+      pods.forEach((p, pi) => {
         const n = p.loaded;
         for (let i = 0; i < n; i++) { any = true; this.launch(p, target, aim, 0.05 * pi + i * p.def.interval); }
       });
       if (!any) this.sound.empty();
     }
-    for (const p of this.pods) {
+    for (const p of pods) {
       if (p.loaded > 0) continue;
       p.reloadT += dt;
       if (p.reloadT >= p.def.reloadTime) { p.loaded = p.def.missiles; p.reloadT = 0; this.sound.reload(); }
@@ -361,14 +434,6 @@ export class Rides {
         this.queue.splice(i, 1);
         this.fireTube(q.pod, q.tube, q.target, q.point);
       }
-    }
-    // Number keys swap the pod on each weapon point
-    for (let i = 0; i < 4; i++) {
-      if (!c['slot' + (i + 1)]) continue;
-      const id = POD_TYPES[(POD_TYPES.indexOf(this.podIds[i]) + 1) % POD_TYPES.length];
-      this.mountPod(i, id);
-      this.hud.toast(`WEAPON POINT ${i + 1} · ${POD_NAMES[id]}`, 1.6);
-      this.sound.click();
     }
   }
 
@@ -391,12 +456,12 @@ export class Rides {
     } else this.weapons.launchMissile(pod, tube, target, point);
   }
 
-  heavyRocket(from, aim) {
-    const dir = this.aimDir(from, aim, HEAVY.spread);
-    this.weapons.spawnRocket(from.clone(), dir, HEAVY, 'rocket');
-    this.weapons.rockets[this.weapons.rockets.length - 1].obj.scale.setScalar(1.3);
+  heavyRound(from, aim) {
+    const dir = this.aimDir(from, aim, HEAVY.spread), W = this.weapons;
+    W.spawnTracer(from.clone(), dir, HEAVY, 0xffd27a, 5, 2);
+    W.tracers[W.tracers.length - 1].obj.scale.set(0.22, 0.22, 5);
     this.fx.muzzle(from, dir, 0xffa040, 0.9);
-    this.sound.rocket(from);
+    this.sound.gun(from);
   }
 
   aimDir(from, aim, spread) {
@@ -450,7 +515,7 @@ export class Rides {
     }
     r.obj.position.copy(r.pos);
     r.obj.rotation.set(0, r.yaw + Math.PI, 0, 'YXZ');
-    if (r.kind === 'kestrel') {
+    if (r.fly) {
       r.obj.rotation.x = -r.tilt;
       r.obj.rotation.z = r.roll;
     }
@@ -471,5 +536,9 @@ export class Rides {
     if (this.current === h) {
       parts.chin.rotation.y = clamp(wrap(P.yaw - h.yaw), -1.4, 1.4);
     }
+    // The Kestrel: gear down and wings folded on the ground, turret on the aim in the air
+    const K = this.kestrel;
+    if (K.airborne !== K.shownAir) { K.obj.userData.setFlightMode(!!K.airborne); K.shownAir = K.airborne; }
+    if (this.current === K) K.obj.getObjectByName('chin turret').rotation.y = clamp(wrap(P.yaw - K.yaw), -1.6, 1.6);
   }
 }

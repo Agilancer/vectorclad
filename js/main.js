@@ -70,9 +70,9 @@ const store = {
 };
 // The frame picked on the select screen (js/frames.js)
 let spec = FRAMES[store.get('vectorclad.frame', 'vanguard')] || FRAMES.vanguard;
-// Or a ride picked there instead (js/rides.js): 'mech', 'kestrel' or 'apc'
+// Or a ride picked there instead (js/rides.js): 'mech', 'kestrel', 'hornet' or 'apc'
 let startAs = store.get('vectorclad.startAs', 'mech');
-if (!['mech', 'kestrel', 'apc'].includes(startAs)) startAs = 'mech';
+if (!['mech', 'kestrel', 'hornet', 'apc'].includes(startAs)) startAs = 'mech';
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 // A sandbox: there are no waves. Nothing comes until the summon menu (the ` key, js/summons.js) calls it in.
@@ -709,7 +709,7 @@ function startRide(kind) {
   const r = rides.deploy(kind);
   rides.board({ ride: r }, P);
   P.yaw = r.yaw;
-  P.pitch = kind === 'kestrel' ? -0.12 : 0.04;
+  P.pitch = kind === 'apc' ? 0.04 : -0.12;
   cam.fov = 72;
   mode = 'play';
   $('#hud').hidden = false;
