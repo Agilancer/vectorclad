@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VECTORCLAD gray / gold fleet</title><style>:root{color-scheme:dark;--foreground:#e0e5df;--background:#171d20}body{margin:24px auto;padding:0 20px;max-width:1100px;background:var(--background);color:var(--foreground);font:15px system-ui}button{font:inherit;padding:10px 16px;color:inherit;background:#2b353b;border:1px solid #56636a;border-radius:6px}button[aria-pressed=true]{background:#d9dfd3;color:#172023}.form-check{display:flex;align-items:center;gap:8px}.text-small{margin-top:12px;color:#b8c6c4}canvas{height:580px!important}</style></head><body><h2>VECTORCLAD / Gray / gold fleet</h2><div id="vectorclad-vehicles">
+<style>#vectorclad-vehicles canvas{display:block;width:100%;height:480px;touch-action:none}#vectorclad-vehicles .vv-head{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px}#vectorclad-vehicles .vv-controls{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px}</style>
+<div class="vv-head"><button class="btn" data-model="dropship" aria-pressed="true">Kestrel · dropship</button><button class="btn" data-model="apc" aria-pressed="false">Bastion · APC</button><button class="btn" data-model="both" aria-pressed="false">Both · same scale</button></div>
+<canvas aria-label="Original VECTORCLAD vehicles in interactive 3D" role="img"></canvas>
+<div class="vv-controls"><label class="form-check"><input class="form-check-input" type="checkbox" id="vv-land"><span class="form-check-label">Landing configuration</span></label><label class="form-check"><input class="form-check-input" type="checkbox" id="vv-stow"><span class="form-check-label">Stow APC turret</span></label></div>
+<div class="text-small" id="vv-status" aria-live="polite">Loading Three.js…</div>
+</div>
+<script>
+(async()=>{
+const root=document.getElementById('vectorclad-vehicles');
+try {
+const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js');
+// Original procedural VECTORCLAD gray / gold fleet. Three.js r170.
+// Pass the game's shared THREE namespace; no STL, model loaders or external textures.
+// Coordinates: +Y up, -Z forward; authored dimensions are meters.
+const {createDropship,createAPC}=await import('./models.js');
+const canvas=root.querySelector('canvas');
+const renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xd9dce0);const camera=new THREE.PerspectiveCamera(38,1,.1,300);
+scene.add(new THREE.HemisphereLight(0xfff9ef,0x565354,2.1));
+const key=new THREE.DirectionalLight(0xffedce,4);key.position.set(-15,30,-18);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-28,right:28,top:28,bottom:-28,near:.1,far:90});key.shadow.normalBias=.03;scene.add(key);
+const fill=new THREE.DirectionalLight(0xf5f6ff,1.5);fill.position.set(12,12,16);scene.add(fill);
+const stage=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0xd9dce0,roughness:1}));stage.rotation.x=-Math.PI/2;stage.position.y=-.68;stage.receiveShadow=true;scene.add(stage);
+const dropship=createDropship(THREE,{lifter:true}),apc=createAPC(THREE);scene.add(dropship,apc);
+let view='dropship',yaw=-.62,pitch=.38,distance=38,target=new THREE.Vector3(0,2,0),drag=null;
+function draw(){camera.position.set(target.x+Math.sin(yaw)*Math.cos(pitch)*distance,target.y+Math.sin(pitch)*distance,target.z-Math.cos(yaw)*Math.cos(pitch)*distance);camera.lookAt(target);renderer.render(scene,camera);}
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();draw()}
+function select(value){view=value;dropship.visible=value!=='apc';apc.visible=value!=='dropship';apc.position.set(value==='both'?8:0,0,value==='both'?-6:0);target.set(value==='both'?2:0,2,0);distance=value==='apc'?14:value==='both'?40:32;root.querySelectorAll('[data-model]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.model===value)));root.querySelector('#vv-status').textContent='Drag to orbit · scroll to zoom';draw()}
+root.querySelectorAll('[data-model]').forEach(b=>b.onclick=()=>select(b.dataset.model));
+root.querySelector('#vv-land').onchange=e=>{dropship.userData.setFlightMode(!e.target.checked);draw()};root.querySelector('#vv-stow').onchange=e=>{apc.userData.setTurretStowed(e.target.checked);draw()};
+canvas.onpointerdown=e=>{drag=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId)};canvas.onpointermove=e=>{if(!drag)return;yaw-=(e.clientX-drag[0])*.008;pitch=Math.max(-1.1,Math.min(1.45,pitch+(e.clientY-drag[1])*.008));drag=[e.clientX,e.clientY];draw()};canvas.onpointerup=canvas.onpointercancel=()=>drag=null;canvas.onwheel=e=>{e.preventDefault();distance=Math.min(100,Math.max(6,distance*Math.exp(e.deltaY*.001)));draw()};new ResizeObserver(resize).observe(canvas);select('dropship');resize();
+// Inspection hooks for the standalone preview; no dependency on a game loop.
+root.viewer={scene,camera,renderer,dropship,apc,select,draw};
+renderer.setAnimationLoop(draw);
+}catch(error){root.querySelector('#vv-status').textContent='Could not load 3D view: '+error.message;console.error(error)}
+})();
+</script>
+</body></html>
+
+
