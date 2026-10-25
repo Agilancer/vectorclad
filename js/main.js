@@ -20,6 +20,7 @@ import { setCeilingTextures } from './destruct/ceilings.js';
 import { titleDone, portraitPhone } from './title/title.js';
 import { Post } from './post.js';
 import { Pilot, PILOT_AP } from './pilot.js';
+import { Rides } from './rides.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -166,7 +167,7 @@ const sound = new Sound();
 window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
-let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel, portals, summoner, summonMenu, pilot;
+let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel, portals, summoner, summonMenu, pilot, rides;
 const frameMechs = {}; // each frame's model, built the first time it is picked
 
 const DEFAULT = PRESETS[0];
@@ -353,6 +354,9 @@ async function init() {
   // The pilot on foot (hold G beside a standing frame); the first person arm rides on the camera
   pilot = new Pilot({ scene, camera, world, fx, sound, weapons, mats, M: 1 / METERS });
   scene.add(camera);
+  // A Cheyenne gunship and an APC parked by the plaza, and the city's cars, for the pilot to take
+  rides = new Rides({ scene, world, fx, sound, weapons, mats, M: 1 / METERS, meters: METERS, hud });
+  rides.park(world.spawn, P.bodyYaw);
 
   hangar = new Hangar({
     loadout, settings, sound, touch: isTouch,
@@ -451,6 +455,7 @@ function startPlay() {
 function redeploy() {
   deployed = true;
   pilot.reset();
+  rides.reset();
   exitHold = 0;
   allies.clear();
   Object.assign(P, { ap: spec.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
@@ -469,7 +474,7 @@ function redeploy() {
 }
 
 /** Full armor: the frame's, or the pilot's while on foot */
-const apMax = () => (pilot && pilot.active ? PILOT_AP : spec.ap);
+const apMax = () => (pilot && pilot.active ? (rides.current ? rides.current.apMax : PILOT_AP) : spec.ap);
 
 /** World bearing from the mech to a point: 0 along +z, clockwise from above */
 const bearingOf = (from) => Math.atan2(from.x - P.pos.x, from.z - P.pos.z);
@@ -975,18 +980,22 @@ let exitHold = 0, exitDone = false;
 function updateBoarding(dt, c) {
   if (mode !== 'play' || !P.alive || !c.exit) { exitHold = 0; exitDone = false; return; }
   if (exitDone) return;
-  const ok = pilot.active ? pilot.nearMech(P)
+  // On foot: the mech first, then a ride or a car within reach. In a ride: out.
+  const near = pilot.active && !rides.current && !pilot.nearMech(P) ? rides.nearest(P.pos) : null;
+  const ok = rides.current ? true : near ? true : pilot.active ? pilot.nearMech(P)
     : P.grounded && Math.hypot(P.vel.x, P.vel.z) < 0.6 && !P.dashing && P.landT <= 0 && P.jumpT <= 0 && P.pinT <= 0 && P.webT <= 0;
   if (!ok) {
-    if (exitHold >= 0) hud.toast(pilot.active ? 'GET BACK TO THE FRAME TO BOARD' : 'STAND STILL TO DISEMBARK', 1.2);
+    if (exitHold >= 0) hud.toast(pilot.active ? 'GET TO THE FRAME, A RIDE OR A CAR' : 'STAND STILL TO DISEMBARK', 1.2);
     exitHold = -1;
     return;
   }
-  if (exitHold <= 0) { exitHold = 0; hud.toast(pilot.active ? 'BOARDING…' : 'DISEMBARKING…', BOARD_HOLD); }
+  if (exitHold <= 0) { exitHold = 0; hud.toast(rides.current ? 'GETTING OUT…' : pilot.active ? 'BOARDING…' : 'DISEMBARKING…', BOARD_HOLD); }
   exitHold += dt;
   if (exitHold < BOARD_HOLD) return;
   exitDone = true;
-  if (pilot.active) {
+  if (rides.current) rides.leave(P);
+  else if (near) { pilot.release(); rides.board(near, P); }
+  else if (pilot.active) {
     pilot.enter(P);
     P.bodyYaw = pilot.parked.yaw;
     mech.resetFeet();
@@ -1005,7 +1014,7 @@ function updateOnFoot(dt, c) {
   P.yaw -= c.lookX * sens;
   P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -PITCH_MAX, PITCH_MAX);
   washMat.opacity = 0;
-  const speed = pilot.update(dt, c, P, BOOST_DRAIN / spec.boost, aim, playing, hud);
+  const speed = rides.current ? rides.update(dt, c, P, aim, playing) : pilot.update(dt, c, P, BOOST_DRAIN / spec.boost, aim, playing, hud);
   return { speed, gait: 0, ground: P.pos.y };
 }
 
@@ -1091,8 +1100,8 @@ function updateCamera(dt, speed) {
   camera.near = 0.6;
   if (pilot.active && mode === 'play' && !cam.debugOrbit) {
     // On foot: through the pilot's eyes, or close over the shoulder
-    pilot.placeCamera(dt, P, camera, camDir);
-    pivot.copy(pilot.camPos);
+    if (rides.current) pivot.copy(rides.placeCamera(dt, P, camera, camDir));
+    else { pilot.placeCamera(dt, P, camera, camDir); pivot.copy(pilot.camPos); }
     cam.fov = damp(cam.fov, P.dashing ? 80 : 72, 4, dt);
   } else if ((mode === 'play' || dropping) && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
@@ -1220,7 +1229,8 @@ function frame(now) {
   const { speed, gait } = mode === 'brief' ? HELD : mode === 'drop' && D ? holdInCradle(dt, D) : pilot.active ? updateOnFoot(dt, c) : updatePlayer(dt, c);
   if (mode === 'play' && P.dashing && !pilot.active) spiders.rift.ram(P.pos, P.vel);
   updateCamera(dt, speed);
-  if (pilot.active) pilot.chest(P.chest, P); else P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
+  if (rides.current) P.chest.set(P.pos.x, P.pos.y + 2 / METERS, P.pos.z);
+  else if (pilot.active) pilot.chest(P.chest, P); else P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
 
   // Armor regenerates out of contact; the swarm runs while playing and over the wreck
   if (mode === 'play' && P.alive) {
@@ -1294,7 +1304,9 @@ function frame(now) {
     shield: weapons.shieldUp, hasShield: !!(weapons.slots.leftHand && weapons.slots.leftHand.def.kind === 'shield'),
     thrust: parked ? NO_THRUST : (window.__mech && window.__mech.forceThrust) || P.thrust, time,
   });
-  if (parked) pilot.animate(dt, P, P.pitch, time, mode === 'play');
+  if (parked) pilot.animate(dt, P, P.pitch, time, mode === 'play' && !rides.current);
+  if (parked && rides.current) pilot.body.root.visible = pilot.view.group.visible = false;
+  rides.animate(dt, P);
   if (res.step >= 0) {
     mech.footWorld(res.step, _t);
     _t.y = P.pos.y;
@@ -1370,7 +1382,7 @@ init().catch((err) => {
 
 // Debug/test hook
 window.__mech = {
-  P, cam, input, get pilot() { return pilot; }, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
+  P, cam, input, get pilot() { return pilot; }, get rides() { return rides; }, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
   openFrames, openLoadout, startDrop, setFrame, openSummon, closeSummon, dismissBrief,
   get summoner() { return summoner; }, get portals() { return portals; }, get summonMenu() { return summonMenu; }, get frame() { return spec; }, get allies() { return allies; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
