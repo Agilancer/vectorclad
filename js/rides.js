@@ -4,10 +4,10 @@ import { WEAPONS, buildWeaponModel } from './weapons.js';
 import { SKINS } from './atlas.js';
 
 // ---------------------------------------------------------------------------
-// Rides for the pilot on foot (js/pilot.js): a Cheyenne gunship and a Bastion APC
+// Rides for the pilot on foot (js/pilot.js): a Kestrel gunship and a Bastion APC
 // parked by the plaza, and any car in the city. Hold G beside one to get in and
 // again to get out.
-//   - Cheyenne: WASD flies along the view, Space climbs, C (or Ctrl) sinks, Shift
+//   - Kestrel: WASD flies along the view, Space climbs, C (or Ctrl) sinks, Shift
 //     boosts. LMB fires the twin chin vulcans, RMB the HEAVY VULCAN (a rotary
 //     launcher of mini-rockets), Q one missile, E a salvo from every pod. 1-4
 //     swap the pod on each of the four weapon points.
@@ -25,7 +25,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const UP = new V3(0, 1, 0);
 const _a = new V3(), _b = new V3(), _c = new V3();
 
-/** Pods for the Cheyenne's weapon points. rocketPod: unguided rockets from the same tubes. */
+/** Pods for the Kestrel's weapon points. rocketPod: unguided rockets from the same tubes. */
 const POD_TYPES = ['missilePod', 'heavyPod', 'microPod', 'rocketPod'];
 const POD_DEFS = {
   missilePod: WEAPONS.missilePod, heavyPod: WEAPONS.heavyPod, microPod: WEAPONS.microPod,
@@ -36,11 +36,11 @@ const VULCAN = { kind: 'bullet', dmg: 4, speed: 420, rate: 0.045, spread: 0.014 
 /** The heavy vulcan: a rotary launcher that spits mini-rockets like a minigun */
 const HEAVY = { kind: 'rocket', dmg: 12, splash: 2.6, speed: 150, rate: 0.065, spread: 0.02 };
 
-/** The AH-56 style Cheyenne: rigid four-blade rotor, stub wings with four pylons, a pusher prop */
-function createCheyenne(T, options) {
+/** The Kestrel gunship: rigid four-blade rotor, stub wings with four pylons, a pusher prop */
+function createKestrelGunship(T, options) {
   const { box, cyl, hull, group, finish } = workshop(T, Object.assign({ color: 0x2c3330 }, options));
   const root = new T.Group();
-  root.name = 'VECTORCLAD / Cheyenne gunship';
+  root.name = 'VECTORCLAD / Kestrel gunship';
   const body = group(root, 'fuselage');
   hull(body, [[-8, 0.3, 1.4, 2.0], [-6.5, 0.75, 0.9, 2.9], [-3, 1.0, 0.7, 3.3], [1.5, 0.95, 0.8, 3.2], [4, 0.5, 1.5, 2.7], [9.2, 0.26, 1.9, 2.5]]);
   hull(body, [[-7.3, 0.42, 2.0, 2.55], [-5, 0.72, 2.6, 3.55], [-2.2, 0.66, 2.9, 3.6], [-1, 0.5, 3.0, 3.3]], 'glass');
@@ -79,12 +79,22 @@ function createCheyenne(T, options) {
   return root;
 }
 
+/** The rides' cards on the frame select (js/ui.js FrameSelect) */
+export const RIDE_CARDS = [
+  { id: 'kestrel', code: 'KG-56', name: 'Kestrel', role: 'Attack gunship · deploys on the coast',
+    stats: [['Armor', 0.6, '420 AP'], ['Speed', 1, '270 km/h'], ['Guns', 0.9, 'Vulcans'], ['Pods', 1, '4 points']],
+    blurb: 'Twin chin vulcans, a HEAVY VULCAN that pours out mini-rockets, and four weapon points for missile, micro missile, heavy missile or rocket pods (1-4 swap them in flight). Comes in hovering over the seawall.' },
+  { id: 'apc', code: 'BX-2', name: 'Bastion APC', role: 'Armored carrier · deploys on the edge of town',
+    stats: [['Armor', 1, '700 AP'], ['Speed', 0.3, '80 km/h'], ['Guns', 1, 'Twin HV'], ['Pods', 0, '—']],
+    blurb: 'Eight-wheeled and heavily armored, with a turret of twin heavy vulcans that follows your aim. Rolls in from the riverside on the east edge of town.' },
+];
+
 export class Rides {
   constructor({ scene, world, fx, sound, weapons, mats, M, meters, hud }) {
     Object.assign(this, { scene, world, fx, sound, weapons, mats, M, hud });
     this.current = null;
     this.list = [];
-    this.heli = this.make('cheyenne', createCheyenne(THREE, { metersPerUnit: meters }), { apMax: 420, camDist: 26, camUp: 5.5, radius: 5, height: 4.5, name: 'AH-56X CHEYENNE' });
+    this.heli = this.make('kestrel', createKestrelGunship(THREE, { metersPerUnit: meters }), { apMax: 420, camDist: 26, camUp: 5.5, radius: 5, height: 4.5, name: 'KG-56 KESTREL' });
     this.apc = this.make('apc', createAPC(THREE, { metersPerUnit: meters }), { apMax: 700, camDist: 17, camUp: 4.5, radius: 2.6, height: 3.2, name: 'BASTION APC' });
     this.podIds = ['missilePod', 'microPod', 'microPod', 'missilePod'];
     this.pods = [];
@@ -103,6 +113,7 @@ export class Rides {
 
   /** Park the gunship and the APC beside the starting plaza */
   park(spawn, yaw) {
+    this.spawn = spawn.clone();
     const M = this.M, f = new V3(Math.sin(yaw), 0, Math.cos(yaw)), rt = new V3(-Math.cos(yaw), 0, Math.sin(yaw));
     const spots = [[this.heli, -26, 10], [this.apc, 20, 6]];
     for (const [r, side, ahead] of spots) {
@@ -113,6 +124,31 @@ export class Rides {
       r.vel.set(0, 0, 0); r.speed = 0; r.ap = r.apMax;
       this.place(r);
     }
+  }
+
+  /**
+   * Deploying in a ride from the frame select: the APC on the east edge of town, on the riverside
+   * esplanade, facing into the streets; the Kestrel hovering over the seawall on the south coast,
+   * facing the city. Returns the ride.
+   */
+  deploy(kind) {
+    const W = this.world, L = W.city.L, M = this.M, s = this.spawn;
+    const r = kind === 'kestrel' ? this.heli : this.apc;
+    if (r === this.heli) {
+      r.pos.set(s.x, 0, L.z1 + L.prom * 0.9);
+      r.pos.y = W.groundHeight(r.pos.x, r.pos.z, 999, r.radius * M) + 28 * M;
+      r.yaw = Math.PI;
+      r.rotor = 1;
+    } else {
+      r.pos.set(L.x1 + L.prom * 0.5, 0, clamp(s.z, L.z0 + 30 * M, L.z1 - 30 * M));
+      // Street level, not on whatever deck or roof overhangs the spot
+      r.pos.y = W.groundHeight(r.pos.x, r.pos.z, 0.5, r.radius * M);
+      W.resolve(r.pos, r.radius * M, r.height * M, r.pos.y);
+      r.yaw = -Math.PI / 2;
+    }
+    r.vel.set(0, 0, 0); r.speed = 0; r.ap = r.apMax;
+    this.place(r);
+    return r;
   }
 
   reset() {
@@ -172,7 +208,7 @@ export class Rides {
     P.pos.copy(r.pos);
     P.vel.set(0, 0, 0);
     this.sound.hatch(r.pos);
-    this.hud.toast(r.kind === 'cheyenne' ? 'CHEYENNE · LMB VULCANS · RMB HEAVY VULCAN · Q/E PODS · 1-4 SWAP PODS' : r.kind === 'apc' ? 'APC · LMB TWIN HEAVY VULCAN' : 'CAR STOLEN · W/S DRIVE · A/D STEER', 3.5);
+    this.hud.toast(r.kind === 'kestrel' ? 'KESTREL · LMB VULCANS · RMB HEAVY VULCAN · Q/E PODS · 1-4 SWAP PODS' : r.kind === 'apc' ? 'APC · LMB TWIN HEAVY VULCAN' : 'CAR STOLEN · W/S DRIVE · A/D STEER', 3.5);
   }
 
   /** Out the side; the ride stays where it is */
@@ -195,10 +231,10 @@ export class Rides {
     const r = this.current;
     this.time += dt;
     if (!playing) c = { move: { x: 0, y: 0 } };
-    if (r.kind === 'cheyenne') this.fly(dt, c, P, r); else this.drive(dt, c, P, r);
+    if (r.kind === 'kestrel') this.fly(dt, c, P, r); else this.drive(dt, c, P, r);
     P.pos.copy(r.pos);
     P.vel.copy(r.vel);
-    P.grounded = r.kind !== 'cheyenne';
+    P.grounded = r.kind !== 'kestrel';
     P.bodyYaw = r.yaw;
     r.ap = P.ap;
     if (playing) this.shoot(dt, c, r, aim);
@@ -414,7 +450,7 @@ export class Rides {
     }
     r.obj.position.copy(r.pos);
     r.obj.rotation.set(0, r.yaw + Math.PI, 0, 'YXZ');
-    if (r.kind === 'cheyenne') {
+    if (r.kind === 'kestrel') {
       r.obj.rotation.x = -r.tilt;
       r.obj.rotation.z = r.roll;
     }

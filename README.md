@@ -145,18 +145,23 @@ one square tile of wall or floor it is stuck to.
 
 ### Rides
 
-On foot, hold `G` beside a ride to get in, and hold it again to get out. A Cheyenne gunship and
-a Bastion APC are parked by the starting plaza, and any car in the city can be stolen,
-parked or driving.
+The frame select also offers the two rides: pick the Kestrel gunship or the Bastion APC
+there and Deploy goes straight into the fight in it, the APC rolling in on the riverside
+esplanade at the east edge of town and the Kestrel hovering over the seawall on the south
+coast. The mech is left standing on the starting plaza for the pilot to come back to.
+
+On foot, hold `G` beside a ride to get in, and hold it again to get out. Both rides are also
+parked by the starting plaza when the mech is flown in, and any car in the city can be
+stolen, parked or driving.
 
 | Ride | Controls |
 | --- | --- |
-| Cheyenne gunship | `W` `A` `S` `D` fly along the view, `Space` climbs, `C` or `Ctrl` sinks, `Shift` boosts. Left mouse: twin chin vulcans. Right mouse: the HEAVY VULCAN, a rotary launcher that spins up and pours out mini-rockets like a minigun. `Q` one missile, `E` a salvo from every pod. `1`-`4` swap the pod on each of the four weapon points: missile pod, heavy missile pod, micro missile pod or unguided rocket pod. Missiles home on the target nearest the crosshair. |
+| Kestrel gunship | `W` `A` `S` `D` fly along the view, `Space` climbs, `C` or `Ctrl` sinks, `Shift` boosts. Left mouse: twin chin vulcans. Right mouse: the HEAVY VULCAN, a rotary launcher that spins up and pours out mini-rockets like a minigun. `Q` one missile, `E` a salvo from every pod. `1`-`4` swap the pod on each of the four weapon points: missile pod, heavy missile pod, micro missile pod or unguided rocket pod. Missiles home on the target nearest the crosshair. |
 | Bastion APC | `W`/`S` drive, `A`/`D` steer, the turret follows the view. Left mouse: the twin heavy vulcans. |
 | Cars | `W`/`S` drive, `A`/`D` steer, `Shift` for more speed. |
 
 A ride has its own armor; losing it ends the fight. `js/rides.js` holds the rides, and the
-Cheyenne's model is built there with the vehicle workshop in `js/vehicles/models.js`.
+Kestrel's model is built there with the vehicle workshop in `js/vehicles/models.js`.
 
 ## Summoning
 
@@ -1100,7 +1105,7 @@ in the hangar settings.
 | `js/trees.js` | Trees: species, textured trunks and crowns instanced by chunk, uprooting, rigid-body tumbling and rolling, burning |
 | `js/cars.js` | Cars: bodies shaped to their skins in the vertex shader, parked cars, lane-following traffic that turns and respawns |
 | `js/pilot.js` | The pilot on foot: the armored model, the first person arm and rifle, jetpack movement, the grappling hook, sticky grenades |
-| `js/rides.js` | Rides for the pilot: the Cheyenne gunship (model, flight, vulcans, heavy vulcan, swappable missile pods), the APC and stolen cars |
+| `js/rides.js` | Rides for the pilot: the Kestrel gunship (model, flight, vulcans, heavy vulcan, swappable missile pods), the APC and stolen cars |
 | `js/people.js` | People: fifty models, the rig and its animations, sidewalk walkers, panic, building occupants, falls and splats |
 | `js/gore.js` | Blood: the spray of droplets when someone dies, and the splatters they leave stuck to floors and walls |
 | `js/furniture.js` | Furniture: sixteen modeled pieces, furnishing broken floors, thrown and tumbling pieces |
