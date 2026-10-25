@@ -406,13 +406,17 @@ async function init() {
     sound.unlock();
     if (summonMenu.open) closeSummon(false);
     if (mode === 'play' && !input.locked) input.requestLock();
+    // On a touch screen a tap during the insertion lets go of the frame
+    if (mode === 'drop' && isTouch) releaseNow();
   });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape' && mode === 'hangar') startPlay();
     // ` (or ~): the summon menu
     if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); toggleSummon(); }
     if (e.code === 'Escape' && summonMenu.open) closeSummon(false);
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && mode === 'brief') { e.preventDefault(); dismissBrief(); }
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && mode === 'brief' && !e.repeat) { e.preventDefault(); dismissBrief(); }
+    // Space during the insertion: let go of the frame now
+    if (e.code === 'Space' && mode === 'drop' && !e.repeat) { e.preventDefault(); releaseNow(); }
   });
 
   // Warm up shaders so the first shots don't hitch
@@ -646,6 +650,7 @@ function startDrop() {
   briefed = false;
   mode = 'drop';
   showPanel('#drop');
+  $('#drop-hint').textContent = isTouch ? 'TAP · RELEASE NOW' : 'SPACE · RELEASE NOW';
   const D = allies.startDrop(world.spawn);
   P.yaw = P.bodyYaw = D.heading;
   P.pitch = 0.05;
@@ -656,6 +661,12 @@ function startDrop() {
   cam.pivotY = P.pos.y + 7.4;
   // Inside the click: the only time the pointer can be locked without another one
   input.requestLock();
+}
+
+/** Ask the lifter to let go now: the clamps click and open (over the water, once over the city) */
+function releaseNow() {
+  if (!allies.releaseEarly()) return;
+  $('#drop-hint').textContent = 'RELEASE ARMED';
 }
 
 /** Hanging from the cradle: no control, no thrusters, the lifter's turbines in the ears */
@@ -1052,8 +1063,9 @@ function updateCamera(dt, speed) {
     const fovT = P.dashing ? 72 : 60;
     cam.fov = damp(cam.fov, fovT, 4, dt);
     if (dropping) {
-      // The insertion: a chase shot of the lifter that eases into this view by the release
-      const D = allies.drop, k = smoothstep(D.flyT - 2.4, D.releaseT, D.t);
+      // The insertion: a chase shot of the lifter that eases into this view by the release (from
+      // the clamps' clicks when the frame is let go early)
+      const D = allies.drop, k = smoothstep(D.camT, D.releaseT, D.t);
       dropQ.copy(camera.quaternion);
       camera.position.copy(D.cam.pos);
       camera.lookAt(D.cam.look);

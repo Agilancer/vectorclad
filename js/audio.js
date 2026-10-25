@@ -204,6 +204,13 @@ export class Sound {
     this.tone({ type: 'square', freq: 2093, peak: 0.07, decay: 0.07 });
     this.tone({ type: 'square', freq: 2637, peak: 0.07, decay: 0.09, delay: 0.08 });
   }
+  /** The lifter's clamps unlocking: three quick metallic clicks */
+  clamps(pos) {
+    for (const [d, f] of [[0, 1500], [0.11, 1150], [0.22, 1700]]) {
+      this.tone({ type: 'square', freq: f, freqEnd: f * 0.55, peak: 0.07, decay: 0.03, delay: d, pos });
+      this.tone({ type: 'triangle', freq: f * 2.6, freqEnd: f * 1.8, peak: 0.05, decay: 0.02, delay: d, pos });
+    }
+  }
   hatch(pos) {
     this.tone({ type: 'square', freq: 120, freqEnd: 70, peak: 0.08, decay: 0.12, pos });
     this.noiseHit({ type: 'bandpass', freq: 1800, q: 3, peak: 0.12, decay: 0.1, pos });

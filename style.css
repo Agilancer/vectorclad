@@ -346,6 +346,7 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .drop-title { font-size: clamp(22px, 3.4vw, 34px); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .drop-eta { font-size: 13px; letter-spacing: 0.16em; color: var(--hud); }
 .drop-eta b { font-weight: 400; color: var(--fg); }
+.drop-hint { margin-top: 4px; font-size: 11px; letter-spacing: 0.16em; color: var(--dim); }
 @keyframes lb-in { from { transform: scaleY(0); } }
 @keyframes cap-in { from { opacity: 0; transform: translateX(-12px); } }
 
