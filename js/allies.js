@@ -23,6 +23,8 @@ const LIFTER_SCALE = 1.45;
 const LIFTER_PAINT = { armor: 0x4b555d, edge: 0x69737a, dark: 0x22272b, brass: 0xc29a3e };
 // The insertion: seconds from high over the harbor to a hover over the drop zone, then to release
 const DROP_FLY = 22.4, DROP_SETTLE = 1.1;
+// Let go early (Space): seconds from the clamps' clicks to their opening
+const DROP_CLICK = 0.45;
 // Its line (units): how high it starts, how far out past the seawall and how far east of the
 // avenue it comes in up; how high the mech's feet ride over the streets, how high they are let
 // go, and the radius of the turns at street corners (the wings just clear the towers')
@@ -415,11 +417,27 @@ export class Allies {
       pos: new V3(X[0], Y[0], Z[0]), prev: new V3(X[0], Y[0], Z[0]), vel: new V3(), speed: 0, pitch: 0, roll: 0, clamp: 0,
       feet: new V3(), mechQ: new THREE.Quaternion(), cam: { pos: new V3(), look: new V3() },
       flyT: DROP_FLY, releaseT: DROP_FLY + DROP_SETTLE, whoosh: false,
+      // Let go early: asked for, when the clamps clicked (-1: not yet), whether it was, and how
+      // far the lifter has climbed off its line since; camT: when the camera starts easing into
+      // the over-the-shoulder view
+      armed: false, clickT: -1, early: false, lift: 0, camT: DROP_FLY - 2.4,
     });
     D.tEntry = this.dropTime(sEntry);
     this.sound.thrusters(D.pos);
     this.updateDrop(0);
     return D;
+  }
+
+  /**
+   * Let go of the frame before the drop zone: the clamps click and open a moment later. Over the
+   * water, where there is nothing to land on, it waits until the lifter crosses the seawall.
+   * Returns whether the release was armed now.
+   */
+  releaseEarly() {
+    const D = this.drop;
+    if (!D || D.released || D.armed || D.t >= D.releaseT - DROP_CLICK) return false;
+    D.armed = true;
+    return true;
   }
 
   /** How far along the insertion line the lifter is at time t */
@@ -462,24 +480,41 @@ export class Allies {
     if (!D) return null;
     D.t += dt;
     D.prev.copy(D.pos);
+    // Let go early on request, once over the city: the clamps click, then open
+    if (D.armed && D.clickT < 0 && D.pos.z <= this.world.bounds.maxZ - 8) {
+      D.clickT = D.camT = D.t;
+      D.releaseT = Math.min(D.releaseT, D.t + DROP_CLICK);
+      this.sound.clamps(D.pos);
+    }
+    // On its line: carrying the frame, or let go early and carrying on along it without it
+    const onLine = D.phase === 'fly' || (D.early && D.t < DROP_FLY);
     if (D.phase === 'fly') {
       D.s = this.dropS(D.t);
       this.dropPoint(D.s, D.pos);
       // Hover over the drop zone, settling a little, then let go
       if (D.t > DROP_FLY) D.pos.y -= 0.6 * smooth(0, DROP_SETTLE, D.t - DROP_FLY);
       if (!D.whoosh && D.t >= D.tEntry - 0.6) { D.whoosh = true; this.sound.thrusters(D.pos); }
-      if (D.t >= D.releaseT) { D.phase = 'leave'; D.released = true; D.leaveT = 0; this.sound.hatch(D.pos); this.sound.servo(D.pos); }
+      if (D.t >= D.releaseT) {
+        D.phase = 'leave'; D.released = true; D.leaveT = 0; D.early = D.t < DROP_FLY;
+        this.sound.hatch(D.pos); this.sound.servo(D.pos);
+      }
+    } else if (onLine) {
+      // Lighter, it flies on down the streets, climbing away out of them
+      D.leaveT += dt;
+      D.lift += Math.min(30, 4 + D.leaveT * 12) * dt;
+      D.s = this.dropS(D.t);
+      this.dropPoint(D.s, D.pos).y += D.lift;
     } else {
       // Climb straight out of the towers, then fly off north and out of sight
       D.leaveT += dt;
       const up = Math.min(34, 6 + D.leaveT * 16), fwd = D.pos.y > 190 ? Math.min(110, (D.leaveT - 4) * 30) : 2;
       D.pos.y += up * dt;
       D.pos.z -= Math.max(0, fwd) * dt;
-      if (D.leaveT > 11) { Lf.visible = false; this.drop = null; return D; }
+      if (D.leaveT > (D.early ? 16 : 11)) { Lf.visible = false; this.drop = null; return D; }
     }
     if (dt > 0) {
       D.vel.subVectors(D.pos, D.prev).divideScalar(dt);
-      if (D.phase === 'fly') {
+      if (onLine) {
         // Speed along the line and its change, from the eased pace rather than frame to frame
         const e = 0.1, ve = (t) => (this.dropS(t + e) - this.dropS(t - e)) / (2 * e);
         const speed = ve(D.t), acc = (ve(D.t + e) - ve(D.t - e)) / (2 * e), line = this.dropLine(D.s);

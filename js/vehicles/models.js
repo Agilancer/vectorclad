@@ -1,14 +1,15 @@
+import {finishVehicle,addWingRotor} from '../../assets/vehicle-textures/vehicle-finish.js';
 // The allied vehicles: the Kestrel assault lifter (dropship) and the Bastion armored carrier (the
 // tanks), copied from the builders in assets/riftlings/preview.html, plus the Kestrel H heavy lifter,
 // the variant that carries the mech in. Models are authored in meters with -Z forward and +Y up;
 // options.metersPerUnit scales them into game units.
 export function workshop(T, options) {
   const mats = {};
-  const colors = { armor: options.color ?? 0x515b3b, edge: 0x737b54,
-    dark: 0x252c24, metal: 0x535b5c, rubber: 0x161c1e,
+  const colors = { armor: options.color ?? 0x31343a, edge: 0x737b54,
+    dark: 0x171b20, metal: 0x535b5c, rubber: 0x161c1e,
     glass: 0x173b43, brass: 0xb0a06a, white: 0xd6d4b9, red: 0x9e4235, ...options.palette };
   for (const [k,c] of Object.entries(colors)) mats[k] = new T.MeshStandardMaterial({
-    color:c, roughness:k==='glass'?.22:.78, metalness:k==='rubber'?0:.35 });
+    name:'vehicle:'+k,color:c, roughness:k==='glass'?.22:.78, metalness:k==='rubber'?0:.35 });
   mats.glass.emissive.setHex(0x12313c); mats.glass.emissiveIntensity=.35;
   mats.light = new T.MeshStandardMaterial({color:0xffeac2,emissive:0xffcc83,emissiveIntensity:2});
   mats.engine = new T.MeshStandardMaterial({color:0x89daf5,emissive:0x279ccc,emissiveIntensity:2});
@@ -38,14 +39,15 @@ export function workshop(T, options) {
   // Merge static siblings by material, keeping movable groups intact.
   function batch(g){
     g.updateMatrixWorld(true);let buckets=new Map();
-    for(const m of [...g.children]){if(!m.isMesh)continue;m.updateMatrix();let geo=m.geometry.index?m.geometry.toNonIndexed():m.geometry.clone();geo.applyMatrix4(m.matrix);let b=buckets.get(m.material)||[];b.push(geo);buckets.set(m.material,b);g.remove(m);m.geometry.dispose();}
+    for(const m of [...g.children]){if(!m.isMesh||m.userData.rotor)continue;m.updateMatrix();let geo=m.geometry.index?m.geometry.toNonIndexed():m.geometry.clone();geo.applyMatrix4(m.matrix);let b=buckets.get(m.material)||[];b.push(geo);buckets.set(m.material,b);g.remove(m);m.geometry.dispose();}
     for(const [mat,list] of buckets){const geo=new T.BufferGeometry();for(const key of ['position','normal','uv']){if(!list.every(g=>g.getAttribute(key)))continue;let size=list[0].getAttribute(key).itemSize;let arr=new Float32Array(list.reduce((s,g)=>s+g.getAttribute(key).array.length,0)),offset=0;for(const g of list){arr.set(g.getAttribute(key).array,offset);offset+=g.getAttribute(key).array.length;}geo.setAttribute(key,new T.BufferAttribute(arr,size));}for(const g of list)g.dispose();mesh(g,geo,mat);}
   }
   function finish(root,parts){
+    finishVehicle(T,root,root.name.includes('Bastion')?'apc':'dropship');
     for(const g of parts)batch(g);
     const metersPerUnit=options.metersPerUnit??1;if(!(metersPerUnit>0))throw Error('metersPerUnit must be positive');root.scale.setScalar(1/metersPerUnit);
     root.userData={...root.userData,metersPerUnit,forward:'-Z',up:'+Y',originalProceduralGeometry:true};
-    root.userData.dispose=()=>{const gs=new Set(),ms=new Set(),ts=new Set();root.traverse(o=>{if(o.geometry)gs.add(o.geometry);if(o.material)for(const m of (Array.isArray(o.material)?o.material:[o.material])){ms.add(m);if(m.map)ts.add(m.map);}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());ts.forEach(t=>t.dispose());};return root;
+    root.userData.dispose=()=>{const gs=new Set(),ms=new Set(),ts=new Set();root.traverse(o=>{if(o.geometry)gs.add(o.geometry);if(o.material)for(const m of (Array.isArray(o.material)?o.material:[o.material])){ms.add(m);if(m.map&&!m.map.userData.sharedVehicleTexture)ts.add(m.map);}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());ts.forEach(t=>t.dispose());};return root;
   }
   return {mats,mesh,box,cyl,hull,plate,label,group,finish};
 }
@@ -91,14 +93,14 @@ export function createDropship(THREE, options={}) {
   const wings=[];
   for(const s of [-1,1]){
     const wing=group(root,'weapon outrigger '+s,s*2.2,3.05,-4.2);wings.push(wing);
-    plate(wing,[[0,-1.3],[s*3.5,-1.9],[s*4.9,.1],[s*4.5,2.6],[0,1.7]],.3,0);
+    plate(wing,lifter?[[0,-1.3],[s*2.7,-1.3],[s*2.7,1.3],[0,1.7]]:[[0,-1.3],[s*3.5,-1.9],[s*4.9,.1],[s*4.5,2.6],[0,1.7]],.3,0);
     if(lifter){
-      // A ducted lift fan blowing down, with a glowing exhaust ring under it
+      // Open duct with a counter-rotating textured rotor, retained by two guard struts.
       const fan=group(wing,'lift fan',s*4.05,-.15,.1);
-      cyl(fan,1.45,1.45,.75,0,0,0,'armor','y',24);cyl(fan,1.18,1.18,.78,0,0,0,'dark','y',24);
-      cyl(fan,1.05,1.05,.05,0,-.36,0,'engine','y',24);cyl(fan,.3,.3,.3,0,.15,0,'metal','y',12);
-      for(let k=0;k<6;k++)box(fan,2.1,.05,.32,0,.05,0,'metal').rotation.y=k*Math.PI/6;
-      for(let k=0;k<4;k++)box(fan,.12,.1,2.9,0,.4,0,'edge').rotation.y=k*Math.PI/4;
+      const wall=new T.Mesh(new T.CylinderGeometry(1.45,1.45,.75,48,1,true),new T.MeshStandardMaterial({color:0x25282d,metalness:.6,roughness:.4,side:T.DoubleSide}));fan.add(wall);
+      for(const y of [-.36,.37]){const ring=new T.Mesh(new T.TorusGeometry(1.33,.12,8,48),new T.MeshStandardMaterial({color:0xd6a547,metalness:.92,roughness:.22}));ring.rotation.x=Math.PI/2;ring.position.y=y;fan.add(ring);}
+      addWingRotor(T,fan,s);
+      for(let k=0;k<2;k++)box(fan,.08,.08,2.65,0,.4,0,'edge').rotation.y=k*Math.PI/2;
       box(fan,.32,.14,.12,s*1.47,.1,-.6,'light');
       label(fan,'LIFT',1.2,.3,0,.39,1.46);
       continue;
@@ -211,3 +213,4 @@ export function createAPC(THREE,options={}) {
   root.userData.roll=distance=>wheels.forEach(w=>w.rotation.x-=distance*(options.metersPerUnit??1)/1.04);
   return finish(root,all);
 }
+
