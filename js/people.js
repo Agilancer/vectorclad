@@ -1,4 +1,5 @@
 import * as THREE from './three.js';
+import { Gore } from './gore.js';
 
 // ---------------------------------------------------------------------------
 // People: the city's inhabitants, at their true size beside the 12 m mech.
@@ -24,6 +25,8 @@ import * as THREE from './three.js';
 //     the rest stay inside until the next blast or until the floor under
 //     them goes, and then they fall.
 //   - A fall from more than a storey or so ends in a little red splat.
+//   - Every death bursts into a spray of blood that sticks to the floors and
+//     walls round about (js/gore.js), with a chorus of squishes and screams.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -234,8 +237,8 @@ export class People {
   constructor({ scene, world, fx, sound, mobile = false }) {
     this.world = world; this.city = world.city; this.fx = fx; this.sound = sound;
     this.M = world.city.M;
-    this.cap = mobile ? 420 : 900;
-    this.walkers = mobile ? 110 : 280;
+    this.cap = mobile ? 900 : 2600;
+    this.walkers = mobile ? 380 : 1300;
     this.radius = this.m(mobile ? 320 : 430);
     this.list = [];
     this.time = 0;
@@ -259,6 +262,7 @@ export class People {
       this.parts[name] = { mesh, n: 0 };
     }
     this.splats = new Splats(scene, mobile ? 250 : 600);
+    this.gore = new Gore({ scene, world, fx, mobile });
     // Sidewalk loops round every playable block
     const L = this.city.L;
     this.blocks = L.blocks.filter((B) => B.playable);
@@ -341,12 +345,12 @@ export class People {
   repopulate(P, all = false) {
     const walkers = this.list.filter((q) => q.mode === 'path').length;
     let want = this.walkers - walkers;
-    if (!all) want = Math.min(want, 6);
+    if (!all) want = Math.min(want, 24);
     const R = this.radius;
+    const near = this.blocks.filter((B) => Math.hypot((B.x0 + B.x1) / 2 - P.x, (B.z0 + B.z1) / 2 - P.z) <= R * 0.8);
+    if (!near.length) return;
     for (let i = 0; i < want * 4 && want > 0; i++) {
-      const B = pick(this.blocks);
-      const cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2, d = Math.hypot(cx - P.x, cz - P.z);
-      if (d > R * 0.8) continue;
+      const B = pick(near);
       const s = Math.random() * this.loop(B).total;
       this.onLoop(B, s, 0, _a);
       const dp = Math.hypot(_a.x - P.x, _a.z - P.z);
@@ -382,6 +386,7 @@ export class People {
    */
   die(q, splat = false) {
     if (q.state === 'dead') return;
+    this.killed(q);
     const air = q.mode === 'air';
     q.state = 'dead';
     q.mode = 'dead';
@@ -406,9 +411,18 @@ export class People {
     }
   }
 
+  /** Someone alive killed: blood sprayed all round (k: how much; low: crushed flat) and the screams */
+  killed(q, k = 1, low = false) {
+    this.gore.burst(q.pos.x, q.pos.y + (low ? this.m(0.3) : q.H * 0.55), q.pos.z, k, low);
+    this.sound.death(q.pos);
+  }
+
   /** Something heavy came down on them (the mech's foot, a slab, a train car). Returns whether it did. */
   squish(q) {
     if (q.state === 'dead' && q.flat < 1) return false;
+    // Alive: killed outright; a body: burst under it all the same
+    if (q.state !== 'dead') this.killed(q, 1.4, true);
+    else this.gore.burst(q.pos.x, q.pos.y + this.m(0.3), q.pos.z, 0.7, true);
     q.state = 'dead'; q.mode = 'dead'; q.dead = 0;
     q.flat = 0.18;
     q.tilt.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2);
@@ -565,6 +579,7 @@ export class People {
       this.step(q, dt);
       if (q.gone) this.list.splice(i, 1);
     }
+    this.gore.update(dt);
     this.draw(ctx.camera ? ctx.camera.position : P);
   }
 
@@ -804,7 +819,7 @@ export class People {
         q.mode = 'dead'; q.vel.set(0, 0, 0);
         if (q.dieT === undefined || q.dieT < 9) { q.tilt.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2); q.dieT = 9; }
         q.tilt0 = q.tilt.clone();
-        if (hard && q.flat === 1) { q.flat = 0.55; this.splat(q); }
+        if (hard && q.flat === 1) { q.flat = 0.55; this.splat(q); this.gore.burst(q.pos.x, q.pos.y + this.m(0.3), q.pos.z, 0.5, true); }
         return;
       }
       if (hard) {

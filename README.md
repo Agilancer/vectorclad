@@ -372,7 +372,7 @@ The city is full of people, at their true size beside the 12 m mech (`js/people.
   walk, run, die (toppling over), slide backward off a ledge (leaning back, feet scrabbling,
   arms windmilling) and fall (tumbling, flailing). Every part of every person is one
   InstancedMesh, so the crowd draws in a handful of calls.
-- **On the sidewalks:** a few hundred walk the loops round the blocks near the mech,
+- **On the sidewalks:** some thirteen hundred (under four hundred on phones) walk the loops round the blocks near the mech,
   stopping now and then and crossing the streets at the corners. Those left far behind are
   moved on to blocks near the mech again, out of its sight.
 - **In the buildings:** when a building is first broken open, its floors round the hole
@@ -384,6 +384,20 @@ The city is full of people, at their true size beside the 12 m mech (`js/people.
   the mech's feet squash them, falling pieces of building and train cars crush them, and a
   fall from more than a storey or so ends in a little red splat on the pavement. Blasts,
   falling buildings and the mech coming close send everyone near running.
+- **Blood** (`js/gore.js`): every death bursts in a small explosion of red droplets and a
+  puff of red mist. The droplets fly and fall until they hit something (the street, a
+  sidewalk, a floor, a wall or a ceiling, a piece of falling building), and each one leaves
+  a splatter stuck flat to that surface, streaked the way it was going. Splatters stay until
+  the surface under them is shot away, or newer ones take their place (up to 9,000, 2,500 on
+  phones). Bodies trodden on or slammed down by a blast spray more.
+- **Screams:** every death sets off two dozen different sounds at once (`death()` in
+  `js/audio.js`): twelve squishes (a wet slap, a squelch, bones crunching and snapping, a
+  deep splat, a gurgle, dripping, a suction pop, a squash, a slosh, a thud, a hissing spray)
+  and twelve screams synthesized from vowel formants (a man's yell, a woman's shriek, a
+  child, a yelp cut off, a scream through blood, a falling wail, a hoarse shout, "oh, no",
+  a whimper, a choked gasp, a squeal and a groan). When a blast kills a crowd, the first
+  three deaths in a second and a half get all 24 and the rest a few each, so the sound
+  doesn't choke.
 
 **Furniture** (`js/furniture.js`): sixteen pieces modeled in three.js from boxes and
 cylinders: desks with monitors and office chairs, filing cabinets, bookshelves full of
@@ -1042,6 +1056,7 @@ in the hangar settings.
 | `js/trees.js` | Trees: species, textured trunks and crowns instanced by chunk, uprooting, rigid-body tumbling and rolling, burning |
 | `js/cars.js` | Cars: bodies shaped to their skins in the vertex shader, parked cars, lane-following traffic that turns and respawns |
 | `js/people.js` | People: fifty models, the rig and its animations, sidewalk walkers, panic, building occupants, falls and splats |
+| `js/gore.js` | Blood: the spray of droplets when someone dies, and the splatters they leave stuck to floors and walls |
 | `js/furniture.js` | Furniture: sixteen modeled pieces, furnishing broken floors, thrown and tumbling pieces |
 | `js/train.js` | The El's trains: the route, derailing where the track is gone or blocked, wrecks as rigid boxes that pile up |
 | `js/kitTiles.js` | Generated: the facade, storefront and roof kits, tree tiles and car skins with their measured outlines |
