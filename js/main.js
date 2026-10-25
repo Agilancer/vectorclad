@@ -20,7 +20,7 @@ import { setCeilingTextures } from './destruct/ceilings.js';
 import { titleDone, portraitPhone } from './title/title.js';
 import { Post } from './post.js';
 import { Pilot, PILOT_AP } from './pilot.js';
-import { Rides } from './rides.js';
+import { Rides, RIDE_CARDS } from './rides.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -70,6 +70,9 @@ const store = {
 };
 // The frame picked on the select screen (js/frames.js)
 let spec = FRAMES[store.get('vectorclad.frame', 'vanguard')] || FRAMES.vanguard;
+// Or a ride picked there instead (js/rides.js): 'mech', 'kestrel' or 'apc'
+let startAs = store.get('vectorclad.startAs', 'mech');
+if (!['mech', 'kestrel', 'apc'].includes(startAs)) startAs = 'mech';
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 // A sandbox: there are no waves. Nothing comes until the summon menu (the ` key, js/summons.js) calls it in.
@@ -354,7 +357,7 @@ async function init() {
   // The pilot on foot (hold G beside a standing frame); the first person arm rides on the camera
   pilot = new Pilot({ scene, camera, world, fx, sound, weapons, mats, M: 1 / METERS });
   scene.add(camera);
-  // A Cheyenne gunship and an APC parked by the plaza, and the city's cars, for the pilot to take
+  // A Kestrel gunship and an APC parked by the plaza, and the city's cars, for the pilot to take
   rides = new Rides({ scene, world, fx, sound, weapons, mats, M: 1 / METERS, meters: METERS, hud });
   rides.park(world.spawn, P.bodyYaw);
 
@@ -368,7 +371,11 @@ async function init() {
     onSettings: applySettings,
     frames: FRAMES, frame: () => spec.id, onFrame: (id) => setFrame(id),
   });
-  frameSel = new FrameSelect({ frames: FRAMES, current: spec.id, sound, meters: () => METERS, onPick: (id) => setFrame(id) });
+  frameSel = new FrameSelect({
+    frames: FRAMES, current: startAs === 'mech' ? spec.id : startAs, sound, meters: () => METERS,
+    onPick: (id) => { pickStart('mech'); setFrame(id); },
+    rides: RIDE_CARDS, onRide: (id) => pickStart(id),
+  });
   if (spec !== FRAMES.vanguard) setFrame(spec.id);
   applySettings();
 
@@ -388,13 +395,13 @@ async function init() {
 
   // Launch: frame select, then the loadout, then the drop. Quick deploy goes straight to the drop.
   $('#btn-launch').addEventListener('click', () => { sound.unlock(); openFrames(); });
-  $('#btn-quick').addEventListener('click', () => { sound.unlock(); startDrop(); });
-  $('#btn-frame-next').addEventListener('click', () => { sound.unlock(); openLoadout(); });
+  $('#btn-quick').addEventListener('click', () => { sound.unlock(); deploy(); });
+  $('#btn-frame-next').addEventListener('click', () => { sound.unlock(); if (startAs === 'mech') openLoadout(); else deploy(); });
   $('#btn-frame-back').addEventListener('click', () => { sound.unlock(); openIntro(); });
   $('#btn-hangar-back').addEventListener('click', () => { sound.unlock(); openFrames(); });
   $('#btn-close-hangar').addEventListener('click', () => { sound.unlock(); if (mode === 'loadout') startDrop(); else startPlay(); });
   $('#btn-hangar').addEventListener('click', () => openHangar());
-  $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); startDrop(); });
+  $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); deploy(); });
   $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); openFrames(); });
   $('#t-menu').addEventListener('click', () => openHangar());
   // A tap with a second finger (thumb still on the stick) never becomes a click, so open on touchend.
@@ -564,7 +571,8 @@ function openFrames() {
   if (!P.alive) redeploy();
   mode = 'frames';
   showPanel('#frames');
-  frameSel.render(spec.id);
+  frameSel.render(startAs === 'mech' ? spec.id : startAs);
+  $('#btn-frame-next').textContent = startAs === 'mech' ? 'Loadout' : 'Deploy';
   cam.orbit = P.bodyYaw + 0.5;
   if (!isTouch) $('#btn-frame-next').focus({ preventScroll: true });
 }
@@ -675,6 +683,38 @@ function startDrop() {
   mech.resetFeet();
   cam.pivotY = P.pos.y + 7.4;
   // Inside the click: the only time the pointer can be locked without another one
+  input.requestLock();
+}
+
+/** Frame or ride, from the frame select */
+function pickStart(id) {
+  startAs = id;
+  store.set('vectorclad.startAs', id);
+  if (mode === 'frames') $('#btn-frame-next').textContent = id === 'mech' ? 'Loadout' : 'Deploy';
+}
+
+/** Into the fight as picked: the mech flown in, or straight into a ride */
+function deploy() {
+  if (startAs === 'mech') startDrop(); else startRide(startAs);
+}
+
+/**
+ * Deploy in a ride: the APC on the edge of town, the Kestrel over the coast. The mech is left
+ * standing on the plaza for the pilot to come back to.
+ */
+function startRide(kind) {
+  redeploy();
+  showPanel('');
+  pilot.exit(P, P.bodyYaw);
+  const r = rides.deploy(kind);
+  rides.board({ ride: r }, P);
+  P.yaw = r.yaw;
+  P.pitch = kind === 'kestrel' ? -0.12 : 0.04;
+  cam.fov = 72;
+  mode = 'play';
+  $('#hud').hidden = false;
+  if (isTouch) $('#touch').hidden = false;
+  allies.schedule(14);
   input.requestLock();
 }
 

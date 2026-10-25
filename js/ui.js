@@ -315,9 +315,12 @@ export class SummonMenu {
  * function, known once the world is scaled), for the speeds. onPick(id) swaps the frame on show.
  */
 export class FrameSelect {
-  constructor({ frames, current, onPick, sound, meters }) {
+  /** rides: cards for the vehicles that deploy instead of a frame ({ id, code, name, role, stats: [[label, 0..1, text]], blurb }), picked with onRide(id) */
+  constructor({ frames, current, onPick, sound, meters, rides = [], onRide = null }) {
     this.frames = frames;
     this.onPick = onPick;
+    this.rides = rides;
+    this.onRide = onRide;
     this.sound = sound;
     this.meters = meters;
     this.list = $('#frame-list');
@@ -348,6 +351,22 @@ export class FrameSelect {
         this.sound && this.sound.click();
         this.onPick(f.id);
         this.render(f.id);
+      });
+      this.list.appendChild(b);
+    }
+    for (const r of this.rides) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'frame-card ride-card';
+      b.setAttribute('aria-pressed', r.id === current ? 'true' : 'false');
+      b.innerHTML = `<span class="fc-head"><span class="fc-code mono">${r.code}</span><span class="fc-name">${r.name}</span></span>
+        <span class="fc-role">${r.role}</span>
+        <span class="fc-stats">${r.stats.map(([k, frac, v]) => `<span class="fc-stat"><span class="label">${k}</span><i><b style="width:${Math.round(frac * 100)}%"></b></i><span class="mono">${v}</span></span>`).join('')}</span>
+        <span class="fc-blurb">${r.blurb}</span>`;
+      b.addEventListener('click', () => {
+        this.sound && this.sound.click();
+        this.onRide(r.id);
+        this.render(r.id);
       });
       this.list.appendChild(b);
     }

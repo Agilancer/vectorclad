@@ -309,10 +309,10 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   overflow-y: auto;
   touch-action: pan-y;
 }
-.frames-card { width: min(540px, 100%); margin-left: max(0px, 5vw); display: grid; gap: 14px; padding-block: 20px; }
+.frames-card { width: min(780px, 100%); margin-left: max(0px, 5vw); display: grid; gap: 14px; padding-block: 20px; }
 .frames-card .stripe { width: 120px; }
 .frames-card h2 { margin: 0; font-size: clamp(28px, 4.4vw, 44px); letter-spacing: 0.03em; }
-.frame-list { display: grid; gap: 10px; }
+.frame-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
 .frame-card {
   display: grid; gap: 7px; text-align: left; color: var(--fg); font: inherit;
   background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line);
