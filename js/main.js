@@ -994,7 +994,7 @@ function updateBoarding(dt, c) {
   } else {
     setHardLock(null);
     pilot.exit(P, P.bodyYaw);
-    hud.toast('ON FOOT · LMB FIRE · RMB GRAPPLE · Q STICKY GRENADE · WHEEL VIEW · HOLD G AT THE FRAME', 4);
+    hud.toast('ON FOOT · RMB GRAPPLE · Q GRENADE', 3);
   }
 }
 

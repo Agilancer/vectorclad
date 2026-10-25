@@ -532,16 +532,15 @@ export class Pilot {
     } else {
       const right = _a.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
       const pivot = _b.copy(eye).addScaledVector(UP, 0.05 * M);
-      let side = 0.55 * M;
+      let side = 0.75 * M;
       const sh = W.raycast(pivot, right, side + 0.3 * M, { targets: false });
       if (sh) side = Math.max(0, sh.dist - 0.3 * M);
       pivot.addScaledVector(right, side);
       const back = _c.copy(camDir).negate();
-      const want = 2.2 * M;
+      const want = 2.9 * M;
       const hit = W.raycast(pivot, back, want + 0.3 * M, { targets: false });
       const dist = hit ? Math.max(0.3 * M, hit.dist - 0.3 * M) : want;
       camera.position.copy(pivot).addScaledVector(back, dist);
-      // Keep the shot origin at the eyes for the hook and grenades
     }
     camera.lookAt(_a.copy(camera.position).add(camDir));
     camera.near = this.third ? 0.12 : 0.1;
@@ -592,7 +591,7 @@ export class Pilot {
       const to = _b.subVectors(this.hook.anchor, _a), d = to.length();
       this.rope.position.copy(_a);
       this.rope.quaternion.setFromUnitVectors(UP, to.divideScalar(d));
-      this.rope.scale.set(0.02 * M, d, 0.02 * M);
+      this.rope.scale.set(0.035 * M, d, 0.035 * M);
       this.rope.visible = true;
       this.hookHead.position.copy(this.hook.anchor);
       this.hookHead.rotation.y = time * 6;
