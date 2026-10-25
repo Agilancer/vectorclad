@@ -3,11 +3,10 @@
 A three.js tech demo for VECTORCLAD: an Armored Core-style mech, the FS-07A Vanguard or
 the HV-02 Obsidian heavy frame, flown in from the harbor under a heavy lifter and set down
 in Port Meridian, a harbor city overrun by spider-frames, six-legged machines
-that climb the towers and swarm in growing waves, and scorpion-frames that dig up
-out of the streets to claw and sting at it, while swarms of up to a hundred
-eight-foot riftlings run it down in packs of one color, leap onto its hull and burst
-there. Every tenth wave brings a black
-robotic millipede long enough to lie across several city blocks. Packs of dropships set
+that climb the towers, scorpion-frames that claw and sting, swarms of eight-foot
+riftlings that leap onto the mech's hull and burst there, and a black robotic millipede long enough to lie across several city
+blocks. In this build nothing comes on its own: a debug menu (the `` ` `` key)
+summons any of them through portals in the sky. Packs of dropships set
 allied tanks down in the streets to hunt them too. The mech walks, boost-dashes,
 jump-jets, and fires beam rifles, cannons and full missile salvos. The city is alive:
 people walk its sidewalks and fill its buildings, traffic drives its streets and trains
@@ -29,10 +28,8 @@ npx http-server -p 8080 .
 
 three.js 0.170.0 loads from jsDelivr, so the first load needs a network connection.
 
-Add `?wave=N` to the URL to start the fight at wave N, with every kind that has
-joined by then (every spider and scorpion is in by wave 7, every
-[riftling](#riftlings) pack by wave 3). `?wave=10` starts with
-[the millipede](#the-millipede).
+It's a sandbox: there are no waves, and the fight starts empty. Monsters come only
+from the [summon menu](#summoning).
 
 ## Deploy
 
@@ -102,6 +99,7 @@ The song list is at the top of `js/music.js`.
 | Boost dash | `Shift` | DASH |
 | Reload | `R` | Reload |
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
+| Summon menu (tech demo) | `` ` `` (or `~`), or the Summon button | Summon |
 | Camera zoom | Mouse wheel | |
 
 The aim reaches straight up and straight down, so the weapons fire in any direction.
@@ -119,6 +117,71 @@ destroyed the lock moves to the next target in view.
 Missiles lock onto targets inside the dashed circle. A salvo spreads its missiles
 across every lock; with nothing locked they fly to the crosshair. Leg pods pop
 their missiles almost straight up so they arc over the ground in front of the feet.
+
+## Summoning
+
+This is still a tech demo and a sandbox: there are no waves, and nothing attacks
+until it is called in. Right before the fight starts (the moment the Kestrel H's clamps would
+open), the drop holds on a notice saying so; **Okay** (or `Enter`) lets the frame go.
+
+Press `` ` `` in the fight (or click **Summon** on the HUD, or tap it on a
+touchscreen) to open the summon menu on the left. The game keeps running behind
+it, and the pointer is free to use the sliders; `` ` `` again or **Close** takes
+the pointer back for aiming (`Esc` or a click on the view closes it too). Every
+monster in the game has a row: a slider for how many and a **Summon** button. The
+HUD's HOSTILES box counts everything out there or on its way through a portal.
+
+On a touchscreen (no `` ` `` key) the loadout and pause hangar also have a
+**Debug** button. From the pause hangar it goes back into the fight with the menu
+open; from the loadout before a drop it opens the menu over the loadout, where a
+Summon only queues the monster (the button reads **Queued**; press it again to take
+it back) and everything queued comes through as soon as the frame is released.
+
+| Monsters | How many per summon |
+| --- | --- |
+| Spider-frames: Stalker, Skitterer, Weaver, Lancer, Bombardier | 1 to 20 |
+| Medium spider-frames: Bulwark, Warden, Mender, Magnetar, Quarrier | 1 to 5 |
+| Scorpion-frames: Burrower, Prowler, Berserker, Shocktail, Scorcher, Venomtail | 1 to 20 |
+| Emperor scorpion | 1 to 5 |
+| [Riftlings](#riftlings): Acid, Blast, Shade, Spire | 1 to 500 |
+| Broodmother | 1 to 5 |
+| [The millipede](#the-millipede) | 1 (only one at a time) |
+
+A kind's button is disabled for a minute after it summons, counting down on the
+button. If there's no room left (136 spiders, 128 scorpions and 500 riftlings at
+once), a summon brings what fits.
+
+**Portals.** Every monster comes through a portal of its own, about 800 ft
+straight ahead of where the mech is looking (kept inside the city):
+
+- Sky portals lie flat, 400 ft up, a little wider than the monster they carry
+  (about 12 m across for a riftling, 40 m for a stalker, up to 80 m for an Emperor).
+  Each is a swirling vortex in the monster's glow color with a dark heart, a hot
+  rim and a crackling halo; it springs open, the monster drops out of its face and
+  falls to the street or roof below, and it snaps shut. The vortex is drawn opaque,
+  so the monster stays hidden until it falls through.
+- They only open in clear sky: never over a tower's roof, and never beside a
+  building that reaches up near them. And they open where the mech can see them:
+  each portal is checked against the mech's line of sight and rises (as high as
+  650 ft) to show over the roofs in between, or moves elsewhere in the area. If
+  the patch ahead is all towers, or hidden behind them, the area slides to the
+  nearest open sky the mech can see, up to about 180 m off to the side.
+- A summon of many staggers its portals one after another across an area that
+  grows with the count (up to about 140 m across for riftlings, 200 m for the big
+  kinds), so twenty stalkers drop in over
+  nine seconds and two hundred riftlings come down like rain over eight.
+- The millipede's portal stands upright a few meters off the street, 54 m across.
+  `js/millipede.js` tries 90 spots and headings near the 800 ft mark for one whose
+  disc clears whatever is under it and stands clear of the buildings beside it,
+  in view of the mech, with a route that leaves it lying on the roofs, low and
+  clear of the mech. The
+  body crawls out through it, sloping down onto the rooftops; everything still
+  behind the portal is clipped away (and can't be shot or locked), its legs reach
+  for holds as they come through, and the portal closes behind the tail.
+
+`js/summons.js` holds the list, the placement and the cooldowns, `js/portals.js`
+draws every portal as one instance of two instanced meshes (two draw calls for a
+whole rain of them), and `SummonMenu` in `js/ui.js` is the menu.
 
 ## Frames
 
@@ -578,35 +641,28 @@ serves a local copy of the three.js package.
 The enemies are six-legged spider machines cut from the spider texture sheets.
 They're big (a stalker's body alone is longer than the mech is tall) but weak
 alone (one beam rifle bolt, one missile or a short burst drops most of them; the
-big Lancers and Bombardiers take two bolts), and they come in waves that keep
-growing:
+big Lancers and Bombardiers take two bolts). They come only when
+[summoned](#summoning), dropping out of portals in the sky:
 
-- **Waves:** wave *n* sends 6 + 6*n* spiders and [scorpions](#scorpion-frames),
-  in packs, with up to 6 + 5*n* alive at once (64 at most). Spider packs spawn out
-  of sight, 75 to 230 units away, on walls and roofs, and the gap between packs
-  shrinks each wave. New kinds join as the waves go on, and a Broodmother leads
-  every fifth wave, except every tenth, when [the millipede](#the-millipede)
-  comes instead. Every wave also brings a swarm of [riftlings](#riftlings).
-  Clearing a wave patches 30% of the mech's armor.
 - **Variants:** each kind has its own palette, proportions, tactics and weapon.
   Every one of them has the same glowing red eyes.
 
-| Variant | Palette | From wave | What it does |
-| --- | --- | --- | --- |
-| **Stalker** | Gunmetal, red glow | 1 | The all-rounder. Crawls the towers, leaps between perches, fires plasma bursts, and charges a red laser from its perch. |
-| **Skitterer** | Rust, toxic green glow | 1 | Small, fast and fragile. Rushes the mech in packs of two to four along streets and walls, pounces on it from up to 60 units away (even off a wall), and bursts on contact. It also bursts when shot, hurting anything nearby, mech and spiders alike. |
-| **Weaver** | Bone white, cyan glow | 2 | Long-legged with a long abdomen; leaps the most. Spits pairs of web globs that slow the mech and its boost regen for about three seconds. Dashing tears free faster. |
-| **Lancer** | Blue steel, violet glow | 3 | Big and slow, with a dorsal lance over its head. Climbs high and perches far off (55 to 170 units), then charges a heavy violet beam for 1.7 seconds. Takes two rifle bolts. |
-| **Bombardier** | Brass, orange glow | 4 | Bulbous mortar sac. Stays on rooftops and lobs shells at where the mech is heading. A pulsing orange ring marks each landing spot. Takes two rifle bolts. |
-| **Broodmother** | Near black, magenta glow | Every 5th wave | A boss two and a half times a stalker's size with 320 HP. Fires five-bolt fans and sets down pairs of skitterers every seven to ten seconds. |
+| Variant | Palette | What it does |
+| --- | --- | --- |
+| **Stalker** | Gunmetal, red glow | The all-rounder. Crawls the towers, leaps between perches, fires plasma bursts, and charges a red laser from its perch. |
+| **Skitterer** | Rust, toxic green glow | Small, fast and fragile. Rushes the mech in packs of two to four along streets and walls, pounces on it from up to 60 units away (even off a wall), and bursts on contact. It also bursts when shot, hurting anything nearby, mech and spiders alike. |
+| **Weaver** | Bone white, cyan glow | Long-legged with a long abdomen; leaps the most. Spits pairs of web globs that slow the mech and its boost regen for about three seconds. Dashing tears free faster. |
+| **Lancer** | Blue steel, violet glow | Big and slow, with a dorsal lance over its head. Climbs high and perches far off (55 to 170 units), then charges a heavy violet beam for 1.7 seconds. Takes two rifle bolts. |
+| **Bombardier** | Brass, orange glow | Bulbous mortar sac. Stays on rooftops and lobs shells at where the mech is heading. A pulsing orange ring marks each landing spot. Takes two rifle bolts. |
+| **Broodmother** | Near black, magenta glow | A boss two and a half times a stalker's size with 320 HP. Fires five-bolt fans and sets down pairs of skitterers every seven to ten seconds. |
 
 - **Weapons:** plasma bolts are led at the mech. Lasers show a flickering aiming
   line while they charge, lock just before they fire, then burn along that line,
-  so a dash at the right moment dodges them. Fire rates rise with each wave.
+  so a dash at the right moment dodges them.
 - **Armor:** the mech has 1000 AP, regenerating after four seconds out of
   contact. The raised shield turns away hits from the front. Hits flash the
   screen edges and show arcs around the reticle pointing at the shooter. At 0 AP
-  the frame is destroyed; **Redeploy** starts again from wave 1.
+  the frame is destroyed; **Redeploy** starts again in an empty city.
 
 ### How they move
 
@@ -668,16 +724,15 @@ To get from one roof to the next a medium spider bridges: it walks to the edge
 facing the next roof and, if the gap is within its leg span and the roofs are
 close enough in height, stretches across, rear feet gripping one roof and front
 feet the other, until its body is over. A gap too wide (any street) means
-climbing down, crossing and climbing up the other side. They join the waves one
-at a time from wave 3.
+climbing down, crossing and climbing up the other side.
 
-| Variant | Palette | From wave | What sets it apart |
-| --- | --- | --- | --- |
-| **Bulwark** | Brass, amber glow | 3 | A riot-shield plate over its face turns away three quarters of direct fire from in front, and 40% of blasts. Fires twelve-round gatling bursts. Flank it, or shoot it from behind. |
-| **Mender** | White, green glow | 4 | Keeps near the other frames and plays medic: a green beam from the emitter on its crane arm repairs the most damaged frame within 70 units, 32 HP a second. Shoots at the mech when nothing needs fixing. Kill it first. |
-| **Warden** | Blue steel, gold glow | 5 | Raises a shield dome (240 HP) over itself and whatever stands near it. Shots from outside stop on the dome, blasts outside it don't reach in, and missiles can't lock onto it. Broken, it comes back eight seconds later. Step inside it, or break it and finish the Warden before it's back. |
-| **Magnetar** | Silver, red trim, blue glow | 6 | Two spinning coils on its back charge a tractor beam that holds the mech for three seconds and drags it toward the Magnetar a little faster than the mech can walk. Dash to pull away. |
-| **Quarrier** | Sandstone, orange glow | 7 | Tears a boulder out of the roof it stands on, holds it overhead and hurls it at where the mech is heading. The boulder smashes what it lands on (about 57 AP on a direct hit). |
+| Variant | Palette | What sets it apart |
+| --- | --- | --- |
+| **Bulwark** | Brass, amber glow | A riot-shield plate over its face turns away three quarters of direct fire from in front, and 40% of blasts. Fires twelve-round gatling bursts. Flank it, or shoot it from behind. |
+| **Mender** | White, green glow | Keeps near the other frames and plays medic: a green beam from the emitter on its crane arm repairs the most damaged frame within 70 units, 32 HP a second. Shoots at the mech when nothing needs fixing. Kill it first. |
+| **Warden** | Blue steel, gold glow | Raises a shield dome (240 HP) over itself and whatever stands near it. Shots from outside stop on the dome, blasts outside it don't reach in, and missiles can't lock onto it. Broken, it comes back eight seconds later. Step inside it, or break it and finish the Warden before it's back. |
+| **Magnetar** | Silver, red trim, blue glow | Two spinning coils on its back charge a tractor beam that holds the mech for three seconds and drags it toward the Magnetar a little faster than the mech can walk. Dash to pull away. |
+| **Quarrier** | Sandstone, orange glow | Tears a boulder out of the roof it stands on, holds it overhead and hurls it at where the mech is heading. The boulder smashes what it lands on (about 57 AP on a direct hit). |
 
 `js/mediums.js` gives them their goals, their bridging and their gear; the
 spider code in `js/spiders.js` walks and draws them like any other spider.
@@ -685,10 +740,10 @@ spider code in `js/spiders.js` walks and draws them like any other spider.
 ## Scorpion-frames
 
 Eight-legged ground hunters built from the same spider sheets and palette swap,
-running in the same waves, and bigger than the spiders: a Burrower's raised tail
+summoned the same way, and bigger than the spiders: a Burrower's raised tail
 stands as tall as the mech, and an Emperor's more than twice as tall. They don't
-leap or shoot from the rooftops. They dig up out of the street, 60 to 200 units
-away and out of sight, and come straight for the mech to fight up close:
+leap or shoot from the rooftops. They drop out of their portals onto the street
+or a roof and come straight for the mech to fight up close:
 
 - **Pincers:** a claw opens as it winds up, then snaps shut on the mech's hips or
   torso (12 AP).
@@ -707,15 +762,15 @@ mech on a higher roof, or high in the air, is out of reach of everything but
 their ranged attacks. Their pincers do reach a little past the line, so a mech
 standing right at the edge of a roof just above it can still be clawed.
 
-| Variant | Palette | From wave | What sets it apart |
-| --- | --- | --- | --- |
-| **Burrower** | Desert tan, amber glow | 1 | Dives into the street and tunnels at the mech, untargetable, straight under buildings, while the street heaves above it. A pulsing ring marks where it will burst out 0.6 seconds later, pincers first (24 AP). |
-| **Prowler** | Black | 2 | Runs dark: its lights go out and neither the lock-on button nor missile locks can find it. It swings wide round the mech to strike from behind, where the shield can't help and its hits do 50% more. Its lights flare whenever it strikes or is hit. |
-| **Berserker** | Dark red | 2 | Tougher (two rifle bolts). Below half its armor it goes berserk: glow flaring and venting red steam, it moves half again as fast and strikes and recovers far quicker. |
-| **Venomtail** | Neon green | 3 | Its sting injects venom that eats 7 AP a second for six seconds and holds off armor regeneration; its pincers inject a little too. Lobs pairs of venom globs from range, or at a mech out of reach. |
-| **Shocktail** | Neon blue | 3 | Its sting shorts out the mech's boost (45 drained, regen stalled). From range, and at a mech out of reach, it charges and arcs jagged lightning from its tail that drains boost too. |
-| **Scorcher** | Neon orange | 4 | Sprays a stream of fire from its tail that drags after the mech's legs, burning it while it stands in the stream and setting the street alight. Burning patches last a few seconds. |
-| **Emperor** | Royal purple, gold trim | 6 | Nearly twice the size of the other scorpions, with 160 HP and hits half again as hard. Its pincer seizes the mech and pins it for 1.8 seconds (dash to break free three times faster) while it reels itself in and stings. Arrives with two escorts. |
+| Variant | Palette | What sets it apart |
+| --- | --- | --- |
+| **Burrower** | Desert tan, amber glow | Dives into the street and tunnels at the mech, untargetable, straight under buildings, while the street heaves above it. A pulsing ring marks where it will burst out 0.6 seconds later, pincers first (24 AP). |
+| **Prowler** | Black | Runs dark: its lights go out and neither the lock-on button nor missile locks can find it. It swings wide round the mech to strike from behind, where the shield can't help and its hits do 50% more. Its lights flare whenever it strikes or is hit. |
+| **Berserker** | Dark red | Tougher (two rifle bolts). Below half its armor it goes berserk: glow flaring and venting red steam, it moves half again as fast and strikes and recovers far quicker. |
+| **Venomtail** | Neon green | Its sting injects venom that eats 7 AP a second for six seconds and holds off armor regeneration; its pincers inject a little too. Lobs pairs of venom globs from range, or at a mech out of reach. |
+| **Shocktail** | Neon blue | Its sting shorts out the mech's boost (45 drained, regen stalled). From range, and at a mech out of reach, it charges and arcs jagged lightning from its tail that drains boost too. |
+| **Scorcher** | Neon orange | Sprays a stream of fire from its tail that drags after the mech's legs, burning it while it stands in the stream and setting the street alight. Burning patches last a few seconds. |
+| **Emperor** | Royal purple, gold trim | Nearly twice the size of the other scorpions, with 160 HP and hits half again as hard. Its pincer seizes the mech and pins it for 1.8 seconds (dash to break free three times faster) while it reels itself in and stings. |
 
 ### How they're built
 
@@ -741,38 +796,41 @@ use, so the 24 scorpions that can be alive at once cost about a dozen draw calls
 
 ## Riftlings
 
-Eight-foot, six-limbed predators (the asset in `assets/riftlings/`) that pour into the
-streets with every wave: a swarm a dozen bigger each time, 16 on wave 1 and a hundred
-from wave 8 (half that on the millipede's waves). It comes as one surge a few seconds
-into the wave, pack after pack a second or two apart, each pack of one color and from
-out of sight: up the streets from 85 to 210 units away, or over the rooftops from 60 to
-160. Alone they're frail (one rifle bolt, or two
-machine-gun rounds), but they're fast and many, and a wave isn't clear until the last
-of its swarm is dead.
+Eight-foot, six-limbed predators (the asset in `assets/riftlings/`): a split crest,
+scythe arms and a barbed tail. They come only from the [summon menu](#summoning), up to
+five hundred at a time, each through its own small portal, in four packs of one color
+apiece. A summon is dealt out into packs of that color's size, and the first of each
+pack to come through leads it. Alone they're frail (one rifle bolt, or two machine-gun
+rounds), but they're fast and many.
 
-- **Hunting:** a pack's leader screams the pack on, and it runs at the mech by the
-  streets, round the blocks in its way. Close in, it comes straight on. Low walls and
+- **Hunting:** once the leader is down on its feet it screams the pack on, and the
+  pack runs at the mech by the streets, round the blocks in its way. Close in, it comes straight on. Low walls and
   cars it hops, low buildings it climbs up and over, and when the mech is up on a roof
   it climbs the wall to it.
 - **Leap and latch:** in range, a riftling crouches and leaps at the hull, leading the
   mech (so a dash at the right moment makes it miss). It clings where it struck, head
   up and claws in, for about a second, turning and moving with the mech and clawing at
   the armor (1.5 AP a stroke), then bursts with a wet splat in a spray of its color. On
-  the hull it's out of reach of the mech's own guns and locks.
+  the hull it's out of reach of the mech's own guns and locks. A swarm's claws are
+  handed to the mech once a frame, as one hit.
 - **Shot dead:** it bursts in a smaller spray, collapses, lies a moment, then melts
   away into a colored fume.
+- **Underfoot:** the mech's footfalls squash any under its feet, a hard landing
+  squashes a wider ring, and a dashing mech bowls them over. A Blast squashed
+  underfoot still goes off.
 
-| Pack | Color | From wave | Pack size | What sets it apart |
-| --- | --- | --- | --- | --- |
-| **Acid** | Green | 1 | 10 to 18 | The biggest, fastest packs: they run at twice the mech's walking speed and leap from 22 units. Every splat sprays acid that eats armor the way a Venomtail's venom does, and splats add up, to six seconds of it. |
-| **Blast** | Orange | 1 | 5 to 9 | Bloated, slower, glowing in pulses, and running in a tight clump behind their leader. Each one goes off like a grenade when it splats (21 AP) or is shot, killing whatever is close, so one shot into the clump sets the rest off in a ripple, and one going off on the hull blows the others there off it. |
-| **Shade** | Purple | 2 | 5 to 8 | Runs dark, its glow dimmed and no lock-on able to find it. The pack spreads out to surround the mech 24 units out, keeping low and ducking sideways out of the crosshair, until the leader screams: they light up and all pounce at once, from every side, where the shield can only turn away the ones in front. |
-| **Spire** | Blue | 3 | 5 to 8 | Comes over the rooftops, not the streets: climbs every wall in its way but the towers', bounds across the streets from roof to roof, and leaps at the mech from up high (44 units out) and straight off walls, so it can reach a mech up on a roof or in the air. Each latch shorts out 9 boost and stalls its regeneration. |
+| Pack | Color | Pack size | What sets it apart |
+| --- | --- | --- | --- |
+| **Acid** | Green | 10 to 18 | The biggest, fastest packs: they run at twice the mech's walking speed and leap from 22 units. Every splat sprays acid that eats armor the way a Venomtail's venom does, and splats add up, to six seconds of it. |
+| **Blast** | Orange | 5 to 9 | Bloated, slower, glowing in pulses, and running in a tight clump behind their leader. Each one goes off like a grenade when it splats (21 AP) or is shot, killing whatever is close, so one shot into the clump sets the rest off in a ripple, and one going off on the hull blows the others there off it. |
+| **Shade** | Purple | 5 to 8 | Runs dark, its glow dimmed and no lock-on able to find it. The pack spreads out to surround the mech 24 units out, keeping low and ducking sideways out of the crosshair, until the leader screams: they light up and all pounce at once, from every side, where the shield can only turn away the ones in front. |
+| **Spire** | Blue | 5 to 8 | Comes over the rooftops, not the streets: climbs every wall in its way but the towers', bounds across the streets from roof to roof, and leaps at the mech from up high (44 units out) and straight off walls, so it can reach a mech up on a roof or in the air. Each latch shorts out 9 boost and stalls its regeneration. |
 
-`js/riftlings.js` runs them in the same waves as the spiders (`js/spiders.js`). They're
-drawn by the asset's own instanced swarm: one `InstancedMesh` for all of them, posed in
-the vertex shader from its thirteen clips baked into a pose texture, so a hundred cost
-one draw call, plus one for the soft contact shadows under them (the posed mesh can't
+`js/riftlings.js` runs them for the swarm (`js/spiders.js`); `js/summons.js` calls them
+in. They're drawn by the asset's own instanced swarm at its lower detail (about 2,400
+triangles each): one `InstancedMesh` for all of them, posed in the vertex shader from
+its thirteen clips baked into a pose texture, so five hundred cost one draw call, plus
+one for the soft contact shadows under them (the posed mesh can't
 cast real ones). Each riftling is a point on a street, a roof, a wall or the hull,
 pushed out of the buildings (the same push-out the mech uses), out of the mech's legs
 and away from each other. The way to the mech by street is a flow field: the city's
@@ -780,16 +838,15 @@ footprint is a grid of 3-unit cells, blocked under buildings and walls, and a
 breadth-first search out from the mech's cell (searched again as it moves) gives every
 street cell its distance to the mech, so a riftling only has to head downhill to come
 round the blocks, never into a dead end. Clips follow what each one is
-doing, their speed matched to its own: idle and screaming at the muster, running and
+doing, their speed matched to its own: falling out of the portals, idle and screaming at the muster, running and
 walking, stalking and crawling for the Shades, dodging, leaping (with the clip's own
 hop taken out, so the arc it flies is the real one), the climbing clip turned head up
 for walls and the hull, hit and death.
 
 ## The millipede
 
-Every tenth wave, in the Broodmother's place and with half the usual spiders, a
-black robotic millipede hundreds of feet long crawls in along the rooftops and
-settles draped across two or three city blocks near the mech: it lies on the
+Summoned, a black robotic millipede hundreds of feet long crawls out of an upright
+portal (see [Summoning](#summoning)) along the rooftops and settles draped across two or three city blocks near the mech: it lies on the
 roofs, sags over the streets between them, and grips roofs and facades with two
 pairs of legs under each of its ten armored sections.
 
@@ -820,11 +877,12 @@ The boss bar counts its reactor cores, then the head's armor.
 
 ### How it's built
 
-`js/millipede.js` tries 70 routes, each a gentle arc ending 50 to 95 units from
-the mech. Over each it lays the tightest drape: the lowest line over every roof
-it passes that never slopes more steeply than 0.65. It takes the route that lies
-most on roofs, low and smooth, clear of the mech, and starting out of sight, then
-crawls the body in along it. Each section is a rigid piece laid along the drape
+`js/millipede.js` plans its route from its portal (see [Summoning](#summoning)):
+a straight run back through the portal for the body still to come, and a gentle
+arc forward from it. Over the arc it lays the tightest drape: the lowest line over
+every roof it passes that never slopes more steeply than 0.65, starting from the
+portal's height. Of 90 tries it takes the one in view of the mech that lies most
+on roofs, low and smooth, and clear of the mech, then crawls the body out along it. Each section is a rigid piece laid along the drape
 and lifted until it clears every roof under it, with a ribbed sleeve over each
 joint.
 
@@ -974,13 +1032,16 @@ in the hangar settings.
 | `js/ceilingTiles.js` | Generated: slots of the ceiling atlas and the theme tags of its fixtures, tiles and vents |
 | `tools/tests/destruction.js` | Headless destruction scenarios: timings and screenshots |
 | `tools/tests/allies.js` | Headless frame select, loadout, insertion, tank drops and the tanks' fight with the swarm: checks and screenshots |
-| `tools/tests/riftlings.js` | Headless riftling packs: each color's hunt, latches, splats and tricks, a Blast chain, climbing to a roof, a swarm of a hundred: checks and screenshots |
-| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, plasma, webs, mortars and lasers, and the waves for spiders, scorpions, riftlings and the millipede; which foe each one goes after (the mech or an ally) |
+| `tools/tests/riftlings.js` | Headless riftling packs: each color's hunt, latches, splats and tricks, a Blast chain, climbing to a roof: checks and screenshots |
+| `tools/tests/summons.js` | Headless summon menu, cooldowns, every kind's portal drop, the riftling rain and the millipede's portal: checks and screenshots |
+| `js/spiders.js` | Spider-frames: variants and palettes, instanced model, surface crawling, tripod gait with IK legs, jumps, falls from portals, plasma, webs, mortars and lasers, and the summoned swarm's bookkeeping (spiders, scorpions, riftlings, the millipede); which foe each one goes after (the mech or an ally) |
+| `js/summons.js` | The summon menu's list of monsters, where their portals open (800 ft ahead, in clear sky), the staggered drops and the one-minute cooldowns |
+| `js/portals.js` | Summoning portals: instanced vortex and halo shaders, opening, holding and closing, embers |
 | `js/allies.js` | The Kestrel H insertion, packs of Kestrels setting Bastion tanks down, tank driving and gunnery, what the swarm does to them, and the instanced fleets that draw them |
 | `js/vehicles/models.js` | The Kestrel dropship (and its Kestrel H heavy-lifter variant) and the Bastion armored carrier, from the Riftlings preview |
 | `js/scorpions.js` | Scorpion-frames: variants and palettes, instanced model with a CCD tail and pincers, melee AI, the climb limit, and each kind's ability |
 | `js/mediums.js` | Medium spider-frames: variants, bridging between roofs, gear, shield domes, repair and tractor beams, thrown boulders |
-| `js/riftlings.js` | Riftlings: the four packs, swarms in the waves, the flow field through the streets, wall sliding and climbing, leaps and roof-to-roof bounds, latching onto the hull, splats, blasts and acid, the Shades' ring and pounce, contact shadows |
+| `js/riftlings.js` | Riftlings: the four packs, coming through the portals, the flow field through the streets, wall sliding and climbing, leaps and roof-to-roof bounds, latching onto the hull, splats, blasts and acid, the Shades' ring and pounce, squashing and bowling over, contact shadows |
 | `assets/riftlings/riftling.js` | The riftling model and its thirteen clips, baked into a pose texture and drawn as one instanced, GPU-posed swarm |
 | `js/millipede.js` | The millipede: rooftop route and drape, sectioned body, three-layer plate armor and reactor cores, legs, the head's flight, eye beams, ramming and finale |
 | `js/frameParts.js` | Shared by spiders, scorpions and the millipede: plates and hulls cut from the spider atlas, the palette-swap material, leg rigs and IK, beams, the mech's hit capsule |
@@ -989,7 +1050,7 @@ in the hangar settings.
 | `js/music.js` | Soundtrack playlist: title theme, shuffled rotation, volume drop after the title |
 | `js/boot.js` | Entry point: downloads the title theme, then loads the title screen and the game |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
-| `js/ui.js` | HUD (armor, waves, damage indicators), frame select cards and hangar menu |
+| `js/ui.js` | HUD (armor, hostiles, damage indicators), the summon menu, frame select cards and hangar menu |
 | `js/main.js` | Renderer, world scale, player physics and armor, frame swaps, the screens from intro to drop, camera (and the insertion's), game loop, game over |
 | `js/title/title.js` | Title screen: tap/click/key to start, fade out, portrait handling |
 | `js/title/logo.js` | Live 3D VECTORCLAD logo (from the brand kit) |

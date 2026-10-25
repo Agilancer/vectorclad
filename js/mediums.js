@@ -58,12 +58,6 @@ export const MEDIUMS = {
 };
 for (const id in MEDIUMS) Object.assign(MEDIUMS[id], { id, medium: true, leap: 0, perch: MEDIUMS[id].range, roof: 0.85 });
 
-// Wave mix entries, as for spiders: [variant, weight, first wave, pack size]
-export const MEDIUM_MIX = [
-  ['bulwark', 1.1, 3, [1, 1]], ['mender', 0.8, 4, [1, 1]], ['warden', 0.9, 5, [1, 1]],
-  ['magnetar', 0.9, 6, [1, 1]], ['quarrier', 0.9, 7, [1, 1]],
-];
-
 // Tractor beam and boulders
 const TRACTOR = { range: 140, charge: 0.8, hold: 3.2, cool: [6, 8] };
 const BOULDER = { gravity: 30, dmg: 26, splash: 9, size: 1.6 };
@@ -386,7 +380,7 @@ export class MediumKin {
   // ---- abilities ----------------------------------------------------------------------------
 
   weapons(s, dt, P) {
-    const v = s.v, A = s.ability, sw = this.sw, aggr = 1 + sw.wave * 0.05;
+    const v = s.v, A = s.ability, sw = this.sw;
     A.cool -= dt;
     // Bulwark's gatling streams run on as bursts
     if (s.burst > 0) {
@@ -400,10 +394,10 @@ export class MediumKin {
     const sees = s.see && s.seeT > 0.4, d = s.c.distanceTo(P.chest);
     switch (v.weapon) {
       case 'gatling':
-        if (sees && A.cool <= 0 && d < 160 && sw.bolts.length < 200) { s.burst = 12; s.burstT = 0.05; A.cool = rand(3, 4.5) / aggr; }
+        if (sees && A.cool <= 0 && d < 160 && sw.bolts.length < 200) { s.burst = 12; s.burstT = 0.05; A.cool = rand(3, 4.5); }
         break;
       case 'dome':
-        if (sees && A.cool <= 0 && d < 140 && sw.bolts.length < 220) { sw.fireBolt(s, P, 'plasma'); A.cool = rand(2, 3.5) / aggr; }
+        if (sees && A.cool <= 0 && d < 140 && sw.bolts.length < 220) { sw.fireBolt(s, P, 'plasma'); A.cool = rand(2, 3.5); }
         break;
       case 'mend': this.mend(s, dt, P, sees, d); break;
       case 'tractor': this.tractor(s, dt, P, sees, d); break;
@@ -473,7 +467,7 @@ export class MediumKin {
       s.lift = Math.min(1, s.lift + dt * 2);
       if (A.t >= 0.95) {
         A.phase = null;
-        A.cool = rand(4.5, 6.5) / (1 + sw.wave * 0.04);
+        A.cool = rand(4.5, 6.5);
         this.hurl(s, P);
       }
       return;

@@ -5,7 +5,8 @@ import { createRiftlingSwarm, RIFTLING_COLORS, RIFTLING_CLIPS } from '../assets/
 
 // ---------------------------------------------------------------------------
 // Riftlings: eight-foot, six-limbed swarm predators (assets/riftlings) that
-// pour into the streets in packs of one color, up to a hundred at once.
+// rain out of summoning portals (js/summons.js) in packs of one color, up to
+// five hundred at once.
 //
 // Every pack hunts the same way. Its leader screams, and the pack runs at the
 // mech by the streets (a flow field round the blocks), hopping walls and cars
@@ -24,7 +25,8 @@ import { createRiftlingSwarm, RIFTLING_COLORS, RIFTLING_CLIPS } from '../assets/
 // They're drawn by the asset's instanced swarm: one draw call for all of them,
 // posed on the GPU from its 13 baked clips. This file moves them: each one is a
 // point on a street, a roof or a wall (or the mech's hull), steered toward the
-// mech and pushed out of the buildings and each other.
+// mech and pushed out of the buildings and each other. Underfoot they're
+// squashed, and a dashing mech bowls them over.
 // ---------------------------------------------------------------------------
 
 const V3 = THREE.Vector3;
@@ -32,8 +34,8 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-const CAP = 100;               // most alive at once
-const SLOTS = 150;             // instance slots: the living, and the dead still lying where they fell
+const CAP = 500;               // most alive at once
+const SLOTS = 600;             // instance slots: the living, and the dead still lying where they fell
 const HEIGHT_M = 8 * 0.3048;   // standing height: 8 ft
 const MODEL_M = 1.35;          // the model's own standing height (assets/riftlings/README.md)
 // Sizes on the model, in its meters (scaled up to HEIGHT_M with the rest of it)
@@ -48,8 +50,8 @@ const HULL = 1.9;              // the mech's hit capsule (js/frameParts.js capsu
 const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0);
 
 // ---------------------------------------------------------------------------
-// Packs. name: a riftling's lock-on label; from: first wave; weight: share of the
-// swarm's packs; size: riftlings per pack. hp; run: top speed, units/s; leap: how
+// Packs, one summon menu entry each (js/summons.js). name: a riftling's lock-on label;
+// size: riftlings per pack (a big summon is dealt out into several). hp; run: top speed, units/s; leap: how
 // far off it leaps at the mech, high: how far from up on a roof or a wall; reach:
 // how far above its feet the mech's chest can be. latch: seconds it clings; claw:
 // each claw stroke while it does and splat: the burst, both before the mech's
@@ -63,19 +65,19 @@ const UP = new V3(0, 1, 0), DOWN = new V3(0, -1, 0);
 // ---------------------------------------------------------------------------
 export const RIFT_PACKS = {
   green: {
-    name: 'ACID RIFTLING', from: 1, weight: 4, size: [10, 18], hp: 8, run: 16, leap: 22, reach: 12,
+    name: 'ACID RIFTLING', size: [10, 18], hp: 8, run: 16, leap: 22, reach: 12,
     latch: [0.9, 1.15], claw: 1, splat: 2, acid: 1.1,
   },
   orange: {
-    name: 'BLAST RIFTLING', from: 1, weight: 2.4, size: [5, 9], hp: 12, run: 11.5, leap: 15, reach: 9,
+    name: 'BLAST RIFTLING', size: [5, 9], hp: 12, run: 11.5, leap: 15, reach: 9,
     latch: [0.8, 1], claw: 1, splat: 0, blast: { r: 5, dmg: 30, mech: 14 }, clump: true, bulk: 1.1,
   },
   purple: {
-    name: 'SHADE RIFTLING', from: 2, weight: 2, size: [5, 8], hp: 14, run: 14, leap: 34, reach: 10,
+    name: 'SHADE RIFTLING', size: [5, 8], hp: 14, run: 14, leap: 34, reach: 10,
     latch: [1.2, 1.5], claw: 1.5, splat: 3, shade: true, ring: 24, stalk: 7,
   },
   blue: {
-    name: 'SPIRE RIFTLING', from: 3, weight: 2, size: [5, 8], hp: 10, run: 15, leap: 20, high: 44, reach: 30,
+    name: 'SPIRE RIFTLING', size: [5, 8], hp: 10, run: 15, leap: 20, high: 44, reach: 30,
     latch: [0.9, 1.1], claw: 1, splat: 2, climber: true, climb: 12, shock: 9,
   },
 };
@@ -231,18 +233,19 @@ function blobTexture() {
 }
 
 // ---------------------------------------------------------------------------
-// The horde, run by the swarm (js/spiders.js) in the same waves
+// The horde, run by the swarm (js/spiders.js) and called in by the summon menu (js/summons.js)
 // ---------------------------------------------------------------------------
 
 export class RiftlingHorde {
-  constructor(swarm, { scene, mobile = false }) {
+  constructor(swarm, { scene }) {
     this.sw = swarm;
     this.world = swarm.world;
     this.fx = swarm.fx;
     this.sound = swarm.sound;
     // Game units per model meter for a riftling of the standard size
     this.k = (HEIGHT_M / MODEL_M) * swarm.world.M;
-    this.rig = createRiftlingSwarm(THREE, { capacity: SLOTS, metersPerUnit: 1 / swarm.world.M, lod: mobile ? 'low' : 'full' });
+    // The lower detail: there can be five hundred of them
+    this.rig = createRiftlingSwarm(THREE, { capacity: SLOTS, metersPerUnit: 1 / swarm.world.M, lod: 'low' });
     this.mesh = this.rig.mesh;
     for (let i = 0; i < SLOTS; i++) this.mesh.setMatrixAt(i, ZERO);
     this.rig.setCount(0);
@@ -262,10 +265,8 @@ export class RiftlingHorde {
     this.slots = new Array(SLOTS).fill(null);
     this.free = [];
     for (let i = SLOTS - 1; i >= 0; i--) this.free.push(i);
-    this.budget = 0;    // riftlings still to come this wave
-    this.packT = 0;
-    this.fails = 0;
-    this.wave = 0;
+    this.grid = new Map(); // the ones on the ground, by 2-unit cell, for keeping them apart
+    this.claws = null;     // claw strokes on the mech this frame, handed over as one hit
     this.time = 0;
     this.alertT = -99;
     this.steps = 0;
@@ -274,113 +275,41 @@ export class RiftlingHorde {
   }
 
   get alive() { return this.list.reduce((n, r) => n + (r.alive ? 1 : 0), 0); }
-  get hostiles() { return this.alive + this.budget; }
-  /** Nothing of this wave's swarm left to come or to kill */
-  get done() { return this.budget <= 0 && this.alive === 0; }
-
-  /** Names of the packs that join the fight on wave n, for the wave banner */
-  joining(n) { return Object.values(RIFT_PACKS).filter((v) => v.from === n).map((v) => `${v.name}S`); }
-
-  /** Wave n's swarm grows by a dozen a wave to a hundred; the millipede's waves bring half */
-  startWave(n, half) {
-    this.wave = n;
-    this.budget = Math.round(Math.min(CAP, 4 + 12 * n) * (half ? 0.5 : 1));
-    this.packT = 2.5;
-    this.fails = 0;
-  }
+  /** How many more can be summoned */
+  get room() { return CAP - this.alive; }
 
   clear() {
     for (const r of [...this.list]) this.remove(r);
     this.packs.length = 0;
-    this.budget = 0;
+    this.claws = null;
   }
 
-  // ---- spawning ------------------------------------------------------------------------
+  // ---- coming through the portals ----------------------------------------------------------
 
-  spawning(dt, ctx) {
-    if (this.budget <= 0 || (this.packT -= dt) > 0) return;
-    const id = this.pickPack(), v = RIFT_PACKS[id];
-    const n = Math.min(this.budget, CAP - this.alive, Math.round(rand(v.size[0], v.size[1])));
-    // Wait for room for a proper pack (the wave's last one can be smaller)
-    if (n < Math.min(4, this.budget)) { this.packT = 0.5; return; }
-    const made = this.spawnPack(id, n, ctx);
-    if (made) { this.budget -= made; this.fails = 0; }
-    else if (++this.fails > 8) { this.budget -= n; this.fails = 0; } // nowhere to come from: let this pack go
-    // The swarm comes as one surge: pack after pack, from all round, a second or two apart
-    this.packT = made ? rand(0.8, 2) : 0.5;
-  }
-
-  pickPack() {
-    const open = Object.values(RIFT_PACKS).filter((v) => v.from <= Math.max(1, this.wave));
-    let r = Math.random() * open.reduce((t, v) => t + v.weight, 0);
-    for (const v of open) if ((r -= v.weight) <= 0) return v.id;
-    return open[0].id;
-  }
-
-  /** A pack of n of kind id, out of the mech's sight. Returns how many came. */
-  spawnPack(id, n, ctx) {
-    const v = RIFT_PACKS[id], P = ctx.player.pos, cam = ctx.camera;
-    const inView = (p) => {
-      _e.copy(p).project(cam);
-      return _e.z < 1 && Math.abs(_e.x) < 1.15 && Math.abs(_e.y) < 1.15 && p.distanceTo(P) < 180;
-    };
-    // Spires come over the rooftops; the rest up the streets
-    const roof = v.climber ? this.findRoof(P, 60, 160, inView) : null;
-    const at = roof ? roof.point : this.findStreet(P, 85, 210, inView, 30) || this.findStreet(P, 140, 260, null, 20);
-    if (!at) return 0;
-    const pk = { v, members: [], live: [], leader: null, state: 'muster', t: 0, timer: v.shade ? rand(0.3, 0.6) : rand(1.3, 1.8), center: at.clone(), ringN: 0, close: 0 };
-    for (let i = 0; i < n; i++) {
-      let p = at;
-      if (i && roof) {
-        const c = roof.collider, m = 1.2;
-        p = _p.set(clamp(at.x + rand(-7, 7), c.min.x + m, c.max.x - m), at.y, clamp(at.z + rand(-7, 7), c.min.z + m, c.max.z - m));
-      } else if (i) p = this.findStreet(at, 1.5, 10, null, 5) || _p.set(at.x + rand(-2, 2), at.y, at.z + rand(-2, 2));
-      if (!this.spawn(p, pk, i === 0)) break;
+  /**
+   * One riftling of pack kind `color` (green, orange, purple or blue) at pos, just through its
+   * portal, falling at vel. The riftlings of one summon (the same `group`) are dealt out into
+   * packs of that kind's size; the first of each pack leads it.
+   */
+  summon(pos, { color = 'green', vel = null, group = null } = {}) {
+    const v = RIFT_PACKS[color] || RIFT_PACKS.green;
+    let pk = group && group.pack;
+    if (!pk || pk.v !== v || pk.members.length >= pk.size) {
+      pk = {
+        v, size: Math.round(rand(v.size[0], v.size[1])), members: [], live: [], leader: null, state: 'muster', t: 0,
+        timer: v.shade ? rand(0.3, 0.6) : rand(1.3, 1.8), center: pos.clone(), ringN: 0, close: 0, screamed: false,
+      };
+      this.packs.push(pk);
+      if (group) group.pack = pk;
     }
-    if (!pk.members.length) return 0;
-    pk.leader = pk.members[0];
-    this.packs.push(pk);
-    // The leader screams the pack on; Shades only hiss
-    if (v.shade) this.sound.riftHiss(at);
-    else {
-      this.anim(pk.leader, 'screaming', 1, 0);
-      this.sound.riftScream(at);
-    }
-    return pk.members.length;
-  }
-
-  /** Open street between rMin and rMax from center, clear of buildings */
-  findStreet(center, rMin, rMax, avoidView, tries) {
-    const B = this.world.bounds;
-    for (let i = 0; i < tries; i++) {
-      const a = Math.random() * Math.PI * 2, d = rand(rMin, rMax);
-      const x = center.x + Math.cos(a) * d, z = center.z + Math.sin(a) * d;
-      if (x < B.minX + 6 || x > B.maxX - 6 || z < B.minZ + 6 || z > B.maxZ - 6) continue;
-      const hit = this.sw.ray(_a.set(x, 400, z), DOWN, 420);
-      if (!hit || hit.normal.y < 0.9 || hit.point.y > 1.2 || (hit.collider && !hit.collider.low)) continue;
-      if (avoidView && avoidView(hit.point)) continue;
-      // Not in or up against a building (a ray down from inside one misses its roof)
-      if (this.world.resolve(_b.copy(hit.point), 1.2, 2, hit.point.y)) continue;
-      return hit.point.clone();
-    }
-    return null;
-  }
-
-  /** A roof of middling height between rMin and rMax away, with nothing taller over the spot */
-  findRoof(center, rMin, rMax, avoidView) {
-    const near = this.sw.buildings.filter((c) => {
-      const d = Math.hypot((c.min.x + c.max.x) / 2 - center.x, (c.min.z + c.max.z) / 2 - center.z);
-      return d > rMin && d < rMax && c.max.y > 8 && c.max.y < 50 && c.max.x - c.min.x > 6 && c.max.z - c.min.z > 6;
-    });
-    for (let i = 0; i < 16 && near.length; i++) {
-      const c = near[Math.floor(Math.random() * near.length)];
-      const p = _p.set(rand(c.min.x + 2, c.max.x - 2), c.max.y, rand(c.min.z + 2, c.max.z - 2));
-      const hit = this.sw.ray(_a.set(p.x, c.max.y + 40, p.z), DOWN, 45);
-      if (!hit || hit.collider !== c || Math.abs(hit.point.y - c.max.y) > 0.3) continue;
-      if (avoidView && avoidView(p)) continue;
-      return { point: p.clone(), collider: c };
-    }
-    return null;
+    const r = this.spawn(pos, pk, !pk.members.length);
+    if (!r) return null;
+    if (!pk.leader) pk.leader = r;
+    r.state = 'fall';
+    r.fallY = pos.y;
+    if (vel) r.vel.copy(vel);
+    this.anim(r, 'leaping', 0.001, 0.42);
+    return r;
   }
 
   spawn(at, pk, lead = false) {
@@ -392,11 +321,11 @@ export class RiftlingHorde {
     // A little variety in size; the leader stands taller
     const scale = rand(0.94, 1.06) * (v.bulk || 1) * (lead ? 1.12 : 1);
     const r = {
-      kind: 'riftling', name: v.name, v, pack: pk, slot, alive: true, removed: false, boss: false, stealth: !!v.shade,
+      kind: 'riftling', name: v.name, v, pack: pk, slot, alive: true, removed: false, boss: false, stealth: !!v.shade, squash: 1,
       feet: at.clone(), pos: new V3(), vel: new V3(), fwd: new V3(), sep: new V3(),
       scale, k: this.k * scale, body: BODY * this.k * scale, radius: HIT * this.k * scale,
       hp: v.hp * scale, maxHp: v.hp * scale, state: 'muster', timer: 0, t: 0,
-      wallN: new V3(), wallT: 0, slide: Math.random() < 0.5 ? -1 : 1, best: Infinity, stuckT: 0, lostT: 0, detour: new V3(), detourT: 0,
+      wallN: new V3(), wallT: 0, slide: Math.random() < 0.5 ? -1 : 1, best: Infinity, stuckT: 0, detour: new V3(), detourT: 0,
       climbN: new V3(), cling: new V3(), climbY0: 0, fallY: 0, groundY: at.y, latch: null, slotA: 0, ready: false,
       fl: { vel: new V3(), from: new V3(), t: 0, T: 1 },
       cool: { leap: rand(0.2, 0.8), dodge: rand(0.5, 1.5), step: 0 },
@@ -497,15 +426,21 @@ export class RiftlingHorde {
     this.dt = dt;
     this.rig.update(this.time); // before anything starts a clip this frame
     this.steps = 0;
+    if (!this.list.length) return;
     ctx.camera.getWorldDirection(this.camFwd);
-    this.spawning(dt, ctx);
-    if (this.list.length) this.field.update(P.pos, dt);
+    this.field.update(P.pos, dt);
     for (const pk of [...this.packs]) this.thinkPack(pk, dt, P);
     this.spread();
     for (const r of [...this.list]) {
       if (r.removed) continue;
       this.step(r, dt, P, ctx);
       if (!r.removed) this.render(r);
+    }
+    // A swarm's claws land as one hit a frame, not hundreds
+    if (this.claws) {
+      const cb = this.sw.playerCb;
+      cb.onPlayerHit && cb.onPlayerHit(this.claws.amount, this.claws.from, 'claw');
+      this.claws = null;
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
@@ -527,6 +462,17 @@ export class RiftlingHorde {
     if (n) pk.center.divideScalar(n);
     switch (pk.state) {
       case 'muster':
+        // Down out of the portals: once the leader is on its feet it screams the pack on
+        if (!GROUND[pk.leader.state]) break;
+        if (!pk.screamed) {
+          pk.screamed = true;
+          if (pk.v.shade) this.sound.riftHiss(pk.leader.pos);
+          else {
+            this.go(pk.leader, 'muster');
+            this.anim(pk.leader, 'screaming', 1, 0);
+            this.sound.riftScream(pk.leader.pos);
+          }
+        }
         if ((pk.timer -= dt) > 0) break;
         pk.state = pk.v.shade ? 'stalk' : 'hunt';
         pk.t = 0;
@@ -571,24 +517,32 @@ export class RiftlingHorde {
 
   /** A push apart for each one on the ground from the others close to it, applied as it moves */
   spread() {
-    const L = this.list;
-    for (const r of L) r.sep.set(0, 0, 0);
-    for (let i = 0; i < L.length; i++) {
-      const a = L[i];
+    const G = this.grid, key = (x, z) => (Math.floor(x / 2) + 8192) * 16384 + Math.floor(z / 2) + 8192;
+    G.clear();
+    for (const r of this.list) {
+      r.sep.set(0, 0, 0);
+      if (!r.alive || !GROUND[r.state]) continue;
+      const k = key(r.feet.x, r.feet.z), cell = G.get(k);
+      if (cell) cell.push(r); else G.set(k, [r]);
+    }
+    for (const a of this.list) {
       if (!a.alive || !GROUND[a.state]) continue;
-      for (let j = i + 1; j < L.length; j++) {
-        const b = L[j];
-        if (!b.alive || !GROUND[b.state]) continue;
-        // Blasts pack in tight; the rest keep a body's width apart
-        const want = (a.body + b.body) * (a.v.clump && b.v === a.v ? 1.2 : 1.6);
-        const dx = b.feet.x - a.feet.x, dz = b.feet.z - a.feet.z;
-        if (Math.abs(dx) > want || Math.abs(dz) > want || Math.abs(b.feet.y - a.feet.y) > 1.5) continue;
-        const d2 = dx * dx + dz * dz;
-        if (d2 > want * want) continue;
-        const d = Math.sqrt(d2), push = (want - d) / want;
-        const ux = d > 1e-3 ? dx / d : Math.random() - 0.5, uz = d > 1e-3 ? dz / d : Math.random() - 0.5;
-        a.sep.x -= ux * push; a.sep.z -= uz * push;
-        b.sep.x += ux * push; b.sep.z += uz * push;
+      const cx = Math.floor(a.feet.x / 2), cz = Math.floor(a.feet.z / 2);
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          const cell = G.get((cx + i + 8192) * 16384 + cz + j + 8192);
+          if (!cell) continue;
+          for (const b of cell) {
+            if (b === a || Math.abs(b.feet.y - a.feet.y) > 1.5) continue;
+            // Blasts pack in tight; the rest keep a body's width apart
+            const want = (a.body + b.body) * (a.v.clump && b.v === a.v ? 1.2 : 1.6);
+            const dx = a.feet.x - b.feet.x, dz = a.feet.z - b.feet.z, d2 = dx * dx + dz * dz;
+            if (d2 > want * want) continue;
+            const d = Math.sqrt(d2), push = (want - d) / want;
+            a.sep.x += (d > 1e-3 ? dx / d : Math.random() - 0.5) * push;
+            a.sep.z += (d > 1e-3 ? dz / d : Math.random() - 0.5) * push;
+          }
+        }
       }
     }
   }
@@ -626,11 +580,6 @@ export class RiftlingHorde {
     }
     if (r.removed) return;
     this.center(r, r.pos);
-    // One lost somewhere far off for a long time goes back into the wave's swarm, to come again
-    if (r.alive && r.lostT > 25 && r.state !== 'latch' && r.feet.distanceTo(P.pos) > 70) {
-      this.remove(r);
-      this.budget++;
-    }
   }
 
   /** Where it can be hit and locked onto: mid-body */
@@ -654,7 +603,8 @@ export class RiftlingHorde {
 
   /** Back to what its pack is doing after a flinch, a dodge, a climb or a fall */
   resume(r) {
-    this.go(r, !this.P.alive ? 'gloat' : this.waiting(r) ? 'stalk' : 'run');
+    const pk = r.pack;
+    this.go(r, !this.P.alive ? 'gloat' : pk.state === 'muster' && !r.v.shade ? 'muster' : this.waiting(r) ? 'stalk' : 'run');
   }
 
   slow(r, dt, P) {
@@ -708,8 +658,7 @@ export class RiftlingHorde {
 
   /** Track whether it's getting any closer; stuck, it climbs what it's up against or tries another way */
   progress(r, dist, dt, P) {
-    if (dist < r.best - 1) { r.best = dist; r.stuckT = 0; r.lostT = 0; return; }
-    r.lostT += dt;
+    if (dist < r.best - 1) { r.best = dist; r.stuckT = 0; return; }
     if ((r.stuckT += dt) < 2.5) return;
     r.stuckT = 0;
     r.best = dist;
@@ -880,7 +829,6 @@ export class RiftlingHorde {
     r.cling.set(hit.point.x, y, hit.point.z);
     r.climbY0 = y;
     r.vel.set(0, r.v.climb || 7, 0);
-    r.lostT = 0;
     this.anim(r, 'climbing', (r.v.climb || 7) / 6);
   }
 
@@ -971,7 +919,6 @@ export class RiftlingHorde {
     r.vel.set(0, 0, 0);
     r.state = 'crouch';
     r.timer = sync ? 0.12 : 0.16;
-    r.lostT = 0;
     // The clip's crouch covers its first eighth; the flight takes the rest of it
     this.anim(r, 'leaping', (0.12 * RIFTLING_CLIPS.leaping.duration) / r.timer, 0);
     r.cool.leap = rand(0.8, 1.4);
@@ -1119,6 +1066,11 @@ export class RiftlingHorde {
   }
 
   hurtMech(amount, from, kind) {
+    if (kind === 'claw') {
+      // Saved up and handed over once at the end of the frame (update)
+      if (this.claws) { this.claws.amount += amount; this.claws.from.copy(from); } else this.claws = { amount, from: from.clone() };
+      return;
+    }
     const cb = this.sw.playerCb;
     cb.onPlayerHit && cb.onPlayerHit(amount, from, kind);
   }
@@ -1142,7 +1094,8 @@ export class RiftlingHorde {
     return true;
   }
 
-  kill(r, point) {
+  /** squash: flattened underfoot; fling: the velocity a dashing mech throws it off at */
+  kill(r, point, { squash = false, fling = null } = {}) {
     const was = r.state;
     r.alive = false;
     r.stealth = false;
@@ -1153,16 +1106,39 @@ export class RiftlingHorde {
       this.center(r, r.feet).addScaledVector(UP, -CENTER * r.k);
       r.vel.copy(r.climbN).multiplyScalar(4);
     } else if (was !== 'leap' && was !== 'fall') r.vel.set(r.vel.x * 0.3, 0, r.vel.z * 0.3);
+    if (fling) r.vel.copy(fling);
     r.state = 'dead';
     r.deadT = 0;
-    r.rest = false;
-    this.anim(r, 'death', rand(0.9, 1.2), 0);
+    r.rest = squash;
+    if (squash) { r.squash = 0.3; r.vel.set(0, 0, 0); }
+    this.anim(r, 'death', rand(0.9, 1.2), squash ? 0.9 : 0);
     this.burst(point || r.pos, r.base, UP, 0.5);
     this.sound.riftDie(r.pos);
     const cb = this.sw.playerCb;
     cb.onKill && cb.onKill(r);
     // A Blast goes off a moment later, so a shot clump goes up in a ripple
     if (r.v.blast) r.boomT = rand(0.05, 0.13);
+  }
+
+  /** A mech's foot came down at p: whatever is under it is squashed (and a Blast goes off underfoot) */
+  stomp(p, radius) {
+    const R2 = radius * radius;
+    for (const r of [...this.list]) {
+      if (!r.alive || !GROUND[r.state] || Math.abs(r.feet.y - p.y) > 1.2) continue;
+      const dx = r.feet.x - p.x, dz = r.feet.z - p.z;
+      if (dx * dx + dz * dz < R2) this.kill(r, r.pos, { squash: true });
+    }
+  }
+
+  /** A dashing mech (feet at pos, moving at vel) bowls over anything in its way */
+  ram(pos, vel) {
+    if (Math.hypot(vel.x, vel.z) < 14) return;
+    for (const r of [...this.list]) {
+      if (!r.alive || !GROUND[r.state] || r.feet.y < pos.y - 1 || r.feet.y > pos.y + 6) continue;
+      if (Math.hypot(r.feet.x - pos.x, r.feet.z - pos.z) < 2.3) {
+        this.kill(r, r.pos, { fling: _a.set(vel.x * 0.7 + rand(-4, 4), rand(6, 11), vel.z * 0.7 + rand(-4, 4)) });
+      }
+    }
   }
 
   corpse(r, dt) {
@@ -1240,7 +1216,7 @@ export class RiftlingHorde {
     } else {
       // Turned about +y so the model's -z faces fwd
       const yaw = Math.atan2(-r.fwd.x, -r.fwd.z), c = Math.cos(yaw), s = Math.sin(yaw);
-      _m.makeBasis(_a.set(c * k, 0, -s * k), _b.set(0, k, 0), _c.set(s * k, 0, c * k));
+      _m.makeBasis(_a.set(c * k, 0, -s * k), _b.set(0, k * r.squash, 0), _c.set(s * k, 0, c * k));
       let y = r.feet.y;
       // The leap clip carries its own hop; the real leap is the arc it flies, so take the clip's out
       if (r.clip === 'leaping') y -= 1.25 * Math.sin(Math.PI * this.phaseOf(r)) * k;

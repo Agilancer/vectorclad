@@ -10,7 +10,7 @@ export class HUD {
     this.shieldHint = touch ? 'HOLD L' : 'RMB';
     this.el = {
       score: $('#score'), boostBar: $('#boost-bar'), boostTxt: $('#boost-txt'), gauge: $('.gauge.boost'),
-      armor: $('.gauge.armor'), apBar: $('#ap-bar'), apTxt: $('#ap-txt'), wave: $('#wave'), hostiles: $('#hostiles'),
+      armor: $('.gauge.armor'), apBar: $('#ap-bar'), apTxt: $('#ap-txt'), hostiles: $('#hostiles'),
       vignette: $('#dmg-vignette'), dirs: $('#dmg-dirs'), boss: $('#boss-bar'), bossHp: $('#boss-bar b'), bossName: $('#boss-bar .label'),
       spd: $('#spd'), alt: $('#alt'), lockct: $('#lockct'), mslct: $('#mslct'),
       weapons: $('#weapons'), toast: $('#toast'), hit: $('#hitmark'), locks: $('#locks'), zone: $('#lock-zone'),
@@ -106,13 +106,12 @@ export class HUD {
     e.zone.classList.toggle('active', d.missileCap > 0);
     e.zone.style.display = d.missileCap > 0 ? '' : 'none';
 
-    // Armor, wave, damage
+    // Armor, hostiles, damage
     const ap = Math.max(0, d.ap);
     this.set('ap', e.apTxt, String(Math.ceil(ap)));
     e.apBar.style.width = `${Math.min(1, ap / d.apMax) * 100}%`;
     e.armor.classList.toggle('low', ap < d.apMax * 0.25);
-    this.set('wave', e.wave, d.wave ? String(d.wave) : '–');
-    this.set('hostiles', e.hostiles, d.wave ? `${d.hostiles} HOSTILE${d.hostiles === 1 ? '' : 'S'}` : '');
+    this.set('hostiles', e.hostiles, String(d.hostiles));
     if (this.struckT > 0 && (this.struckT -= dt) <= 0) e.armor.classList.remove('struck');
     e.boss.hidden = !d.boss;
     if (d.boss) {
@@ -209,6 +208,101 @@ export class HUD {
 
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) e.toast.classList.remove('on'); }
     if (this.hitT > 0) { this.hitT -= dt; if (this.hitT <= 0) e.hit.classList.remove('on'); }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Summon menu (the ` key): the tech demo's way to call monsters in (js/summons.js)
+// ---------------------------------------------------------------------------
+
+/**
+ * A row per monster: how many (a slider up to the kind's limit), and a Summon button that stays
+ * disabled, counting down, for a minute after it's used. groups: SUMMON_GROUPS. cooldown(id): seconds
+ * left. queued(id): picked from the loadout, waiting for the fight. onSummon(id, count) does it (or
+ * queues it) and returns { ok, msg }.
+ */
+export class SummonMenu {
+  constructor({ groups, cooldown, queued, onSummon, sound }) {
+    this.el = $('#summon');
+    this.cooldown = cooldown;
+    this.queued = queued;
+    this.onSummon = onSummon;
+    this.sound = sound;
+    this.rows = [];
+    const list = $('#summon-list');
+    for (const g of groups) {
+      const sec = div('sgroup');
+      sec.innerHTML = `<h3>${g.title}</h3>`;
+      for (const it of g.items) sec.appendChild(this.row(it));
+      list.appendChild(sec);
+    }
+  }
+
+  get open() { return !this.el.hidden; }
+
+  row(it) {
+    const row = div('srow');
+    const name = div('srow-name');
+    name.textContent = it.name;
+    row.appendChild(name);
+    let count = it.def;
+    const out = document.createElement('output');
+    out.className = 'mono';
+    out.textContent = String(count);
+    if (it.max > 1) {
+      const range = document.createElement('input');
+      range.type = 'range';
+      range.min = '1';
+      range.max = String(it.max);
+      range.step = '1';
+      range.value = String(count);
+      range.setAttribute('aria-label', `How many: ${it.name}`);
+      range.addEventListener('input', () => { count = parseInt(range.value, 10); out.textContent = String(count); });
+      row.appendChild(range);
+    } else {
+      const fixed = div('srow-fixed mono');
+      fixed.textContent = 'one at a time';
+      row.appendChild(fixed);
+    }
+    row.appendChild(out);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-summon';
+    btn.textContent = 'Summon';
+    btn.setAttribute('aria-label', `Summon ${it.name}`);
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const r = this.onSummon(it.id, count);
+      if (r && r.ok) this.sound.click(); else this.sound.empty();
+      this.update(true);
+    });
+    row.appendChild(btn);
+    this.rows.push({ it, row, btn, label: '' });
+    return row;
+  }
+
+  /** queueing: opened over the loadout, so summons wait for the fight */
+  show(queueing = false) {
+    this.el.classList.toggle('queueing', queueing);
+    this.el.hidden = false;
+    this.update(true);
+  }
+
+  hide() { this.el.hidden = true; }
+
+  /** Count the cooldowns down on the buttons */
+  update(force = false) {
+    if (!force && !this.open) return;
+    for (const r of this.rows) {
+      const left = Math.ceil(this.cooldown(r.it.id)), queued = left <= 0 && this.queued(r.it.id);
+      const label = left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : queued ? 'Queued' : 'Summon';
+      if (label === r.label) continue;
+      r.label = label;
+      r.btn.textContent = label;
+      r.btn.disabled = left > 0;
+      r.btn.classList.toggle('queued', queued);
+      r.row.classList.toggle('cooling', left > 0);
+    }
   }
 }
 

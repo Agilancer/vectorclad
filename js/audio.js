@@ -522,6 +522,19 @@ export class Sound {
     this.tone({ type: 'sine', freq: 140, freqEnd: 50, peak: 0.3, decay: 0.3, pos });
     for (let i = 0; i < 10; i++) this.tone({ type: 'square', freq: 2500 + Math.random() * 3000, peak: 0.025, decay: 0.02, pos, delay: 0.35 + i * 0.06 + Math.random() * 0.05 });
   }
+  // Summoning portals (js/portals.js); the riftlings that rain out of them are with the Riftlings above
+  portalOpen(pos, k = 1) {
+    if (!this.gate(k > 0.6 ? 'portal' : 'portalS', k > 0.6 ? 0.12 : 0.07, pos, 0.02)) return;
+    this.tone({ type: 'sawtooth', freq: 70 * (1.4 - 0.4 * k), freqEnd: 320, peak: 0.16 * k, attack: 0.25, decay: 0.7, pos });
+    this.tone({ type: 'sine', freq: 900, freqEnd: 140, peak: 0.12 * k, attack: 0.05, decay: 0.8, pos });
+    this.noiseHit({ type: 'bandpass', freq: 300, freqEnd: 2600, q: 3, peak: 0.4 * k, attack: 0.3, decay: 0.5, pos });
+    if (k > 0.6) this.noiseHit({ buffer: this.brown, type: 'lowpass', freq: 240, peak: 0.7 * k, attack: 0.1, decay: 1.4, pos });
+  }
+  portalClose(pos, k = 1) {
+    if (!this.gate(k > 0.6 ? 'pclose' : 'pcloseS', 0.1, pos, 0.02)) return;
+    this.noiseHit({ type: 'bandpass', freq: 2600, freqEnd: 200, q: 3, peak: 0.3 * k, attack: 0.02, decay: 0.45, pos });
+    this.tone({ type: 'sine', freq: 520, freqEnd: 60, peak: 0.14 * k, decay: 0.5, pos });
+  }
   playerHit(heavy = 1) {
     if (!this.gate('phit', 0.05)) return;
     this.noiseHit({ type: 'bandpass', freq: 1300, q: 1.5, peak: 0.35 * heavy, decay: 0.2 });

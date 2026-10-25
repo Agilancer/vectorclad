@@ -5,8 +5,9 @@ import {
 import { canvasTexture } from './atlas.js';
 
 // ---------------------------------------------------------------------------
-// The millipede: a black war machine hundreds of meters long that crawls in
-// over the rooftops and lies draped across several city blocks.
+// The millipede: a black war machine hundreds of meters long that crawls out of
+// an upright summoning portal (js/summons.js) and lies draped across several
+// city blocks.
 //
 // Its body is a chain of rigid sections. Each one carries three layers of armor
 // plates (black, then steel, then bronze) over a reactor core with a rainbow gem
@@ -36,8 +37,11 @@ const NECK = 9;
 const SPAN = SEG_LEN + GAP;
 const SEG0 = TIP_LEN + GAP;   // where the first section starts, from the tail end
 const HEAD_S = SEG0 + SEGS * SPAN - GAP + NECK; // tail end to the head
-const ARRIVE = 170;           // how far it crawls in along its route
-const CRAWL = 13;             // its speed doing so
+// It crawls out of an upright portal near the ground: the portal stands PORTAL_S along its route,
+// just ahead of the head, and the whole body crawls ARRIVE through it, at CRAWL
+const PORTAL_S = HEAD_S + 12;
+const ARRIVE = PORTAL_S + 3;
+const CRAWL = 16;
 
 // Armor: ROWS plates round the top and sides (ARC radians each way from the top), COLS along each section
 const ROWS = 7, COLS = 6, ARC = 1.95;
@@ -284,8 +288,18 @@ export class Millipede {
     this.frags = [];
     this.events = [];
     this.barObj = { name: 'MILLIPEDE', hp: 1, maxHp: 1, bossLabel: '' };
+    // While it crawls out of a portal, everything of it still behind the portal's plane is clipped away
+    this.portal = null;
+    this.clip = new THREE.Plane(new V3(0, 1, 0), 1e6);
     this.build(tex);
+    const clipped = new Set();
+    const clip = (m) => { if (m && m.material && !clipped.has(m.material)) { clipped.add(m.material); m.material.clippingPlanes = [this.clip]; m.material.clipShadows = true; } };
+    for (const m of [...this.tiles, ...this.fragMesh, this.frame, this.belly, this.collars, this.tipMesh, ...Object.values(this.legParts)]) clip(m);
+    this.head.group.traverse(clip);
   }
+
+  /** How far p is out in front of the portal it is crawling out of (negative: still behind it) */
+  ahead(p) { return this.portal ? this.clip.distanceToPoint(p) : Infinity; }
 
   // ---- construction ----------------------------------------------------------------
 
@@ -544,51 +558,83 @@ export class Millipede {
   }
 
   /**
-   * A route across the rooftops ending near the mech: the last HEAD_S units are where it
-   * comes to rest, the ARRIVE units before them the way it crawls in. Of many tries, the
-   * one that lies most on roofs, low, smooth and clear of the mech, starting out of sight.
+   * A route out of an upright portal near Q0 (about 800 ft in front of the mech), radius R. The portal
+   * stands over open street, its foot a few units off whatever is under it and clear of the towers
+   * round it; the route runs straight back through it (hidden while the body is behind the portal) and
+   * forward from it across the rooftops in a gentle arc, under the tightest drape over the roofs it
+   * passes (the lowest line that never slopes more steeply than SLOPE), sloping down from the portal.
+   * Of many tries near Q0, heading roughly at the mech, the one the mech can see from where it stands,
+   * nearest the ground, that lies most on roofs, low and smooth, and clear of the mech. Returns { route, portal: { pos,
+   * normal, radius } } or null.
    */
-  planRoute(P, cam) {
+  planPortal(P, Q0, R) {
+    const eye = new V3(P.pos.x, P.pos.y + 7, P.pos.z);
     const B = this.world.bounds, ds = 2, total = ARRIVE + HEAD_S, n = Math.ceil(total / ds) + 1;
-    const i0 = Math.floor(ARRIVE / ds), iBody = Math.ceil(HEAD_S / ds), k = SLOPE * ds;
+    const ip = Math.round(PORTAL_S / ds), i0 = Math.floor(ARRIVE / ds), k = SLOPE * ds;
     let best = null;
-    for (let tries = 0; tries < 70; tries++) {
-      const a = Math.random() * Math.PI * 2, dist = rand(50, 95);
-      let x = P.pos.x + Math.cos(a) * dist, z = P.pos.z + Math.sin(a) * dist;
-      let hd = a + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2 + rand(-0.6, 0.6);
+    for (let tries = 0; tries < 90; tries++) {
+      const spread = 10 + tries * 1.2, oa = Math.random() * Math.PI * 2, od = tries ? Math.sqrt(Math.random()) * spread : 0;
+      const qx = Q0.x + Math.cos(oa) * od, qz = Q0.z + Math.sin(oa) * od;
+      if (qx < B.minX + 20 || qx > B.maxX - 20 || qz < B.minZ + 20 || qz > B.maxZ - 20) continue;
+      const toP = Math.atan2(P.pos.z - qz, P.pos.x - qx);
+      let hd = toP + rand(-1.35, 1.35);
       const kappa = rand(-1, 1) / 450;
-      const xs = new Float32Array(n), zs = new Float32Array(n), g = new Float32Array(n), h = new Float32Array(n);
-      let ok = true;
-      for (let i = n - 1; i >= 0; i--) {
-        if (x < B.minX + 14 || x > B.maxX - 14 || z < B.minZ + 14 || z > B.maxZ - 14) { ok = false; break; }
-        xs[i] = x; zs[i] = z;
-        x -= Math.cos(hd) * ds; z -= Math.sin(hd) * ds; hd -= kappa * ds;
-      }
-      if (!ok) continue;
-      for (let i = 0; i < n; i++) g[i] = this.topAt(xs[i], zs[i], 4);
-      // Drape: the lowest line over every roof that never slopes steeper than SLOPE
-      for (let i = 0; i < n; i++) h[i] = i ? Math.max(g[i], h[i - 1] - k) : g[i];
-      for (let i = n - 2; i >= 0; i--) h[i] = Math.max(h[i], h[i + 1] - k);
-      let cover = 0, hs = 0, hmax = 0, hall = 0, rough = 0, minD = Infinity, vis = 0;
-      for (let i = 0; i < n; i++) {
-        hall = Math.max(hall, h[i]);
-        if (i >= i0) {
-          if (g[i] >= 5) cover++;
-          hs += h[i];
-          hmax = Math.max(hmax, h[i]);
-          if (i > i0) rough += Math.abs(h[i] - h[i - 1]);
-          minD = Math.min(minD, Math.hypot(xs[i] - P.pos.x, zs[i] - P.pos.z));
-        } else if (i < iBody && i % 4 === 0 && cam) {
-          _a.set(xs[i], h[i] + LIFT, zs[i]);
-          const d = _a.distanceTo(P.pos);
-          _a.project(cam);
-          if (_a.z < 1 && Math.abs(_a.x) < 1.1 && Math.abs(_a.y) < 1.1 && d < 260) vis++;
+      // The portal's foot clears whatever is under its disc; nothing beside it may stand above its foot
+      const cx = Math.cos(hd), cz = Math.sin(hd), rx = -cz, rz = cx;
+      let under = 0;
+      for (let u = -1; u <= 1.001; u += 0.25) under = Math.max(under, this.topAt(qx + rx * R * u, qz + rz * R * u, 2.5));
+      const cy = under + R + 3;
+      if (cy > 52) continue;
+      let crowded = false;
+      for (let u = -1.6; u <= 1.601 && !crowded; u += 0.4) {
+        for (const f of [-7, 0, 7]) {
+          const x = qx + rx * R * u + cx * f, z = qz + rz * R * u + cz * f;
+          if (Math.abs(u) <= 1.001 && f === 0) continue;
+          if (this.topAt(x, z, 2.5) > cy - R + 1) { crowded = true; break; }
         }
       }
+      if (crowded) continue;
+      // The route: straight back through the portal, forward from it in a gentle arc
+      const xs = new Float32Array(n), zs = new Float32Array(n), g = new Float32Array(n), h = new Float32Array(n);
+      let ok = true, x = qx, z = qz;
+      for (let i = ip; i < n; i++) {
+        if (x < B.minX + 14 || x > B.maxX - 14 || z < B.minZ + 14 || z > B.maxZ - 14) { ok = false; break; }
+        xs[i] = x; zs[i] = z;
+        x += Math.cos(hd) * ds; z += Math.sin(hd) * ds; hd += kappa * ds;
+      }
+      if (!ok) continue;
+      for (let i = ip - 1; i >= 0; i--) { xs[i] = xs[i + 1] - cx * ds; zs[i] = zs[i + 1] - cz * ds; }
+      for (let i = ip; i < n; i++) g[i] = this.topAt(xs[i], zs[i], 4);
+      g[ip] = Math.max(g[ip], cy - LIFT);
+      h[ip] = g[ip];
+      for (let i = ip + 1; i < n; i++) h[i] = Math.max(g[i], h[i - 1] - k);
+      for (let i = n - 2; i > ip; i--) h[i] = Math.max(h[i], h[i + 1] - k);
+      if (h[ip + 1] - k > h[ip] + 3) continue;   // a roof just ahead would lift it off its portal
+      for (let i = 0; i < ip; i++) { g[i] = h[i] = h[ip]; }
+      let cover = 0, hs = 0, hmax = 0, rough = 0, minD = Infinity;
+      for (let i = ip; i < n; i++) {
+        minD = Math.min(minD, Math.hypot(xs[i] - P.pos.x, zs[i] - P.pos.z));
+        if (i < i0) continue;
+        if (g[i] >= 5) cover++;
+        hs += h[i];
+        hmax = Math.max(hmax, h[i]);
+        if (i > i0) rough += Math.abs(h[i] - h[i - 1]);
+      }
       const m = n - i0;
-      const score = (1 - cover / m) * 90 + (hs / m) * 0.5 + Math.max(0, hmax - 55) * 2 + Math.max(0, hall - 80) * 0.8
-        + rough * 0.12 + (minD < 22 ? 300 : 0) + vis * 1.5;
-      if (!best || score < best.score) best = { score, x: xs, z: zs, g, h, ds, n, cover: cover / m, hmax };
+      let score = (1 - cover / m) * 90 + (hs / m) * 0.5 + Math.max(0, hmax - 55) * 2 + rough * 0.12
+        + (minD < 22 ? 300 : 0) + od * 0.6 + (cy - R) * 2;
+      // Out of sight behind the towers between: much worse
+      if (!best || score - 120 < best.score) {
+        _a.set(qx - eye.x, cy + R * 0.3 - eye.y, qz - eye.z);
+        const d = _a.length();
+        if (this.world.raycast(eye, _a.divideScalar(d), d - R * 0.5, { targets: false })) score += 120;
+      }
+      if (!best || score < best.score) {
+        best = {
+          score, route: { x: xs, z: zs, g, h, ds, n, cover: cover / m, hmax },
+          portal: { pos: new V3(qx, cy, qz), normal: new V3(cx, 0, cz), radius: R },
+        };
+      }
     }
     return best;
   }
@@ -603,12 +649,12 @@ export class Millipede {
 
   // ---- coming and going --------------------------------------------------------------------
 
-  /** Lay a route and start it crawling in. False if no route will do. */
-  spawn(ctx) {
-    if (this.active) return false;
-    const R = this.planRoute(ctx.player, ctx.camera);
-    if (!R) return false;
-    this.route = R;
+  /** Start it crawling out of its portal along a route from planPortal. False if it's already here. */
+  spawn(plan) {
+    if (this.active || !plan) return false;
+    this.route = plan.route;
+    this.portal = plan.portal;
+    this.clip.setFromNormalAndCoplanarPoint(this.portal.normal, this.portal.pos);
     this.off = ARRIVE;
     this.active = true;
     this.time = 0;
@@ -639,6 +685,7 @@ export class Millipede {
     H.group.visible = true;
     this.world.targets.push(H.t);
     this.layout();
+    if (this.portal) this.hideBehind();
     this.recolor();
     const L = this.segs[SEGS - 1];
     H.pos.copy(L.b).addScaledVector(L.fwd, NECK * 0.85).addScaledVector(UP, 6.5);
@@ -650,6 +697,7 @@ export class Millipede {
 
   clear() {
     this.active = false;
+    this.endPortal();
     this.events.length = 0;
     this.frags.length = 0;
     for (const seg of this.segs) {
@@ -667,6 +715,28 @@ export class Millipede {
   }
 
   // ---- body layout -------------------------------------------------------------------------------
+
+  /** Through the portal for good: nothing is clipped any more */
+  endPortal() {
+    if (!this.portal) return;
+    this.portal = null;
+    this.clip.set(_a.set(0, 1, 0), 1e6);
+    for (const seg of this.segs) {
+      if (seg.dead || !this.active) continue;
+      seg.t.stealth = false;
+      seg.gem.visible = seg.halo.visible = true;
+    }
+  }
+
+  /** While it crawls out of a portal: sections still behind it can't be seen, shot or locked */
+  hideBehind() {
+    for (const seg of this.segs) {
+      seg.hidden = this.ahead(seg.b) < 0;
+      if (seg.dead) continue;
+      seg.t.stealth = seg.hidden;
+      seg.gem.visible = seg.halo.visible = this.ahead(seg.c) > R_CORE * 1.4;
+    }
+  }
 
   /** Place every section along the route, as far in as it has crawled */
   layout() {
@@ -809,6 +879,9 @@ export class Millipede {
     for (const leg of this.legs) {
       if (leg.F.gone) continue;
       this.hipOf(leg);
+      // Behind the portal it dangles out of sight; coming through, it reaches for a hold at once
+      if (this.ahead(leg.hip) < 0) { leg.hid = true; leg.dangle = true; leg.t = 1; this.danglePoint(leg, leg.foot); continue; }
+      if (leg.hid) { leg.hid = false; this.plant(leg); continue; }
       if (leg.t < 1) {
         leg.t = Math.min(1, leg.t + dt / leg.dur);
         const k = leg.t * leg.t * (3 - 2 * leg.t);
@@ -831,7 +904,7 @@ export class Millipede {
   renderLegs() {
     const P = this.legParts;
     this.legs.forEach((leg, i) => {
-      if (leg.F.gone) {
+      if (leg.F.gone || leg.hid) {
         for (const key of ['femur', 'femurX', 'tibia', 'tibiaX']) P[key].setMatrixAt(i, ZERO);
         P.joint.setMatrixAt(i * 2, ZERO); P.joint.setMatrixAt(i * 2 + 1, ZERO);
         return;
@@ -855,7 +928,7 @@ export class Millipede {
 
   /** Ray against a section: the first live plate, the core, or the keel and end frames (which stop shots) */
   segRay(seg, o, d, max) {
-    if (seg.gone) return null;
+    if (seg.gone || (this.portal && seg.hidden)) return null;
     const ox = o.x - seg.c.x, oy = o.y - seg.c.y, oz = o.z - seg.c.z;
     const bb = ox * d.x + oy * d.y + oz * d.z, RB = HALF + R_OUT + 1;
     if (ox * ox + oy * oy + oz * oz - bb * bb > RB * RB || -bb + RB < 0 || -bb - RB > max) return null;
@@ -939,7 +1012,7 @@ export class Millipede {
 
   /** A blast near a section: every plate in reach takes it, though plates under another one take little */
   segBlast(seg, point, radius, amount) {
-    if (seg.gone || seg.dead || point.distanceTo(seg.c) > HALF + R_OUT + radius) return;
+    if (seg.gone || seg.dead || (this.portal && seg.hidden) || point.distanceTo(seg.c) > HALF + R_OUT + radius) return;
     const L = this.toLocal(seg, point, _e), lx = L.x, ly = L.y, lz = L.z;
     for (let row = 0; row < ROWS; row++) {
       const th = -ARC + (row + 0.5) * DTH, sn = Math.sin(th), cs = Math.cos(th);
@@ -1603,8 +1676,9 @@ export class Millipede {
       this.off = Math.max(0, this.off - CRAWL * clamp(this.off / 30, 0.2, 1) * dt);
       moving = true;
       this.layout();
+      if (this.portal) this.hideBehind();
       if (Math.random() < dt * 2) this.sound.crash(this.segs[Math.floor(Math.random() * SEGS)].c, 0.5);
-      if (this.off <= 0) { H.state = 'perched'; this.sound.millipedeRoar(H.pos); }
+      if (this.off <= 0) { H.state = 'perched'; this.endPortal(); this.sound.millipedeRoar(H.pos); }
     }
     if (H.state !== 'gone') this.updateHead(dt, P);
     const attached = H.state === 'arrive' || H.state === 'perched' || H.state === 'ignite';
@@ -1685,7 +1759,7 @@ export class Millipede {
     if (!this.active) return false;
     let hit = false;
     for (const F of [...this.segs, this.tip]) {
-      if (F.gone) continue;
+      if (F.gone || (this.portal && this.ahead(F.b) < 0)) continue;
       for (const y of [1, height * 0.5, height - 0.5]) {
         _a.set(pos.x, pos.y + y, pos.z);
         _b.subVectors(_a, F.a);

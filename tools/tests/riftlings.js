@@ -2,11 +2,11 @@
 //   python -m http.server 8233 --bind 127.0.0.1
 //   NODE_PATH=<global node_modules with playwright> node tools/tests/riftlings.js [scenario...]
 //
-// Scenarios: packs (one pack of each color sent at a mech standing on the plaza: prints what they
-// do second by second, checks they latch on, splat and hurt it, and that the Shades ran dark and
-// pounced together), chain (a clump of Blasts, one shot: how many the chain takes), climb (the mech
-// on a roof: checks riftlings climb the walls to reach it), swarm (wave 8's swarm of a hundred:
-// how many come, frame times), all (default). Writes screenshots to tools/tests/out/riftlings-*.png.
+// Scenarios: packs (one pack of each color summoned at a mech standing on the plaza: prints what
+// they do second by second, checks they latch on, splat and hurt it, and that the Shades ran dark
+// and pounced together), chain (a clump of Blasts, one shot: how many the chain takes), climb (the
+// mech on a roof: checks riftlings climb the walls to reach it), all (default). Writes screenshots
+// to tools/tests/out/riftlings-*.png.
 //
 // Env: BASE_URL (default http://127.0.0.1:8233), CHROMIUM_ARGS (default: the real GPU on Windows),
 // THREE_DIR (a three@0.170.0 package directory to serve three.js from instead of jsDelivr, for offline runs).
@@ -40,14 +40,13 @@ async function boot(browser) {
   await page.waitForSelector('#title-start', { timeout: 60000 });
   await page.click('#title-start');
   await page.waitForFunction(() => window.__mech && window.__mech.mode === 'intro', null, { timeout: 120000 }).catch((e) => { console.log(errors.join('\n')); throw e; });
-  // Into the fight with the waves held off, so only the packs sent in come
+  // Into the fight: only the packs summoned come
   await page.evaluate(() => {
     const m = window.__mech;
     m.fixedDt = 1 / 30;
     // Draw only for the screenshots: the simulation runs far faster without it
     m.skipRender = true;
     m.startPlay();
-    m.spiders.phase = 'off';
     // A mech that can't be killed, so they keep coming at it (regeneration tops AP up to the frame's own)
     m.frame.ap = 1e6;
     m.P.ap = 1e6;
@@ -68,7 +67,9 @@ async function boot(browser) {
     m.spiders.playerCb.onAcid = (d, p) => { T.acid++; acid(d, p); };
     const shock = m.spiders.playerCb.onShock;
     m.spiders.playerCb.onShock = (a, p) => { T.shocks++; shock(a, p); };
-    window.__send = (id, n) => R.spawnPack(id, n, { player: m.P, camera: m.camera });
+    // Summon a pack of a color through the summon menu's portals (js/summons.js): how many are coming
+    const SUMMON = { green: 'acid', orange: 'blast', purple: 'shade', blue: 'spire' };
+    window.__send = (color, n) => { const r = m.summoner.summon(SUMMON[color], n, m.P); return r.ok ? r.n : 0; };
     window.__states = () => {
       const s = {};
       for (const r of R.list) { const k = `${r.v.id}:${r.state}`; s[k] = (s[k] || 0) + 1; }
@@ -129,10 +130,9 @@ async function riftShot(page, name, states, back, side, up) {
   if (run('packs')) {
     console.log('packs');
     const { ctx, page, errors } = await boot(browser);
-    await page.evaluate(() => { window.__mech.spiders.rift.wave = 3; });
     const sent = await page.evaluate(() => ['green', 'orange', 'purple', 'blue'].map((id) => [id, window.__send(id, 8)]));
     console.log('   sent', JSON.stringify(sent));
-    check(sent.every(([, n]) => n > 0), 'every color found somewhere to come from');
+    check(sent.every(([, n]) => n > 0), 'every color summoned');
     let darkSeen = false, latched = 0, shotLatched = false;
     for (let s = 1; s <= 30; s++) {
       await advance(page, 1);
@@ -171,8 +171,8 @@ async function riftShot(page, name, states, back, side, up) {
     const { ctx, page, errors } = await boot(browser);
     await page.evaluate(() => { });
     const n = await page.evaluate(() => window.__send('orange', 9));
-    // Let them muster and set off, then shoot the one nearest the middle of the clump
-    await advance(page, 2.5);
+    // Let them drop out of their portals, muster and set off in a clump, then shoot the one nearest its middle
+    await advance(page, 8);
     const res = await page.evaluate(() => {
       const m = window.__mech, R = m.spiders.rift, pk = R.packs[R.packs.length - 1];
       const live = pk.members.filter((r) => r.alive);
@@ -204,7 +204,7 @@ async function riftShot(page, name, states, back, side, up) {
       return { y: c.max.y.toFixed(1) };
     });
     await advance(page, 1);
-    await page.evaluate(() => { window.__mech.spiders.rift.wave = 3; window.__send('green', 10); window.__send('blue', 6); });
+    await page.evaluate(() => { window.__send('green', 10); window.__send('blue', 6); });
     let climbed = 0;
     for (let s = 1; s <= 30; s++) {
       await advance(page, 1);
@@ -221,40 +221,6 @@ async function riftShot(page, name, states, back, side, up) {
     check(climbed > 0, `riftlings climbed the walls (${climbed} at once)`);
     check(T.mantles > 0, `and pulled themselves up onto the mech's roof (${T.mantles})`);
     check(T.latches > 0, `and got onto the mech up there (${T.latches} latched)`);
-    check(!errors.length, `no page errors${errors.length ? '\n' + errors.join('\n') : ''}`);
-    await ctx.close();
-  }
-
-  if (run('swarm')) {
-    console.log('swarm');
-    const { ctx, page, errors } = await boot(browser);
-    await page.evaluate(() => {
-      const m = window.__mech;
-      // Wave 8's swarm, without its spiders
-      m.spiders.rift.startWave(8, false);
-      m.spiders.phase = 'active';
-      m.spiders.toSpawn = 0;
-      m.spiders.wave = 8;
-      m.spiders.maxAlive = 0;
-    });
-    let most = 0;
-    const times = [];
-    for (let s = 1; s <= 40; s++) {
-      await advance(page, 1);
-      const st = await page.evaluate(() => {
-        const R = window.__mech.spiders.rift, t0 = performance.now();
-        R.update(1 / 60, { player: window.__mech.P, camera: window.__mech.camera });
-        return { alive: R.alive, budget: R.budget, packs: R.packs.length, ms: performance.now() - t0 };
-      });
-      most = Math.max(most, st.alive);
-      times.push(st.ms);
-      if (s % 5 === 0) console.log(`   t+${s}s alive ${st.alive}, still to come ${st.budget}, packs ${st.packs}, update ${st.ms.toFixed(2)} ms`);
-      if (s === 14) await frameShot(page, 'swarm', [0, 24, -18], [0, 0, 30], 65);
-    }
-    const T = await page.evaluate(() => window.__rift);
-    times.sort((a, b) => a - b);
-    console.log(`   median update ${times[times.length >> 1].toFixed(2)} ms; ${JSON.stringify(T)}`);
-    check(most >= 60, `a big swarm came (${most} alive at once, of 100)`);
     check(!errors.length, `no page errors${errors.length ? '\n' + errors.join('\n') : ''}`);
     await ctx.close();
   }
