@@ -203,6 +203,8 @@ export class Input {
       lockon: e.has('KeyT'),
       menu: e.has('Tab') || e.has('KeyM'),
       camera: e.has('KeyV'),
+      // Hold G: climb out of the standing mech, or back into it (js/pilot.js)
+      exit: k.has('KeyG'),
       wheel: this.wheel,
     };
     this.wheel = 0;

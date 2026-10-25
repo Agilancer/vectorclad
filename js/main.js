@@ -19,6 +19,7 @@ import { Train } from './train.js';
 import { setCeilingTextures } from './destruct/ceilings.js';
 import { titleDone, portraitPhone } from './title/title.js';
 import { Post } from './post.js';
+import { Pilot, PILOT_AP } from './pilot.js';
 
 const V3 = THREE.Vector3;
 const $ = (s) => document.querySelector(s);
@@ -165,7 +166,7 @@ const sound = new Sound();
 window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
-let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel, portals, summoner, summonMenu;
+let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel, portals, summoner, summonMenu, pilot;
 const frameMechs = {}; // each frame's model, built the first time it is picked
 
 const DEFAULT = PRESETS[0];
@@ -349,6 +350,9 @@ async function init() {
   weapons = new WeaponSystem({ scene, fx, sound, world, mech, mats });
   weapons.onShake = shake;
   weapons.equip(loadout);
+  // The pilot on foot (hold G beside a standing frame); the first person arm rides on the camera
+  pilot = new Pilot({ scene, camera, world, fx, sound, weapons, mats, M: 1 / METERS });
+  scene.add(camera);
 
   hangar = new Hangar({
     loadout, settings, sound, touch: isTouch,
@@ -446,6 +450,8 @@ function startPlay() {
 /** Fresh frame on the starting plaza, an empty city */
 function redeploy() {
   deployed = true;
+  pilot.reset();
+  exitHold = 0;
   allies.clear();
   Object.assign(P, { ap: spec.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, boost: 100, overheat: false, grounded: true, onLip: false, jumpT: 0, landT: 0 });
   P.pos.copy(world.spawn);
@@ -462,6 +468,9 @@ function redeploy() {
   $('#gameover').hidden = true;
 }
 
+/** Full armor: the frame's, or the pilot's while on foot */
+const apMax = () => (pilot && pilot.active ? PILOT_AP : spec.ap);
+
 /** World bearing from the mech to a point: 0 along +z, clockwise from above */
 const bearingOf = (from) => Math.atan2(from.x - P.pos.x, from.z - P.pos.z);
 /** The raised shield turns away anything coming from within SHIELD_ARC of the way the mech faces */
@@ -477,7 +486,7 @@ function hurt(amount, from, kind) {
   P.ap -= dmg;
   P.hurtT = 0;
   // Screen angle of the shooter: 0 straight ahead, clockwise
-  hud.damage(dmg / spec.ap, -wrap(bearing - P.yaw), blocked);
+  hud.damage(dmg / apMax(), -wrap(bearing - P.yaw), blocked);
   if (blocked) {
     _t.normalize();
     _t2.set(P.pos.x + Math.sin(P.bodyYaw) * 2.2, P.pos.y + 4.6, P.pos.z + Math.cos(P.bodyYaw) * 2.2);
@@ -502,8 +511,8 @@ function die() {
   input.exitLock();
   $('#touch').hidden = true;
   input.releaseTouch();
-  fx.explosion(P.chest, 2.2);
-  sound.explosion(P.chest, 2);
+  fx.explosion(P.chest, pilot.active ? 0.6 : 2.2);
+  sound.explosion(P.chest, pilot.active ? 0.6 : 2);
   shake(null, 1.2);
   cam.orbit = P.yaw + Math.PI;
   const t = Math.floor(P.runT);
@@ -573,7 +582,7 @@ function openLoadout() {
 function setFrame(id) {
   const f = FRAMES[id];
   if (!f) return;
-  const share = P.ap / spec.ap;
+  const share = (pilot && pilot.active ? pilot.mechAp : P.ap) / spec.ap;
   spec = f;
   store.set('vectorclad.frame', id);
   const next = frameMechs[id] || (frameMechs[id] = f.build(mats, fx.glowTex));
@@ -582,15 +591,16 @@ function setFrame(id) {
     scene.remove(mech.root);
     mech = next;
     weapons.mech = mech;
-    mech.root.position.copy(P.pos);
-    mech.root.rotation.set(0, P.bodyYaw, 0);
+    mech.root.position.copy(pilot && pilot.active ? pilot.parked.pos : P.pos);
+    mech.root.rotation.set(0, pilot && pilot.active ? pilot.parked.yaw : P.bodyYaw, 0);
     mech.resetFeet();
     mech.root.traverse((o) => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; if (o.userData.isOutline) o.visible = settings.outlines; });
     scene.add(mech.root);
     weapons.equip(loadout);
     if (mode !== 'loading') { fx.dust(P.pos, 1.2, 14); sound.servo(P.pos); }
   }
-  P.ap = Math.max(1, share * f.ap);
+  const ap = Math.max(1, share * f.ap);
+  if (pilot && pilot.active) pilot.mechAp = ap; else P.ap = ap;
   $('#unit-code').textContent = f.code;
   $('#unit-name').textContent = f.name.toUpperCase();
 }
@@ -956,6 +966,50 @@ function updatePlayer(dt, c) {
 }
 
 // ---------------------------------------------------------------------------
+// On foot (js/pilot.js): hold G with the frame standing still to climb out, and beside it to climb back in
+// ---------------------------------------------------------------------------
+
+const BOARD_HOLD = 0.7;
+let exitHold = 0, exitDone = false;
+
+function updateBoarding(dt, c) {
+  if (mode !== 'play' || !P.alive || !c.exit) { exitHold = 0; exitDone = false; return; }
+  if (exitDone) return;
+  const ok = pilot.active ? pilot.nearMech(P)
+    : P.grounded && Math.hypot(P.vel.x, P.vel.z) < 0.6 && !P.dashing && P.landT <= 0 && P.jumpT <= 0 && P.pinT <= 0 && P.webT <= 0;
+  if (!ok) {
+    if (exitHold >= 0) hud.toast(pilot.active ? 'GET BACK TO THE FRAME TO BOARD' : 'STAND STILL TO DISEMBARK', 1.2);
+    exitHold = -1;
+    return;
+  }
+  if (exitHold <= 0) { exitHold = 0; hud.toast(pilot.active ? 'BOARDING…' : 'DISEMBARKING…', BOARD_HOLD); }
+  exitHold += dt;
+  if (exitHold < BOARD_HOLD) return;
+  exitDone = true;
+  if (pilot.active) {
+    pilot.enter(P);
+    P.bodyYaw = pilot.parked.yaw;
+    mech.resetFeet();
+    hud.toast('FRAME ONLINE', 1.4);
+  } else {
+    setHardLock(null);
+    pilot.exit(P, P.bodyYaw);
+    hud.toast('ON FOOT · RMB GRAPPLE · Q GRENADE', 3);
+  }
+}
+
+function updateOnFoot(dt, c) {
+  const playing = mode === 'play';
+  if (!playing) c = Object.assign({}, NO_INPUT, { wheel: c.wheel });
+  const sens = 0.0022 * settings.sens;
+  P.yaw -= c.lookX * sens;
+  P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -PITCH_MAX, PITCH_MAX);
+  washMat.opacity = 0;
+  const speed = pilot.update(dt, c, P, BOOST_DRAIN / spec.boost, aim, playing, hud);
+  return { speed, gait: 0, ground: P.pos.y };
+}
+
+// ---------------------------------------------------------------------------
 // Camera & aim
 // ---------------------------------------------------------------------------
 
@@ -1034,7 +1088,13 @@ function updateCamera(dt, speed) {
   const dropping = (mode === 'drop' || mode === 'brief') && allies.drop;
   cam.pivotY = dropping ? P.pos.y + 7.4 : damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
-  if ((mode === 'play' || dropping) && !cam.debugOrbit) {
+  camera.near = 0.6;
+  if (pilot.active && mode === 'play' && !cam.debugOrbit) {
+    // On foot: through the pilot's eyes, or close over the shoulder
+    pilot.placeCamera(dt, P, camera, camDir);
+    pivot.copy(pilot.camPos);
+    cam.fov = damp(cam.fov, P.dashing ? 80 : 72, 4, dt);
+  } else if ((mode === 'play' || dropping) && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
     // Shoulder offset, pulled in when a wall is close on that side
@@ -1138,6 +1198,7 @@ const UPV = new V3(0, 1, 0);
 const spiderCtx = { player: P, camera };
 const shoulder = new V3();
 const HELD = { speed: 0, gait: 0, ground: 0 };
+const ZERO = new V3(), NO_THRUST = { main: 0, vern: 0, calf: 0, sole: 0 };
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -1148,17 +1209,18 @@ function frame(now) {
   const c = input.sample();
   if (c.menu) { if (mode === 'play') openHangar(); else if (mode === 'hangar') startPlay(); }
   if (c.reload && mode === 'play') weapons.reloadAll();
-  if (c.lockon && mode === 'play') pressLock();
+  if (c.lockon && mode === 'play' && !pilot.active) pressLock();
+  updateBoarding(dt, c);
   updateHardLock();
 
   // The Kestrel H: carrying the frame in, then climbing away after the release
   const running = mode === 'drop' || mode === 'play' || mode === 'over';
   const D = running && allies.drop ? allies.updateDrop(dt) : null;
   // Held at the release while the tech-demo notice is up: nothing moves
-  const { speed, gait } = mode === 'brief' ? HELD : mode === 'drop' && D ? holdInCradle(dt, D) : updatePlayer(dt, c);
-  if (mode === 'play' && P.dashing) spiders.rift.ram(P.pos, P.vel);
+  const { speed, gait } = mode === 'brief' ? HELD : mode === 'drop' && D ? holdInCradle(dt, D) : pilot.active ? updateOnFoot(dt, c) : updatePlayer(dt, c);
+  if (mode === 'play' && P.dashing && !pilot.active) spiders.rift.ram(P.pos, P.vel);
   updateCamera(dt, speed);
-  P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
+  if (pilot.active) pilot.chest(P.chest, P); else P.chest.set(P.pos.x, P.pos.y + 4.8, P.pos.z);
 
   // Armor regenerates out of contact; the swarm runs while playing and over the wreck
   if (mode === 'play' && P.alive) {
@@ -1175,7 +1237,7 @@ function frame(now) {
       }
       if (P.ap <= 0) die();
     }
-    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(spec.ap, P.ap + REGEN_RATE * dt);
+    if (P.alive && P.hurtT > REGEN_DELAY) P.ap = Math.min(apMax(), P.ap + REGEN_RATE * dt * (pilot.active ? 0.3 : 1));
   }
   if (mode === 'play' || mode === 'over') {
     summoner.update(dt);
@@ -1208,29 +1270,31 @@ function frame(now) {
   shoulder.set(P.pos.x, P.pos.y + 6.2, P.pos.z);
   _t.subVectors(aim.point, shoulder);
   const aimYawWorld = Math.atan2(_t.x, _t.z);
-  const aiming = mode === 'play' && !cam.debugOrbit;
+  const aiming = mode === 'play' && !cam.debugOrbit && !pilot.active;
   const aimPitch = aiming ? Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) : 0;
   const aimYaw = aiming ? clamp(wrap(aimYawWorld - P.bodyYaw), -1.2, 1.2) : 0;
 
   // Weapons (input only while playing)
-  const wc = mode === 'play' ? c : { fireR: false, fireL: false, fireS: false, missile: false, salvo: false };
+  const wc = mode === 'play' && !pilot.active ? c : { fireR: false, fireL: false, fireS: false, missile: false, salvo: false };
   weapons.update(dt, wc, aim, camera);
 
-  // Animate mech
-  mech.root.position.copy(P.pos);
-  mech.root.rotation.set(0, P.bodyYaw, 0);
+  // Animate mech: standing where the pilot left it while on foot
+  const parked = pilot.active;
+  mech.root.position.copy(parked ? pilot.parked.pos : P.pos);
+  mech.root.rotation.set(0, parked ? pilot.parked.yaw : P.bodyYaw, 0);
   // Hanging from the cradle it pitches and rolls with the lifter
   if (mode === 'drop' && D && !D.released) mech.root.quaternion.copy(D.mechQ);
   const H = weapons.hand;
   const res = mech.animate(dt, {
-    gait, air: P.grounded ? 0 : 1, dash: P.dashing ? 1 : 0,
-    vel: P.vel, bodyYaw: P.bodyYaw, ground: P.pos.y,
-    crouch: !P.alive ? 1 : P.jumpT > 0 ? 1 : P.landT > 0 ? Math.min(1, P.landT * 3) : 0,
-    legYaw: P.legYaw, aimYaw, aimPitch,
+    gait: parked ? 0 : gait, air: parked || P.grounded ? 0 : 1, dash: !parked && P.dashing ? 1 : 0,
+    vel: parked ? ZERO : P.vel, bodyYaw: parked ? pilot.parked.yaw : P.bodyYaw, ground: parked ? pilot.parked.pos.y : P.pos.y,
+    crouch: parked ? 0.5 : !P.alive ? 1 : P.jumpT > 0 ? 1 : P.landT > 0 ? Math.min(1, P.landT * 3) : 0,
+    legYaw: parked ? 0 : P.legYaw, aimYaw, aimPitch,
     aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload],
     shield: weapons.shieldUp, hasShield: !!(weapons.slots.leftHand && weapons.slots.leftHand.def.kind === 'shield'),
-    thrust: (window.__mech && window.__mech.forceThrust) || P.thrust, time,
+    thrust: parked ? NO_THRUST : (window.__mech && window.__mech.forceThrust) || P.thrust, time,
   });
+  if (parked) pilot.animate(dt, P, P.pitch, time, mode === 'play');
   if (res.step >= 0) {
     mech.footWorld(res.step, _t);
     _t.y = P.pos.y;
@@ -1241,12 +1305,12 @@ function frame(now) {
     shake(null, (0.16 + gait * 0.12) * k);
   }
 
-  world.update(dt, P.pos, { grounded: P.grounded, vel: P.vel, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)], camera });
+  world.update(dt, P.pos, { grounded: parked || P.grounded, vel: parked ? ZERO : P.vel, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)], camera });
   fx.update(dt);
 
   if (mode === 'play' || mode === 'hangar' || mode === 'over') {
     hud.update(dt, {
-      ap: P.ap, apMax: spec.ap, hostiles: spiders.hostiles, boss: spiders.boss,
+      ap: P.ap, apMax: apMax(), hostiles: spiders.hostiles, boss: spiders.boss,
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
@@ -1258,7 +1322,7 @@ function frame(now) {
     skipEmpty();
     if (post.active) {
       // A hit flashes red in from the edges and shakes the colors apart; low armor keeps a pulse of red
-      const hit = mode === 'play' ? Math.exp(-P.hurtT * 3.5) : 0, low = mode === 'play' && P.alive ? smoothstep(0.3, 0.1, P.ap / spec.ap) : 0;
+      const hit = mode === 'play' ? Math.exp(-P.hurtT * 3.5) : 0, low = mode === 'play' && P.alive ? smoothstep(0.3, 0.1, P.ap / apMax()) : 0;
       post.state.hurt = Math.min(1, hit * 0.8 + low * (0.3 + 0.12 * Math.sin(time * 5)));
       post.state.ca = hit * 0.05 + (P.dashing ? 0.012 : 0);
       post.render(dt);
@@ -1306,7 +1370,7 @@ init().catch((err) => {
 
 // Debug/test hook
 window.__mech = {
-  P, cam, input, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
+  P, cam, input, get pilot() { return pilot; }, startPlay, openHangar, redeploy, hurt, get AP_MAX() { return spec.ap; }, get spiders() { return spiders; }, scene, camera,
   openFrames, openLoadout, startDrop, setFrame, openSummon, closeSummon, dismissBrief,
   get summoner() { return summoner; }, get portals() { return portals; }, get summonMenu() { return summonMenu; }, get frame() { return spec; }, get allies() { return allies; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
