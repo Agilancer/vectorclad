@@ -92,9 +92,9 @@ export class Sound {
     g.gain.exponentialRampToValueAtTime(0.0001, t + a + decay);
   }
 
-  noiseHit({ type = 'lowpass', freq = 800, freqEnd, q = 1, peak = 0.5, attack = 0.003, decay = 0.3, pos, rate = 1, buffer }) {
+  noiseHit({ type = 'lowpass', freq = 800, freqEnd, q = 1, peak = 0.5, attack = 0.003, decay = 0.3, pos, rate = 1, buffer, delay = 0 }) {
     if (!this.ok) return;
-    const ctx = this.ctx, t = ctx.currentTime;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
     const src = ctx.createBufferSource();
     src.buffer = buffer || this.noise;
     src.playbackRate.value = rate;
@@ -618,6 +618,67 @@ export class Sound {
     this.groan(pos, 1.2);
   }
 
+  // People (js/people.js). A death is one of the 24 sounds in GORE below, picked at random.
+  /**
+   * A human cry: a buzzing sawtooth, wavering, through the formants of a vowel. pitch: [start, peak, end]
+   * in Hz; vowel: [[F, Q, gain], ...]; vib: vibrato depth (a fraction of the pitch) at vibRate; rasp: how
+   * much it breaks up (a rough flutter); breath: hiss mixed in.
+   */
+  voice({ pitch, vowel, dur, attack = 0.05, vib = 0.02, vibRate = 6, rasp = 0, breath = 0.15, peak = 0.2, pos, delay = 0 }) {
+    if (!this.ok) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay, end = t + dur, a = peak * this.att(pos);
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(pitch[0], t);
+    o.frequency.linearRampToValueAtTime(pitch[1], t + attack + dur * 0.15);
+    o.frequency.exponentialRampToValueAtTime(pitch[2], end);
+    const lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = vibRate;
+    lg.gain.value = pitch[1] * vib;
+    lfo.connect(lg).connect(o.frequency);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(a, t + attack);
+    env.gain.linearRampToValueAtTime(a * 0.75, t + attack + (dur - attack) * 0.6);
+    env.gain.exponentialRampToValueAtTime(0.0001, end);
+    const osc = [o, lfo];
+    let src = o;
+    if (rasp) {
+      const fl = ctx.createOscillator(), fg = ctx.createGain(), am = ctx.createGain();
+      fl.type = 'square';
+      fl.frequency.value = 35 + Math.random() * 35;
+      fg.gain.value = rasp * 0.5;
+      am.gain.value = 1 - rasp * 0.5;
+      fl.connect(fg).connect(am.gain);
+      o.connect(am);
+      src = am;
+      osc.push(fl);
+    }
+    for (const [F, Q, g] of vowel) {
+      const f = ctx.createBiquadFilter(), fg = ctx.createGain();
+      f.type = 'bandpass'; f.frequency.value = F; f.Q.value = Q;
+      fg.gain.value = g;
+      src.connect(f).connect(fg).connect(env);
+    }
+    env.connect(this.master);
+    for (const n of osc) { n.start(t); n.stop(end + 0.05); }
+    if (breath) this.noiseHit({ type: 'bandpass', freq: vowel[1][0] * 1.3, q: 1.5, peak: peak * breath, attack, decay: dur, pos, delay });
+  }
+  /** Someone killed: one of the 24, at random (never the same one twice running) */
+  death(pos) {
+    if (!this.ok || this.att(pos) < 0.03) return;
+    const now = this.ctx.currentTime;
+    this.deaths = (this.deaths || []).filter((t) => now - t < 1.5);
+    // A blast that kills a crowd: a chorus of them, but not so many the sound chokes
+    if (this.deaths.length >= 16) return;
+    this.deaths.push(now);
+    let j = Math.floor(Math.random() * (GORE.length - 1));
+    if (j >= (this.lastDeath ?? -1)) j++;
+    this.lastDeath = j;
+    // Spread a little, so a crowd killed at once doesn't all start on the same instant
+    GORE[j](this, pos, this.deaths.length > 1 ? Math.random() * 0.25 : 0);
+  }
+
   // Continuous layers -------------------------------------------------------
   setThrust(level, dt) {
     if (!this.ctx) return;
@@ -633,3 +694,125 @@ export class Sound {
     this.beamOsc.gain.setTargetAtTime(level * 0.09, t, 0.04);
   }
 }
+
+// ---- deaths ---------------------------------------------------------------------
+
+// Vowel formants: [frequency, Q, gain]. Scaled up for women and children.
+const VOWELS = {
+  a: [[800, 6, 3.2], [1200, 7, 2.2], [2500, 8, 1.2]],
+  e: [[420, 6, 3.2], [2000, 8, 2], [2650, 9, 1.2]],
+  i: [[300, 6, 3], [2300, 9, 2.2], [3000, 9, 1.3]],
+  o: [[520, 6, 3.4], [900, 7, 2.2], [2400, 8, 1]],
+  u: [[360, 6, 3.4], [800, 7, 2], [2300, 8, 0.9]],
+};
+const vow = (v, k = 1) => VOWELS[v].map(([F, Q, g]) => [F * k, Q, g]);
+const vary = () => 0.9 + Math.random() * 0.22;
+
+// The sounds of someone killed: twelve squishes, then twelve screams. Each is (sound, pos, delay).
+const GORE = [
+  // A wet slap
+  (S, pos, d) => {
+    const f = vary();
+    S.noiseHit({ type: 'lowpass', freq: 2600 * f, freqEnd: 180, q: 4, peak: 0.45, decay: 0.22, pos, delay: d });
+    S.tone({ type: 'sine', freq: 170 * f, freqEnd: 45, peak: 0.3, decay: 0.16, pos, delay: d });
+  },
+  // A squelch, rising
+  (S, pos, d) => {
+    const f = vary();
+    S.noiseHit({ type: 'bandpass', freq: 380 * f, freqEnd: 1700 * f, q: 9, peak: 0.55, attack: 0.03, decay: 0.28, pos, delay: d });
+    S.noiseHit({ type: 'lowpass', freq: 700, freqEnd: 200, q: 3, peak: 0.2, decay: 0.2, pos, delay: d });
+  },
+  // Crunching through and squishing
+  (S, pos, d) => {
+    S.noiseHit({ type: 'highpass', freq: 2600, peak: 0.35, decay: 0.05, pos, delay: d });
+    S.noiseHit({ type: 'highpass', freq: 3200, peak: 0.25, decay: 0.04, pos, delay: d + 0.045 });
+    S.noiseHit({ type: 'lowpass', freq: 1500, freqEnd: 160, q: 5, peak: 0.4, decay: 0.3, pos, delay: d + 0.03 });
+  },
+  // A deep splat
+  (S, pos, d) => {
+    S.noiseHit({ buffer: S.brown, type: 'lowpass', freq: 900, freqEnd: 80, q: 3, peak: 0.7, decay: 0.4, pos, delay: d });
+    S.tone({ type: 'sine', freq: 95, freqEnd: 32, peak: 0.42, decay: 0.3, pos, delay: d });
+  },
+  // A gurgle: bubbles rising through it
+  (S, pos, d) => {
+    const f = vary();
+    for (let i = 0; i < 9; i++) {
+      const b = (240 + Math.random() * 260) * f;
+      S.tone({ type: 'sine', freq: b, freqEnd: b * 2.4, peak: 0.12, attack: 0.004, decay: 0.045, pos, delay: d + i * 0.055 + Math.random() * 0.03 });
+    }
+    S.noiseHit({ type: 'bandpass', freq: 500 * f, q: 3, peak: 0.12, attack: 0.05, decay: 0.5, pos, delay: d });
+  },
+  // Drips pattering down
+  (S, pos, d) => {
+    for (let i = 0; i < 8; i++) {
+      const b = 700 + Math.random() * 900;
+      S.tone({ type: 'sine', freq: b, freqEnd: b * 0.45, peak: 0.07, decay: 0.05, pos, delay: d + 0.08 + i * 0.07 + Math.random() * 0.05 });
+    }
+  },
+  // A suction pop
+  (S, pos, d) => {
+    const f = vary();
+    S.tone({ type: 'sine', freq: 190 * f, freqEnd: 950 * f, peak: 0.3, attack: 0.005, decay: 0.07, pos, delay: d });
+    S.noiseHit({ type: 'bandpass', freq: 1200 * f, q: 4, peak: 0.2, decay: 0.06, pos, delay: d });
+  },
+  // A long resonant squash
+  (S, pos, d) => {
+    const f = vary();
+    S.noiseHit({ type: 'lowpass', freq: 1300 * f, freqEnd: 140, q: 12, peak: 0.45, attack: 0.01, decay: 0.55, pos, delay: d });
+    S.noiseHit({ type: 'bandpass', freq: 650 * f, freqEnd: 300, q: 5, peak: 0.25, attack: 0.02, decay: 0.45, pos, delay: d });
+  },
+  // Bones snapping
+  (S, pos, d) => {
+    for (let i = 0; i < 3; i++) S.noiseHit({ type: 'bandpass', freq: 2600 + Math.random() * 1400, q: 3, peak: 0.4, attack: 0.001, decay: 0.035, pos, delay: d + i * 0.06 + Math.random() * 0.02 });
+    S.tone({ type: 'triangle', freq: 220, freqEnd: 70, peak: 0.2, decay: 0.12, pos, delay: d });
+  },
+  // A slosh
+  (S, pos, d) => {
+    const f = vary();
+    S.noiseHit({ type: 'bandpass', freq: 600 * f, freqEnd: 260, q: 2, peak: 0.4, attack: 0.08, decay: 0.42, pos, delay: d });
+    S.noiseHit({ type: 'lowpass', freq: 400, peak: 0.2, attack: 0.1, decay: 0.3, pos, delay: d + 0.05 });
+  },
+  // A meaty thud
+  (S, pos, d) => {
+    S.tone({ type: 'triangle', freq: 150, freqEnd: 48, peak: 0.4, decay: 0.22, pos, delay: d });
+    S.noiseHit({ type: 'lowpass', freq: 520, freqEnd: 120, peak: 0.4, decay: 0.2, pos, delay: d });
+  },
+  // A spray hissing out, and spattering
+  (S, pos, d) => {
+    S.noiseHit({ type: 'highpass', freq: 2200, freqEnd: 4200, peak: 0.22, attack: 0.01, decay: 0.55, pos, delay: d });
+    for (let i = 0; i < 5; i++) S.noiseHit({ type: 'bandpass', freq: 1800 + Math.random() * 1500, q: 5, peak: 0.12, decay: 0.03, pos, delay: d + 0.2 + i * 0.06 });
+  },
+
+  // A man's yell
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [170 * f, 290 * f, 150 * f], vowel: vow('a'), dur: 1.1, vib: 0.03, rasp: 0.3, peak: 0.2, pos, delay: d }); },
+  // A woman's shriek
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [520 * f, 980 * f, 640 * f], vowel: vow('i', 1.15), dur: 1.3, vib: 0.025, vibRate: 7, peak: 0.17, pos, delay: d }); },
+  // A child screaming
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [750 * f, 1250 * f, 900 * f], vowel: vow('e', 1.35), dur: 1.0, vib: 0.03, vibRate: 8, peak: 0.15, pos, delay: d }); },
+  // A yelp, cut off
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [400 * f, 650 * f, 380 * f], vowel: vow('a', 1.1), dur: 0.22, attack: 0.02, peak: 0.2, pos, delay: d }); },
+  // Screaming through blood: a wet warble, breaking up
+  (S, pos, d) => {
+    const f = vary();
+    S.voice({ pitch: [260 * f, 380 * f, 180 * f], vowel: vow('o'), dur: 1.0, vib: 0.12, vibRate: 14, rasp: 0.5, breath: 0.3, peak: 0.18, pos, delay: d });
+    for (let i = 0; i < 5; i++) S.tone({ type: 'sine', freq: 300, freqEnd: 650, peak: 0.06, decay: 0.04, pos, delay: d + 0.2 + i * 0.13 });
+  },
+  // A long wail, falling away
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [650 * f, 700 * f, 190 * f], vowel: vow('a', 1.1), dur: 1.6, vib: 0.04, peak: 0.16, pos, delay: d }); },
+  // A hoarse shout
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [200 * f, 330 * f, 220 * f], vowel: vow('a'), dur: 0.6, rasp: 0.8, breath: 0.35, peak: 0.2, pos, delay: d }); },
+  // "Oh, no--"
+  (S, pos, d) => {
+    const f = vary();
+    S.voice({ pitch: [300 * f, 340 * f, 280 * f], vowel: vow('o', 1.05), dur: 0.3, attack: 0.03, peak: 0.16, pos, delay: d });
+    S.voice({ pitch: [320 * f, 400 * f, 230 * f], vowel: vow('u', 1.05), dur: 0.55, attack: 0.03, peak: 0.17, pos, delay: d + 0.38 });
+  },
+  // A whimper
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [380 * f, 420 * f, 300 * f], vowel: vow('u', 1.1), dur: 0.7, vib: 0.08, vibRate: 4.5, breath: 0.45, peak: 0.1, pos, delay: d }); },
+  // A choked gasp
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [220 * f, 260 * f, 160 * f], vowel: vow('e'), dur: 0.35, attack: 0.02, rasp: 0.6, breath: 0.9, peak: 0.15, pos, delay: d }); },
+  // A squeal
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [1100 * f, 1700 * f, 1300 * f], vowel: vow('i', 1.4), dur: 0.7, vib: 0.03, vibRate: 9, peak: 0.12, pos, delay: d }); },
+  // A groan of agony
+  (S, pos, d) => { const f = vary(); S.voice({ pitch: [130 * f, 150 * f, 95 * f], vowel: vow('o'), dur: 1.5, attack: 0.15, vib: 0.03, vibRate: 5, rasp: 0.35, peak: 0.2, pos, delay: d }); },
+];
