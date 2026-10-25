@@ -919,6 +919,10 @@ release countdown:
 - The camera starts off its right flank over the water, swings in behind it as it reaches
   the city and rides its line through the streets, hanging back further the faster it goes,
   and eases into the usual over-the-shoulder view by the release.
+- **Space** (a tap on a touch screen) lets go of the frame at any point in the flight: the
+  clamps click, open a moment later, and the frame drops into the street with the lifter's
+  speed. Over the open water it waits until the lifter crosses the seawall. The lifter, lighter,
+  flies on along its line, climbing out of the streets until it is out of sight.
 - The clamps open about seven meters up and the frame drops onto the plaza; it is the
   player's from the moment it lets go. The lifter climbs straight out of the towers and
   flies off north. The swarm can't touch it.
