@@ -1,0 +1,86 @@
+{
+  "units": [
+    {
+      "id": "ranger",
+      "heightMeters": 1.82,
+      "visualBoundsHeight": 1.820053766071756,
+      "meshes": 29,
+      "triangles": 3276
+    },
+    {
+      "id": "trooper",
+      "heightMeters": 1.88,
+      "visualBoundsHeight": 1.880055538579616,
+      "meshes": 28,
+      "triangles": 3220
+    },
+    {
+      "id": "gunner",
+      "heightMeters": 1.96,
+      "visualBoundsHeight": 1.9600579019234294,
+      "meshes": 27,
+      "triangles": 5528
+    },
+    {
+      "id": "rocketeer",
+      "heightMeters": 1.9,
+      "visualBoundsHeight": 1.9000561294155691,
+      "meshes": 28,
+      "triangles": 4412
+    },
+    {
+      "id": "grenadier",
+      "heightMeters": 1.86,
+      "visualBoundsHeight": 1.860054947743663,
+      "meshes": 28,
+      "triangles": 3616
+    },
+    {
+      "id": "lancer",
+      "heightMeters": 1.92,
+      "visualBoundsHeight": 1.9200567202515226,
+      "meshes": 29,
+      "triangles": 4732
+    },
+    {
+      "id": "medic",
+      "heightMeters": 1.8,
+      "visualBoundsHeight": 1.8000531752358024,
+      "meshes": 29,
+      "triangles": 3304
+    },
+    {
+      "id": "commander",
+      "heightMeters": 1.87,
+      "visualBoundsHeight": 2.033498612588391,
+      "meshes": 30,
+      "triangles": 3378
+    },
+    {
+      "id": "kestrel",
+      "heightMeters": 3.3,
+      "visualBoundsHeight": 3.300371506944443,
+      "meshes": 41,
+      "triangles": 7840
+    },
+    {
+      "id": "bastion",
+      "heightMeters": 4.4,
+      "visualBoundsHeight": 4.400495342592592,
+      "meshes": 34,
+      "triangles": 7836
+    },
+    {
+      "id": "bombard",
+      "heightMeters": 4,
+      "visualBoundsHeight": 4.0004503114478105,
+      "meshes": 38,
+      "triangles": 6508
+    }
+  ],
+  "motions": 154,
+  "weapons": 55,
+  "skins": 4,
+  "maxIKError": 0,
+  "nonFiniteTransforms": 0
+}

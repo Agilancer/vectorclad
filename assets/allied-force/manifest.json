@@ -1,0 +1,161 @@
+{
+  "name": "VECTORCLAD allied expeditionary force",
+  "version": "1.0.0",
+  "files": [
+    {
+      "path": "allied-units.js",
+      "bytes": 16008,
+      "sha256": "d7b1bb04d1985d3526cc577ab74fd0e7529326a5726eb8f26b0a2dac1b45c2d9"
+    },
+    {
+      "path": "bastion-preview.png",
+      "bytes": 188896,
+      "sha256": "bc882cea3db634f8d1a93c8221c197d2dca2255efabcbc8f29a8502cde8bd4a2"
+    },
+    {
+      "path": "controller-validation.json",
+      "bytes": 184,
+      "sha256": "cb0e2613dac8942b24d243e9a1f437015d013faf2f05a4be22d75e6fe771b7a1"
+    },
+    {
+      "path": "force-preview.png",
+      "bytes": 293607,
+      "sha256": "beadbb980c8b4845cf1274428410cb4b7143d4eaecf6b07645ab564090674c03"
+    },
+    {
+      "path": "kit.js",
+      "bytes": 3616,
+      "sha256": "35f7145bca63ccb7318a9cc5bc497a93676e1d104ed54c0a21d1f43177844b6f"
+    },
+    {
+      "path": "platoon-preview.png",
+      "bytes": 227463,
+      "sha256": "7d26372b933541509448a2970580f24428f9f13d25e6e986370b27215ed75389"
+    },
+    {
+      "path": "preview.html",
+      "bytes": 10199,
+      "sha256": "b4607de8633a52c2b13d7f9ebd37b14388dbd04894daf97659a8d7874d634e05"
+    },
+    {
+      "path": "PROVENANCE.md",
+      "bytes": 1872,
+      "sha256": "17307b97a750895a9c54783e0768d80a4f287fb2b512c69bbde98bd69224c2b4"
+    },
+    {
+      "path": "range-preview.png",
+      "bytes": 191270,
+      "sha256": "fda83185b52ebed0d2fd4dc16521930194daa941e537494411072e9d3092b79c"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7042,
+      "sha256": "ebeb22e39db5909866b39a4e9e1042c33cc4beef0f2a966d5b164a395a16463a"
+    },
+    {
+      "path": "scout-preview.png",
+      "bytes": 186453,
+      "sha256": "f70d472347b9c69fa7ea20317e6adba4f2172225c5aa34984a9e7cf09a8e165f"
+    },
+    {
+      "path": "skins/desert-color.png",
+      "bytes": 314053,
+      "sha256": "cef399b9342264b208b170b1757f836fcff81853eda17041485d766d3b5a8754"
+    },
+    {
+      "path": "skins/desert-metalness.png",
+      "bytes": 88783,
+      "sha256": "c287ca83744c94e6cdec807fb30d8777bb94d5f5f555d2cb0117360ba4cfdb80"
+    },
+    {
+      "path": "skins/desert-roughness.png",
+      "bytes": 88780,
+      "sha256": "ccff202ccdbe339fac374d6cf9e89164e1053086e1335db5e050a7e9f185ad66"
+    },
+    {
+      "path": "skins/urban-color.png",
+      "bytes": 290835,
+      "sha256": "0ddb402bd0d5afd09edb453da4f7408f5ad9d32082cf5d813c213c41a2080d2a"
+    },
+    {
+      "path": "skins/urban-metalness.png",
+      "bytes": 88783,
+      "sha256": "c287ca83744c94e6cdec807fb30d8777bb94d5f5f555d2cb0117360ba4cfdb80"
+    },
+    {
+      "path": "skins/urban-roughness.png",
+      "bytes": 88780,
+      "sha256": "ccff202ccdbe339fac374d6cf9e89164e1053086e1335db5e050a7e9f185ad66"
+    },
+    {
+      "path": "skins/vanguard-color.png",
+      "bytes": 312495,
+      "sha256": "c52672edd24da7413f2fca3f2b9db3f69014f456d1a884438cf93c8cbd0ebf13"
+    },
+    {
+      "path": "skins/vanguard-metalness.png",
+      "bytes": 88783,
+      "sha256": "c287ca83744c94e6cdec807fb30d8777bb94d5f5f555d2cb0117360ba4cfdb80"
+    },
+    {
+      "path": "skins/vanguard-roughness.png",
+      "bytes": 88780,
+      "sha256": "ccff202ccdbe339fac374d6cf9e89164e1053086e1335db5e050a7e9f185ad66"
+    },
+    {
+      "path": "skins/woodland-color.png",
+      "bytes": 314053,
+      "sha256": "bf43d7cfc6393c30a1134f818c4337d59debf5cb07741264a8139c03c7e390cf"
+    },
+    {
+      "path": "skins/woodland-metalness.png",
+      "bytes": 88783,
+      "sha256": "c287ca83744c94e6cdec807fb30d8777bb94d5f5f555d2cb0117360ba4cfdb80"
+    },
+    {
+      "path": "skins/woodland-roughness.png",
+      "bytes": 88780,
+      "sha256": "ccff202ccdbe339fac374d6cf9e89164e1053086e1335db5e050a7e9f185ad66"
+    },
+    {
+      "path": "skins.js",
+      "bytes": 4993,
+      "sha256": "265e6dd4f7f33b99f119c13b483ff03483091533fe25a0fce4c2ca6a599f74b4"
+    },
+    {
+      "path": "squad.js",
+      "bytes": 3351,
+      "sha256": "a1bb54cddad46c9ef13304279b44832b9627f8da0a64323c2bdcfa49b99f491c"
+    },
+    {
+      "path": "standalone-preview.html",
+      "bytes": 41892,
+      "sha256": "5f3015660a6a88a8a9430884044b778ddfa73f6d8b9e865201cb5086c566f0e0"
+    },
+    {
+      "path": "trooper-preview.png",
+      "bytes": 139732,
+      "sha256": "ac79d976088bb15b7b22c5afb6e70f5e0543aef4edbbd535cb940d9d4bd6e7c5"
+    },
+    {
+      "path": "validation.json",
+      "bytes": 1819,
+      "sha256": "0fdabb49bdf332e7b0ce0d9879dacf76d4618c37bed1850300ac7a6375dc3c98"
+    },
+    {
+      "path": "weapons-preview.png",
+      "bytes": 133537,
+      "sha256": "ae11bf88d3b737c3545e706d88fccfb4b646fe062ed8eee97fb724d4f4735dbd"
+    },
+    {
+      "path": "weapons.js",
+      "bytes": 4236,
+      "sha256": "648aaa341b8ae19554e1137a265cc56960c9a98b060a3ccfe6358c33dbcb7eea"
+    },
+    {
+      "path": "woodland-preview.png",
+      "bytes": 149020,
+      "sha256": "41d3051fdd7f9b9bc9ebe2a65856074e2dcffc9c79ce6c2a27fe46f8b440c850"
+    }
+  ]
+}
