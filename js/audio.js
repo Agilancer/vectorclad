@@ -611,7 +611,7 @@ export class Sound {
     this.groan(pos, 1.2);
   }
 
-  // People (js/people.js). A death is all 24 sounds in GORE below at once.
+  // People (js/people.js). A death is one of the 24 sounds in GORE below, picked at random.
   /**
    * A human cry: a buzzing sawtooth, wavering, through the formants of a vowel. pitch: [start, peak, end]
    * in Hz; vowel: [[F, Q, gain], ...]; vib: vibrato depth (a fraction of the pitch) at vibRate; rasp: how
@@ -657,21 +657,19 @@ export class Sound {
     for (const n of osc) { n.start(t); n.stop(end + 0.05); }
     if (breath) this.noiseHit({ type: 'bandpass', freq: vowel[1][0] * 1.3, q: 1.5, peak: peak * breath, attack, decay: dur, pos, delay });
   }
-  /** Someone killed: all 24 at once, the squishes first and the screams over the next second or so */
+  /** Someone killed: one of the 24, at random (never the same one twice running) */
   death(pos) {
     if (!this.ok || this.att(pos) < 0.03) return;
     const now = this.ctx.currentTime;
     this.deaths = (this.deaths || []).filter((t) => now - t < 1.5);
-    const k = this.deaths.length;
+    // A blast that kills a crowd: a chorus of them, but not so many the sound chokes
+    if (this.deaths.length >= 16) return;
     this.deaths.push(now);
-    // A blast that kills a crowd would be thousands of voices: the first few get the lot, the rest a handful each
-    const n = k < 3 ? GORE.length : k < 12 ? 4 : k < 30 ? 1 : 0;
-    const order = GORE.map((_, i) => i);
-    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-    for (let i = 0; i < n; i++) {
-      const j = order[i];
-      GORE[j](this, pos, j < SQUISHES ? Math.random() * 0.35 : Math.random() * 0.9);
-    }
+    let j = Math.floor(Math.random() * (GORE.length - 1));
+    if (j >= (this.lastDeath ?? -1)) j++;
+    this.lastDeath = j;
+    // Spread a little, so a crowd killed at once doesn't all start on the same instant
+    GORE[j](this, pos, this.deaths.length > 1 ? Math.random() * 0.25 : 0);
   }
 
   // Continuous layers -------------------------------------------------------
@@ -704,7 +702,6 @@ const vow = (v, k = 1) => VOWELS[v].map(([F, Q, g]) => [F * k, Q, g]);
 const vary = () => 0.9 + Math.random() * 0.22;
 
 // The sounds of someone killed: twelve squishes, then twelve screams. Each is (sound, pos, delay).
-const SQUISHES = 12;
 const GORE = [
   // A wet slap
   (S, pos, d) => {

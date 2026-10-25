@@ -390,14 +390,14 @@ The city is full of people, at their true size beside the 12 m mech (`js/people.
   a splatter stuck flat to that surface, streaked the way it was going. Splatters stay until
   the surface under them is shot away, or newer ones take their place (up to 9,000, 2,500 on
   phones). Bodies trodden on or slammed down by a blast spray more.
-- **Screams:** every death sets off two dozen different sounds at once (`death()` in
-  `js/audio.js`): twelve squishes (a wet slap, a squelch, bones crunching and snapping, a
-  deep splat, a gurgle, dripping, a suction pop, a squash, a slosh, a thud, a hissing spray)
-  and twelve screams synthesized from vowel formants (a man's yell, a woman's shriek, a
-  child, a yelp cut off, a scream through blood, a falling wail, a hoarse shout, "oh, no",
-  a whimper, a choked gasp, a squeal and a groan). When a blast kills a crowd, the first
-  three deaths in a second and a half get all 24 and the rest a few each, so the sound
-  doesn't choke.
+- **Screams:** every death plays one of two dozen different sounds, picked at random and
+  never the same one twice running (`death()` in `js/audio.js`): twelve squishes (a wet
+  slap, a squelch, bones crunching and snapping, a deep splat, a gurgle, dripping, a
+  suction pop, a squash, a slosh, a thud, a hissing spray) and twelve screams synthesized
+  from vowel formants (a man's yell, a woman's shriek, a child, a yelp cut off, a scream
+  through blood, a falling wail, a hoarse shout, "oh, no", a whimper, a choked gasp, a
+  squeal and a groan). When a blast kills a crowd they come as a chorus, up to sixteen in
+  a second and a half.
 
 **Furniture** (`js/furniture.js`): sixteen pieces modeled in three.js from boxes and
 cylinders: desks with monitors and office chairs, filing cabinets, bookshelves full of
