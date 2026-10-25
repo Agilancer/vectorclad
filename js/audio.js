@@ -383,6 +383,71 @@ export class Sound {
     this.noiseHit({ type: 'bandpass', freq: 1500, freqEnd: 600, q: 2, peak: 0.25, attack: 0.01, decay: 0.18, pos });
     this.tone({ type: 'sine', freq: 520, freqEnd: 260, peak: 0.07, decay: 0.15, pos });
   }
+  // Riftlings (js/riftlings.js)
+  /** A pack leader's shriek: a rising wail that breaks into a rasping scream */
+  riftScream(pos, k = 1) {
+    if (!this.gate('rscream', 0.45, pos, 0.03)) return;
+    const f = 0.9 + Math.random() * 0.25;
+    this.tone({ type: 'sawtooth', freq: 1250 * f, freqEnd: 2900 * f, peak: 0.08 * k, attack: 0.14, decay: 0.12, pos });
+    this.tone({ type: 'sawtooth', freq: 2900 * f, freqEnd: 900 * f, peak: 0.11 * k, attack: 0.02, decay: 0.9, pos, delay: 0.24 });
+    this.tone({ type: 'sawtooth', freq: 3080 * f, freqEnd: 1010 * f, peak: 0.07 * k, attack: 0.03, decay: 0.85, pos, delay: 0.25 });
+    this.tone({ type: 'square', freq: 1480 * f, freqEnd: 520 * f, peak: 0.04 * k, attack: 0.03, decay: 0.8, pos, delay: 0.26 });
+    this.noiseHit({ type: 'bandpass', freq: 4200, freqEnd: 1600, q: 6, peak: 0.3 * k, attack: 0.1, decay: 1.0, pos });
+    this.noiseHit({ type: 'highpass', freq: 5200, peak: 0.1 * k, attack: 0.3, decay: 0.6, pos });
+  }
+  riftHiss(pos, k = 1) {
+    if (!this.gate('rhiss', 0.3, pos, 0.05)) return;
+    this.noiseHit({ type: 'highpass', freq: 4600, freqEnd: 3000, peak: 0.2 * k, attack: 0.08, decay: 0.6, pos });
+    this.noiseHit({ type: 'bandpass', freq: 2400, q: 4, peak: 0.08 * k, attack: 0.1, decay: 0.5, pos });
+  }
+  riftLeap(pos) {
+    if (!this.gate('rleap', 0.07, pos, 0.1)) return;
+    const f = 1 + Math.random() * 0.3;
+    this.tone({ type: 'sawtooth', freq: 2400 * f, freqEnd: 3600 * f, peak: 0.05, attack: 0.02, decay: 0.12, pos });
+    this.noiseHit({ type: 'highpass', freq: 3500, freqEnd: 6000, peak: 0.1, attack: 0.01, decay: 0.15, pos });
+  }
+  riftLand(pos) {
+    if (!this.gate('rland', 0.08, pos, 0.1)) return;
+    this.noiseHit({ type: 'lowpass', freq: 1200, freqEnd: 200, peak: 0.18, decay: 0.15, pos });
+    this.tone({ type: 'sine', freq: 140, freqEnd: 60, peak: 0.12, decay: 0.12, pos });
+  }
+  riftStep(pos) {
+    if (!this.gate('rstep' + (Math.random() * 3 | 0), 0.05, pos, 0.25)) return;
+    const f = 1 + Math.random() * 0.5;
+    this.tone({ type: 'triangle', freq: 1900 * f, freqEnd: 1100 * f, peak: 0.025, decay: 0.03, pos });
+    this.noiseHit({ type: 'highpass', freq: 3800, peak: 0.035, decay: 0.025, pos });
+  }
+  /** Claws biting into armor as one takes hold of the hull */
+  riftLatch(pos) {
+    if (!this.gate('rlatch', 0.06, pos)) return;
+    const f = 1 + Math.random() * 0.2;
+    this.tone({ type: 'triangle', freq: 2600 * f, freqEnd: 1700 * f, peak: 0.09, decay: 0.12, pos });
+    this.noiseHit({ type: 'bandpass', freq: 3600, q: 3, peak: 0.22, attack: 0.002, decay: 0.1, pos });
+    this.tone({ type: 'sine', freq: 210, freqEnd: 80, peak: 0.2, decay: 0.12, pos });
+  }
+  riftClaw(pos) {
+    if (!this.gate('rclaw', 0.07, pos)) return;
+    const f = 1 + Math.random() * 0.3;
+    this.noiseHit({ type: 'bandpass', freq: 3000 * f, freqEnd: 1800, q: 4, peak: 0.14, attack: 0.005, decay: 0.09, pos });
+    this.tone({ type: 'triangle', freq: 2100 * f, freqEnd: 1500 * f, peak: 0.04, decay: 0.07, pos });
+  }
+  /** One bursting on the hull: a wet slap, a squelch, a thump and a patter of drips */
+  splat(pos) {
+    if (!this.gate('splat' + (Math.random() * 3 | 0), 0.04, pos, 0.02)) return;
+    const f = 0.85 + Math.random() * 0.3;
+    this.noiseHit({ type: 'lowpass', freq: 2600 * f, freqEnd: 180, q: 4, peak: 0.5, attack: 0.002, decay: 0.22, pos });
+    this.noiseHit({ type: 'bandpass', freq: 900 * f, freqEnd: 260, q: 6, peak: 0.3, attack: 0.01, decay: 0.3, pos });
+    this.tone({ type: 'sine', freq: 180 * f, freqEnd: 45, peak: 0.32, decay: 0.16, pos });
+    for (let i = 0; i < 4; i++) {
+      this.tone({ type: 'sine', freq: (500 + Math.random() * 700) * f, freqEnd: 140, peak: 0.05, decay: 0.05, pos, delay: 0.05 + i * 0.04 + Math.random() * 0.03 });
+    }
+  }
+  riftDie(pos) {
+    if (!this.gate('rdie', 0.06, pos)) return;
+    const f = 1 + Math.random() * 0.3;
+    this.tone({ type: 'sawtooth', freq: 2300 * f, freqEnd: 500 * f, peak: 0.08, attack: 0.01, decay: 0.32, pos });
+    this.noiseHit({ type: 'lowpass', freq: 1800, freqEnd: 250, q: 3, peak: 0.22, decay: 0.2, pos });
+  }
   // Medium spiders
   mediumGrowl(pos) {
     if (!this.gate('mgrowl', 0.5, pos, 0.03)) return;
@@ -457,7 +522,7 @@ export class Sound {
     this.tone({ type: 'sine', freq: 140, freqEnd: 50, peak: 0.3, decay: 0.3, pos });
     for (let i = 0; i < 10; i++) this.tone({ type: 'square', freq: 2500 + Math.random() * 3000, peak: 0.025, decay: 0.02, pos, delay: 0.35 + i * 0.06 + Math.random() * 0.05 });
   }
-  // Summoning portals (js/portals.js) and the riftlings that rain out of them (js/riftlings.js)
+  // Summoning portals (js/portals.js); the riftlings that rain out of them are with the Riftlings above
   portalOpen(pos, k = 1) {
     if (!this.gate(k > 0.6 ? 'portal' : 'portalS', k > 0.6 ? 0.12 : 0.07, pos, 0.02)) return;
     this.tone({ type: 'sawtooth', freq: 70 * (1.4 - 0.4 * k), freqEnd: 320, peak: 0.16 * k, attack: 0.25, decay: 0.7, pos });
@@ -469,28 +534,6 @@ export class Sound {
     if (!this.gate(k > 0.6 ? 'pclose' : 'pcloseS', 0.1, pos, 0.02)) return;
     this.noiseHit({ type: 'bandpass', freq: 2600, freqEnd: 200, q: 3, peak: 0.3 * k, attack: 0.02, decay: 0.45, pos });
     this.tone({ type: 'sine', freq: 520, freqEnd: 60, peak: 0.14 * k, decay: 0.5, pos });
-  }
-  riftScreech(pos) {
-    if (!this.gate('rscreech', 0.3, pos, 0.05)) return;
-    const f = 1 + Math.random() * 0.35;
-    this.tone({ type: 'sawtooth', freq: 3100 * f, freqEnd: 900 * f, peak: 0.08, attack: 0.03, decay: 0.5, pos });
-    this.tone({ type: 'square', freq: 1700 * f, freqEnd: 520 * f, peak: 0.04, attack: 0.04, decay: 0.45, pos });
-    this.noiseHit({ type: 'bandpass', freq: 5200, freqEnd: 2000, q: 4, peak: 0.22, attack: 0.02, decay: 0.45, pos });
-  }
-  riftSlash(pos) {
-    if (!this.gate('rslash', 0.07, pos, 0.1)) return;
-    this.noiseHit({ type: 'highpass', freq: 3800, freqEnd: 1500, peak: 0.18, attack: 0.01, decay: 0.09, pos });
-    this.tone({ type: 'triangle', freq: 2600, freqEnd: 1200, peak: 0.05, decay: 0.06, pos });
-  }
-  riftDie(pos) {
-    if (!this.gate('rdie', 0.07, pos)) return;
-    this.tone({ type: 'sawtooth', freq: 2400, freqEnd: 300, peak: 0.07, attack: 0.01, decay: 0.3, pos });
-    this.noiseHit({ type: 'lowpass', freq: 1600, freqEnd: 300, peak: 0.25, decay: 0.2, pos });
-  }
-  riftLand(pos) {
-    if (!this.gate('rland' + ((Math.random() * 2) | 0), 0.06, pos, 0.1)) return;
-    this.noiseHit({ type: 'lowpass', freq: 1300, freqEnd: 200, peak: 0.18, decay: 0.12, pos });
-    this.tone({ type: 'sine', freq: 160, freqEnd: 70, peak: 0.12, decay: 0.12, pos });
   }
   playerHit(heavy = 1) {
     if (!this.gate('phit', 0.05)) return;

@@ -1,7 +1,8 @@
 import * as THREE from './three.js';
 import { VARIANTS } from './spiders.js';
 import { SCORPIONS } from './scorpions.js';
-import { RIFTLING } from './riftlings.js';
+import { RIFT_PACKS } from './riftlings.js';
+import { RIFTLING_COLORS } from '../assets/riftlings/riftling.js';
 
 // ---------------------------------------------------------------------------
 // Summoning: the tech demo's debug menu (the ` key) calls monsters in instead
@@ -12,7 +13,7 @@ import { RIFTLING } from './riftlings.js';
 //     reaches up near the portal. The monster drops out and falls to the
 //     street or the roof below.
 //   - A summon of many opens their portals one after another, scattered over
-//     an area that grows with the count, so a hundred riftlings come down like
+//     an area that grows with the count, so hundreds of riftlings come down like
 //     rain.
 //   - The millipede's portal stands upright near the ground and it crawls out
 //     of it along the rooftops (js/millipede.js planPortal).
@@ -30,13 +31,18 @@ export const COOLDOWN = 60;       // seconds before a kind can be summoned again
 const title = (s) => s.charAt(0) + s.slice(1).toLowerCase();
 const spider = (id, max, def) => ({ id, kind: 'spider', name: title(VARIANTS[id].name), max, def, glow: VARIANTS[id].palette.glow });
 const scorp = (id, max, def) => ({ id, kind: 'scorpion', name: title(SCORPIONS[id].name), max, def, glow: SCORPIONS[id].palette.glow });
+// A pack color of riftlings (js/riftlings.js RIFT_PACKS); one summon is dealt out into packs of it
+const rift = (id, color, def) => {
+  const c = new THREE.Color(RIFTLING_COLORS[color]);
+  return { id, kind: 'riftling', color, name: title(RIFT_PACKS[color].name), max: 500, def, glow: [c.r, c.g, c.b] };
+};
 
 /** The menu's list: every monster in the game, how many one summon can call, and the slider's start */
 export const SUMMON_GROUPS = [
   { title: 'Spider-frames', items: ['stalker', 'skitter', 'weaver', 'lancer', 'bombard'].map((id) => spider(id, 20, 5)) },
   { title: 'Medium spider-frames', items: ['bulwark', 'warden', 'mender', 'magnetar', 'quarrier'].map((id) => spider(id, 5, 1)) },
   { title: 'Scorpion-frames', items: [...['burrower', 'prowler', 'berserker', 'shocktail', 'scorcher', 'venomtail'].map((id) => scorp(id, 20, 5)), scorp('emperor', 5, 1)] },
-  { title: 'Riftlings', items: [{ id: 'riftling', kind: 'riftling', name: 'Riftling', max: 200, def: 50, glow: [0.5, 1, 0.3] }] },
+  { title: 'Riftlings', items: [rift('acid', 'green', 50), rift('blast', 'orange', 20), rift('shade', 'purple', 16), rift('spire', 'blue', 16)] },
   { title: 'Bosses', items: [spider('brood', 5, 1), { id: 'millipede', kind: 'millipede', name: 'Millipede', max: 1, def: 1, glow: [1.3, 0.1, 0.06] }] },
 ];
 export const SUMMONS = Object.fromEntries(SUMMON_GROUPS.flatMap((g) => g.items).map((it) => [it.id, it]));
@@ -112,9 +118,11 @@ export class Summoner {
     const spots = this.spots(area, R, areaR, n, Math.ceil((T.open + T.hold + T.close) / gap) + 1, eye);
     this.reserved[it.kind] += n;
     this.pending += n;
+    // The riftlings of one summon form their packs as they come through (js/riftlings.js summon)
+    const group = {};
     let t = this.time + 0.2;
     for (const at of spots) {
-      this.queue.push({ t, fn: () => this.openFor(it, at, R, T) });
+      this.queue.push({ t, fn: () => this.openFor(it, at, R, T, group) });
       t += gap * rand(0.6, 1.4);
     }
     this.readyAt[id] = performance.now() + COOLDOWN * 1000;
@@ -148,23 +156,22 @@ export class Summoner {
   }
 
   /** Open one monster's portal; it drops through once the portal is open */
-  openFor(it, at, R, T) {
-    const riftColor = it.kind === 'riftling' ? Object.keys(RIFTLING.colors)[(Math.random() * 4) | 0] : null;
-    const color = riftColor ? new THREE.Color(RIFTLING.colors[riftColor]).multiplyScalar(1.4) : new THREE.Color(it.glow[0], it.glow[1], it.glow[2]);
+  openFor(it, at, R, T, group) {
+    const color = it.kind === 'riftling' ? new THREE.Color(RIFTLING_COLORS[it.color]).multiplyScalar(1.4) : new THREE.Color(it.glow[0], it.glow[1], it.glow[2]);
     const portal = this.portals.open({
       pos: at, normal: new V3(0, -1, 0), radius: R, color, big: it.kind !== 'riftling',
       open: T.open, hold: T.hold, close: T.close,
-      onOpen: () => this.deliver(it, at, riftColor),
+      onOpen: () => this.deliver(it, at, group),
     });
-    if (!portal) this.deliver(it, at, riftColor);
+    if (!portal) this.deliver(it, at, group);
   }
 
   /** The monster comes through, just above the portal's face, and falls */
-  deliver(it, at, riftColor) {
+  deliver(it, at, group) {
     this.reserved[it.kind]--;
     this.pending--;
     const sw = this.sw, vel = new V3(rand(-2, 2), -3, rand(-2, 2));
-    if (it.kind === 'riftling') { sw.rift.spawn(_a.set(at.x, at.y + 0.3, at.z), { color: riftColor, vel }); return; }
+    if (it.kind === 'riftling') { sw.rift.summon(_a.set(at.x, at.y + 0.3, at.z), { color: it.color, vel, group }); return; }
     const spot = { point: new V3(at.x, at.y + 1.2, at.z), normal: new V3(0, 1, 0), collider: null };
     const s = it.kind === 'scorpion' ? sw.nest.spawn(spot, it.id, vel) : sw.spawn(spot, it.id, vel);
     if (!s) return;

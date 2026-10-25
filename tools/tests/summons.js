@@ -4,7 +4,7 @@
 //
 // Scenarios: menu (nothing comes on its own, the ` key opens and closes the menu, a summon puts its button on a
 // one-minute cooldown), drops (every kind summoned at once: portals 800 ft ahead in open sky, every
-// monster out of its portal and on its feet), rain (200 riftlings come down and reach the mech;
+// monster out of its portal and on its feet), rain (200 Acid riftlings come down and latch onto the mech;
 // prints how long it took), millipede (it crawls out of its upright portal, clipped until it is
 // through, and the portal closes behind it), all (default).
 // Writes screenshots to tools/tests/out/summons-*.png. Rendering is skipped between shots, so it
@@ -126,7 +126,16 @@ const census = (page) => page.evaluate(() => {
   if (run('rain')) {
     console.log('rain');
     const { ctx, page, errors } = await boot(browser);
-    await page.evaluate(() => { const m = window.__mech; m.P.pitch = 0.3; m.summoner.summon('riftling', 200, m.P); });
+    await page.evaluate(() => {
+      const m = window.__mech, R = m.spiders.rift;
+      // A mech that can't be killed (regeneration tops AP up to the frame's own), and a tally of latches
+      m.frame.ap = m.P.ap = 1e6;
+      window.__latches = 0;
+      const grab = R.grab.bind(R);
+      R.grab = (...a) => { window.__latches++; return grab(...a); };
+      m.P.pitch = 0.3;
+      m.summoner.summon('acid', 200, m.P);
+    });
     await advance(page, 3);
     const c = await census(page);
     check(c.portals > 10, `riftling portals raining: ${c.portals} open at once`);
@@ -134,9 +143,9 @@ const census = (page) => page.evaluate(() => {
     let t = 3, reached = 0;
     for (; t < 60 && reached < 100; t += 3) {
       await advance(page, 3);
-      reached = await page.evaluate(() => window.__mech.spiders.rift.list.filter((r) => r.state === 'attack').length);
+      reached = await page.evaluate(() => window.__latches);
     }
-    check(reached >= 100, `half the brood at the mech after ${t} s (${reached} slashing)`);
+    check(reached >= 100, `half the swarm on the mech after ${t} s (${reached} latched on)`);
     await shot(page, 'rain-at-mech');
     const kills = await page.evaluate(() => {
       const m = window.__mech, B = m.spiders.rift, before = B.alive;

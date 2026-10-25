@@ -6,7 +6,7 @@ import {
 import { ScorpionNest, SCORPIONS } from './scorpions.js';
 import { MediumKin, MEDIUMS } from './mediums.js';
 import { Millipede } from './millipede.js';
-import { RiftlingBrood } from './riftlings.js';
+import { RiftlingHorde } from './riftlings.js';
 
 // ---------------------------------------------------------------------------
 // Spider-frames: six-legged climbing machines that swarm the city.
@@ -190,8 +190,8 @@ export class SpiderSwarm {
     this.med = new MediumKin(this, { scene, tex, cap: CAP });
     // The millipede boss (js/millipede.js)
     this.mill = new Millipede(this, { scene, tex, glowTex });
-    // Riftlings, summoned by the hundred (js/riftlings.js)
-    this.rift = new RiftlingBrood(this, { scene });
+    // Riftling packs, summoned by the hundred (js/riftlings.js)
+    this.rift = new RiftlingHorde(this, { scene });
     this.top = 0;
 
     // Materials and instanced parts, palette-swapped per spider
