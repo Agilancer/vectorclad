@@ -22,7 +22,7 @@ export const FRAMES = {
   },
   pontifex: {
     id: 'pontifex', code: 'PX-09', name: 'Pontifex', role: 'Long-limbed skirmisher',
-    ap: 880, walk: 8.4, dash: 39, boost: 1.1, jump: 16.5, paint: false, rise: 1.75,
+    ap: 880, walk: 8.4, dash: 39, boost: 1.1, jump: 16.5, paint: false, rise: 0.78, // 1.75 at full size; the frame is drawn at PontifexMech.SIZE (0.88)
     blurb: 'White ceramic plate on a dark, sinewy frame: a bow-fronted helm with side eye slits, deep finned pauldrons, swept back wings and the longest legs in the bay. Tall, quick and light on armor.',
     build: (mats, glowTex) => new PontifexMech(mats, glowTex).batch(),
   },
