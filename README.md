@@ -246,10 +246,11 @@ goes back to the frame select and **Redeploy** flies a fresh frame in.
 | --- | --- | --- | --- | --- | --- |
 | **FS-07A Vanguard** | 1000 AP | 46 km/h | 220 km/h | 9.6 s | The field-trial frame; takes the hangar's paint schemes |
 | **HV-02 Obsidian** | 1450 AP | 39 km/h | 189 km/h | 7.7 s | Heavy armor in black, ivory and gold (`assets/heavy-frame`) |
+| **PX-09 Pontifex** | 880 AP | 51 km/h | 238 km/h | 10.6 s | White plate on a dark frame, with the longest legs in the bay (`assets/pontifex-frame`) |
 
 The select screen shows each frame's armor, walk and dash speeds and how long a full
-boost gauge lasts, and puts the picked frame on show in the plaza. Both frames are built
-on the same rig, sockets and thrusters (`HeavyMech` subclasses `Mech` and reskins it), so
+boost gauge lasts, and puts the picked frame on show in the plaza. All the frames are built
+on the same rig, sockets and thrusters (`HeavyMech` and `PontifexMech` subclass `Mech` and reskin it; the Pontifex also brings its own leg lengths), so
 a loadout moves across unchanged; the world is always scaled from the Vanguard, so the
 city's size never changes with the frame. The frame can also be swapped in the pause
 hangar mid-fight: it keeps the same share of its armor. The frame list is in
