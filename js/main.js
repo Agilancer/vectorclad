@@ -8,7 +8,8 @@ import { FRAMES } from './frames.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { loadGuns } from './guns3d.js';
 import { loadPontifexDetail } from '../assets/pontifex-frame/pontifex-mech.js';
-import { Input } from './input.js';
+import { Input, gamepad } from './input.js';
+import { Immersive } from './xr.js';
 import { HUD, Hangar, FrameSelect, SummonMenu } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
 import { Portals } from './portals.js';
@@ -98,7 +99,7 @@ renderer.localClippingEnabled = true;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.6, 9000);
 
-const settings = Object.assign({ sound: true, music: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true, graphics: isTouch ? 'low' : 'auto' }, store.get('vectorclad.settings', {}));
+const settings = Object.assign({ sound: true, music: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true, view: 'third', graphics: isTouch ? 'low' : 'auto' }, store.get('vectorclad.settings', {}));
 
 // Bloom, glare, ambient occlusion and god rays (js/post.js) for the High and Ultra graphics settings
 const post = new Post(renderer, scene, camera, SUN_DIR);
@@ -108,7 +109,7 @@ const autoGfx = { tier: 'ultra', t0: 0, n: 0, slow: 0 };
 const graphicsTier = () => (settings.graphics === 'auto' ? autoGfx.tier : TIERS.includes(settings.graphics) ? settings.graphics : 'high');
 
 function applyGraphics() {
-  const tier = graphicsTier();
+  const tier = immersive.active ? 'low' : graphicsTier();
   post.setQuality(tier);
   // Ultra's shadows are twice as sharp
   const size = tier === 'ultra' ? 4096 : 2048, sh = world && world.sun.shadow;
@@ -119,22 +120,24 @@ function applyGraphics() {
 }
 
 function applySettings() {
+  cam.firstPerson = settings.view === 'first';
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.hires ? 2 : 1.25));
   resize();
-  renderer.shadowMap.enabled = settings.shadows;
-  if (world) world.sun.castShadow = settings.shadows;
+  renderer.shadowMap.enabled = settings.shadows && !immersive.active;
+  if (world) world.sun.castShadow = settings.shadows && !immersive.active;
   applyGraphics();
   scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined) o.material.needsUpdate = true; });
   sound.setEnabled(settings.sound);
   music.setEnabled(settings.music);
   if (weapons) weapons.outlines = settings.outlines;
   scene.traverse((o) => { if (o.userData.isOutline) o.visible = settings.outlines; });
+  applyXRQuality(immersive.quality);
   store.set('vectorclad.settings', settings);
 }
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
-  renderer.setSize(w, h, false);
+  if (!renderer.xr.isPresenting) renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -173,6 +176,24 @@ window.addEventListener('vectorclad:start', () => sound.unlock());
 const input = new Input(canvas);
 input.touchMode = isTouch;
 let world, fx, mech, weapons, hud, hangar, mats, spiders, allies, frameSel, portals, summoner, summonMenu, pilot, rides;
+let xrFrame = null;
+const immersive = new Immersive({
+  renderer, scene, camera, input, status: $('#platform-status'),
+  onPause: () => { if (world && mode !== 'loading') openHangar(); },
+  onRelease: () => { if (mode === 'drop') releaseNow(); },
+  onGesture: () => { sound.unlock(); music.unlock(); },
+  onChange: (active) => {
+    renderer.shadowMap.enabled = settings.shadows && !active;
+    if (world) world.sun.castShadow = settings.shadows && !active;
+    applyGraphics();
+    if (hangar) hangar.render();
+    applyXRQuality(immersive.quality);
+    autoGfx.t0 = autoGfx.n = autoGfx.slow = 0;
+    if (!active) requestAnimationFrame(resize);
+  },
+  onQuality: level => applyXRQuality(level),
+});
+gamepad.onDisconnect = () => { if (mode === 'play') openHangar(); };
 const frameMechs = {}; // each frame's model, built the first time it is picked
 
 const DEFAULT = PRESETS[0];
@@ -198,10 +219,11 @@ const P = {
   ap: spec.ap, alive: true, hurtT: 99, deadT: 0, runT: 0, webT: 0, venomT: 0, pinT: 0, pullT: 0, pullK: 0, pullFrom: new V3(),
   chest: new V3(),
 };
-const cam = { dist: CAM_DIST_MIN, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
+const cam = { firstPerson: settings.view === 'first', dist: CAM_DIST_MIN, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
 // loading | intro | frames (frame select) | loadout (before a drop) | drop (flown in) |
 // brief (held at the release for the tech-demo notice) | play | hangar (paused) | over
 let mode = 'loading';
+let pausedMode = 'play';
 let time = 0;
 let deployed = false;
 
@@ -219,6 +241,8 @@ function measureMech() {
   };
   for (let i = 0; i < 90; i++) mech.animate(1 / 30, st);
   mech.root.updateMatrixWorld(true);
+  // Stable seated eye anchor, measured in the idle pose rather than animated head bob.
+  mech.eye = mech.root.worldToLocal(mech.head.localToWorld(new V3(0, 0.18, 0.48))).multiply(mech.root.scale);
   let top = 0;
   const v = new V3();
   mech.head.traverse((o) => {
@@ -373,6 +397,8 @@ async function init() {
       store.set('vectorclad.loadout', loadout);
     },
     onSettings: applySettings,
+    onView: setCameraView,
+    currentView: () => pilot.active ? (pilot.third ? 'third' : 'first') : (cam.firstPerson ? 'first' : 'third'),
     frames: FRAMES, frame: () => spec.id, onFrame: (id) => setFrame(id),
   });
   frameSel = new FrameSelect({
@@ -390,7 +416,7 @@ async function init() {
     $('#touch').addEventListener('pointerdown', () => sound.unlock());
   }
   input.onLockChange = (locked) => {
-    if (!locked && mode === 'play' && !input.lockFailed && !summonMenu.open) openHangar();
+    if (!locked && mode === 'play' && !input.lockFailed && !summonMenu.open && !gamepad.active && !immersive.active) openHangar();
   };
   // Pause in the hangar when the game can't be seen: the page goes to the background,
   // or a phone turns upright and the rotate overlay covers it.
@@ -403,7 +429,7 @@ async function init() {
   $('#btn-frame-next').addEventListener('click', () => { sound.unlock(); if (startAs === 'mech') openLoadout(); else deploy(); });
   $('#btn-frame-back').addEventListener('click', () => { sound.unlock(); openIntro(); });
   $('#btn-hangar-back').addEventListener('click', () => { sound.unlock(); openFrames(); });
-  $('#btn-close-hangar').addEventListener('click', () => { sound.unlock(); if (mode === 'loadout') startDrop(); else startPlay(); });
+  $('#btn-close-hangar').addEventListener('click', () => { sound.unlock(); if (mode === 'loadout') startDrop(); else resumeHangar(); });
   $('#btn-hangar').addEventListener('click', () => openHangar());
   $('#btn-redeploy').addEventListener('click', () => { sound.unlock(); deploy(); });
   $('#btn-over-hangar').addEventListener('click', () => { sound.unlock(); openFrames(); });
@@ -429,7 +455,7 @@ async function init() {
     if (mode === 'drop' && isTouch) releaseNow();
   });
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Escape' && mode === 'hangar') startPlay();
+    if (e.code === 'Escape' && mode === 'hangar') resumeHangar();
     // ` (or ~): the summon menu
     if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); toggleSummon(); }
     if (e.code === 'Escape' && summonMenu.open) closeSummon(false);
@@ -447,7 +473,7 @@ async function init() {
   $('#intro').hidden = false;
   mode = 'intro';
   if (!isTouch) $('#btn-launch').focus({ preventScroll: true });
-  requestAnimationFrame(frame);
+  renderer.setAnimationLoop(frame);
 }
 
 /** Into the fight from the hangar. Not yet deployed (only tests call it that way), the frame starts on the plaza. */
@@ -541,9 +567,11 @@ function die() {
 function openHangar() {
   if (mode === 'hangar') return;
   summonMenu.hide();
+  pausedMode = mode;
   mode = 'hangar';
+  for (const panel of ['#intro', '#frames', '#gameover', '#drop', '#brief']) $(panel).hidden = true;
   $('#hangar-eyebrow').textContent = 'HANGAR 2 · BAY 07';
-  $('#btn-close-hangar').textContent = 'Launch';
+  $('#btn-close-hangar').textContent = pausedMode === 'drop' || pausedMode === 'brief' ? 'Resume insertion' : 'Launch';
   $('#btn-hangar-back').hidden = true;
   hangar.render();
   $('#hangar').hidden = false;
@@ -551,6 +579,19 @@ function openHangar() {
   input.releaseTouch();
   input.exitLock();
   cam.orbit = P.bodyYaw + 0.6;
+  if (gamepad.active) $('#btn-close-hangar').focus({ preventScroll: true });
+}
+
+/** Headset interruptions can pause an insertion or briefing, as well as combat. */
+function resumeHangar() {
+  if (pausedMode === 'drop' || pausedMode === 'brief') {
+    mode = pausedMode;
+    showPanel(mode === 'drop' ? '#drop' : '#brief');
+    input.requestLock();
+  } else if (pausedMode === 'intro') openIntro();
+  else if (pausedMode === 'frames') openFrames();
+  else if (pausedMode === 'loadout') openLoadout();
+  else startPlay();
 }
 
 /** Only one of the full-screen panels at a time */
@@ -590,6 +631,7 @@ function openLoadout() {
   $('#btn-hangar-back').hidden = false;
   hangar.render();
   cam.orbit = P.bodyYaw + 0.6;
+  if (gamepad.active) $('#btn-close-hangar').focus({ preventScroll: true });
 }
 
 /**
@@ -607,6 +649,7 @@ function setFrame(id) {
     weapons.equip({ slots: {} }); // strip the weapons off the old frame
     scene.remove(mech.root);
     mech = next;
+    if (!mech.eye) measureMech();
     weapons.mech = mech;
     mech.root.position.copy(pilot && pilot.active ? pilot.parked.pos : P.pos);
     mech.root.rotation.set(0, pilot && pilot.active ? pilot.parked.yaw : P.bodyYaw, 0);
@@ -620,6 +663,7 @@ function setFrame(id) {
   if (pilot && pilot.active) pilot.mechAp = ap; else P.ap = ap;
   $('#unit-code').textContent = f.code;
   $('#unit-name').textContent = f.name.toUpperCase();
+  applyXRQuality(immersive.quality);
 }
 
 /**
@@ -677,7 +721,7 @@ function startDrop() {
   briefed = false;
   mode = 'drop';
   showPanel('#drop');
-  $('#drop-hint').textContent = isTouch ? 'TAP · RELEASE NOW' : 'SPACE · RELEASE NOW';
+  $('#drop-hint').textContent = immersive.active ? 'CHOOSE RELEASE NOW · XBOX A' : gamepad.active ? 'A · RELEASE NOW' : isTouch ? 'TAP · RELEASE NOW' : 'SPACE · RELEASE NOW';
   const D = allies.startDrop(world.spawn, { rise: spec.rise || 0 });
   P.yaw = P.bodyYaw = D.heading;
   P.pitch = 0.05;
@@ -786,7 +830,7 @@ function updatePlayer(dt, c) {
   P.yaw -= c.lookX * sens;
   P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -PITCH_MAX, PITCH_MAX);
   // Lock-on steers the camera so the target stays in view; the mouse still adds on top
-  if (playing && hard.target) {
+  if (playing && hard.target && !immersive.active) {
     _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6.2, P.pos.z));
     const ty = Math.atan2(_t.x, _t.z);
     const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -PITCH_MAX, PITCH_MAX);
@@ -1137,16 +1181,62 @@ function leadPoint(out) {
 }
 const camDir = new V3(), camRight = new V3(), camFwd = new V3(), pivot = new V3(), camPos = new V3(), dropQ = new THREE.Quaternion();
 
+function firstPersonView() {
+  const state = mode === 'hangar' ? pausedMode : mode;
+  return !rides.current && (pilot.active ? !pilot.third : cam.firstPerson) && ['play', 'drop', 'brief', 'over'].includes(state);
+}
+
+function toggleCamera() {
+  const first = pilot.active ? pilot.third : !cam.firstPerson;
+  setCameraView(first ? 'first' : 'third');
+  hud.toast(first ? 'FIRST PERSON · LOOK TO AIM' : 'CHASE VIEW', 1.5);
+}
+
+function setCameraView(view) {
+  settings.view = view;
+  cam.firstPerson = view === 'first';
+  if (pilot) pilot.third = !cam.firstPerson;
+  immersive.firstPerson = cam.firstPerson;
+  immersive.nextDraw = 0;
+  store.set('vectorclad.settings', settings);
+}
+
+function applyXRQuality(level = 0) {
+  const detail = immersive.active ? [1, 0.6, 0.35][level] : 1;
+  if (world) world.trees.detail = detail;
+  if (fx) fx.setDetail(immersive.active ? [1, 0.65, 0.4][level] : 1);
+  if (weapons) weapons.outlines = settings.outlines && (!immersive.active || level === 0);
+  scene.traverse(o => { if (o.userData.isOutline) o.visible = settings.outlines && (!immersive.active || level === 0); });
+}
+
 function updateCamera(dt, speed) {
+  const first = firstPersonView();
+  immersive.firstPerson = first;
+  if (immersive.active) {
+    const height = rides.current ? rides.current.camUp / METERS : pilot.active ? 1.66 / METERS : first ? mech.eye.y : 8.4;
+    const distance = rides.current ? rides.current.camDist / METERS : first ? (pilot.active ? 0 : -mech.eye.z) : pilot.active ? 3 / METERS : cam.dist;
+    if (!immersive.updateView(xrFrame, P, METERS, distance, mode, height)) return;
+    pivot.set(P.pos.x, P.pos.y + 7.4, P.pos.z);
+    camera.getWorldDirection(camDir);
+    updateAim();
+    return;
+  }
   const dropping = (mode === 'drop' || mode === 'brief') && allies.drop;
   cam.pivotY = dropping ? P.pos.y + 7.4 : damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
   camera.near = 0.6;
-  if (pilot.active && mode === 'play' && !cam.debugOrbit) {
+  if (pilot.active && (mode === 'play' || first) && !cam.debugOrbit) {
     // On foot: through the pilot's eyes, or close over the shoulder
     if (rides.current) pivot.copy(rides.placeCamera(dt, P, camera, camDir));
     else { pilot.placeCamera(dt, P, camera, camDir); pivot.copy(pilot.camPos); }
     cam.fov = damp(cam.fov, P.dashing ? 80 : 72, 4, dt);
+  } else if (first && !cam.debugOrbit) {
+    camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
+    camera.position.copy(P.pos).addScaledVector(_t.set(Math.sin(P.yaw), 0, Math.cos(P.yaw)), mech.eye.z);
+    camera.position.y += mech.eye.y;
+    camera.lookAt(_t.copy(camera.position).add(camDir));
+    camera.near = 0.05;
+    cam.fov = 72;
   } else if ((mode === 'play' || dropping) && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
@@ -1221,16 +1311,22 @@ function updateCamera(dt, speed) {
 
   // Shake
   if (cam.shake > 0) {
-    const s = cam.shake * cam.shake * 0.5;
+    const s = first ? 0 : cam.shake * cam.shake * 0.5;
     camera.position.x += (Math.random() - 0.5) * s;
     camera.position.y += (Math.random() - 0.5) * s;
     camera.position.z += (Math.random() - 0.5) * s;
     cam.shake = Math.max(0, cam.shake - dt * 1.8);
   }
 
-  // Aim point: ray through screen center starting at the mech's depth
-  const startT = Math.max(0, _t.subVectors(pivot, camera.position).dot(camDir));
-  const o = _t2.copy(camera.position).addScaledVector(camDir, startT);
+  updateAim();
+}
+
+function updateAim() {
+  // In VR the pinch's target ray takes precedence over the head-centered reticle.
+  const origin = immersive.aimRay?.origin || camera.position;
+  if (immersive.aimRay) camDir.copy(immersive.aimRay.direction);
+  const startT = Math.max(0, _t.subVectors(pivot, origin).dot(camDir));
+  const o = _t2.copy(origin).addScaledVector(camDir, startT);
   const hit = world.raycast(o, camDir, 700);
   aim.point.copy(hit ? hit.point : o.addScaledVector(camDir, 700));
   if (hard.target && mode === 'play') leadPoint(aim.point);
@@ -1246,6 +1342,8 @@ function updateCamera(dt, speed) {
 // ---------------------------------------------------------------------------
 
 let last = performance.now();
+let wasPaused = false;
+let nextPausedHUD = 0;
 const feetA = new V3(), feetB = new V3();
 const UPV = new V3(0, 1, 0);
 const spiderCtx = { player: P, camera };
@@ -1253,18 +1351,36 @@ const shoulder = new V3();
 const HELD = { speed: 0, gait: 0, ground: 0 };
 const ZERO = new V3(), NO_THRUST = { main: 0, vern: 0, calf: 0, sole: 0 };
 
-function frame(now) {
-  requestAnimationFrame(frame);
-  const dt = window.__mech && window.__mech.fixedDt ? window.__mech.fixedDt : Math.min(0.05, (now - last) / 1000);
+function frame(_timestamp, headsetFrame) {
+  // Window and XR callbacks can use different time origins. Keep simulation time
+  // on one monotonic clock: a backwards delta explodes damping and Web Audio values.
+  const now = performance.now();
+  xrFrame = headsetFrame;
+  const dt = window.__mech && window.__mech.fixedDt ? window.__mech.fixedDt : Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
-  time += dt;
+  if (mode !== 'hangar' && mode !== 'brief') time += dt;
 
-  const c = input.sample();
-  if (c.menu) { if (mode === 'play') openHangar(); else if (mode === 'hangar') startPlay(); }
+  const c = input.sample(dt);
+  immersive.filterInput(c, P, mode);
+  if (c.menu) { if (mode === 'play') openHangar(); else if (mode === 'hangar') resumeHangar(); }
+  if (c.summon) toggleSummon();
+  if (c.camera) toggleCamera();
+  if (c.jumpPressed && mode === 'drop') releaseNow();
   if (c.reload && mode === 'play') weapons.reloadAll();
   if (c.lockon && mode === 'play' && !pilot.active) pressLock();
   updateBoarding(dt, c);
   updateHardLock();
+
+  // Menus keep headset tracking and UI live, while physics and world animation sleep.
+  if (mode === 'hangar' || mode === 'brief') {
+    if (!wasPaused) { sound.setThrust(0, 0); sound.setBeam(0); }
+    wasPaused = true;
+    updateCamera(0, 0);
+    if (now >= nextPausedHUD) { updateHUD(0); nextPausedHUD = now + 100; }
+    renderFrame(0, now);
+    return;
+  }
+  wasPaused = false;
 
   // The Kestrel H: carrying the frame in, then climbing away after the release
   const running = mode === 'drop' || mode === 'play' || mode === 'over';
@@ -1364,26 +1480,59 @@ function frame(now) {
   world.update(dt, P.pos, { grounded: parked || P.grounded, vel: parked ? ZERO : P.vel, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)], camera });
   fx.update(dt);
 
-  if (mode === 'play' || mode === 'hangar' || mode === 'over') {
-    hud.update(dt, {
-      ap: P.ap, apMax: apMax(), hostiles: spiders.hostiles, boss: spiders.boss,
-      boost: P.boost, overheat: P.overheat,
-      speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
-      locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
-      weapons: weapons.status(), camera, hard: hard.target, meters: METERS,
-    });
-  }
+  if (mode === 'play' || mode === 'drop' || mode === 'over') updateHUD(dt, speed);
 
+  renderFrame(dt, now);
+}
+
+function updateHUD(dt, speed = Math.hypot(P.vel.x, P.vel.z)) {
+  const state = {
+    ap: P.ap, apMax: apMax(), hostiles: spiders.hostiles, boss: spiders.boss,
+    boost: P.boost, overheat: P.overheat,
+    speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
+    locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
+    weapons: weapons.status(), camera, hard: hard.target, meters: METERS, gamepad: gamepad.active,
+    notice: hud.toastT > 0 ? hud.el.toast.textContent : '',
+    shield: weapons.shieldUp,
+    actor: rides.current?.name || (pilot.active ? 'PILOT' : spec.code),
+    pilot: pilot.active,
+  };
+  if (pilot.active) {
+    const ride = rides.current;
+    const card = (id, name, kind = 'continuous', empty = false) => ({ slot: { id }, name, kind, empty });
+    state.spatialWeapons = ride ? [
+      card('rightHand', ride.kind === 'kestrel' ? 'PLASMA CANNONS' : 'VULCANS', 'continuous', ride.kind === 'car'),
+      card('leftHand', ride.kind === 'kestrel' ? 'ROCKET BARRAGE' : 'HEAVY VULCAN', 'continuous', !['kestrel', 'hornet'].includes(ride.kind)),
+    ] : [card('rightHand', 'PILOT RIFLE'), card('leftHand', 'GRAPPLE', 'grapple')];
+    state.grapple = !!pilot.hook;
+    if (!ride) state.ordnance = { name: 'GRENADES', ready: Math.max(0, 4 - pilot.grenades.length), capacity: 4, hint: 'PINCH TO THROW' };
+    else {
+      const pods = ride.pods || [];
+      state.ordnance = { name: 'MISSILES', ready: pods.reduce((n, p) => n + p.loaded, 0), capacity: pods.reduce((n, p) => n + p.def.missiles, 0), hint: 'PINCH TO LAUNCH' };
+    }
+  }
+  hud.update(dt, state);
+  immersive.setHUD(state);
+}
+
+function renderFrame(dt, now) {
   if (!(window.__mech && window.__mech.skipRender)) {
     skipEmpty();
-    if (post.active) {
-      // A hit flashes red in from the edges and shakes the colors apart; low armor keeps a pulse of red
-      const hit = mode === 'play' ? Math.exp(-P.hurtT * 3.5) : 0, low = mode === 'play' && P.alive ? smoothstep(0.3, 0.1, P.ap / apMax()) : 0;
-      post.state.hurt = Math.min(1, hit * 0.8 + low * (0.3 + 0.12 * Math.sin(time * 5)));
-      post.state.ca = hit * 0.05 + (P.dashing ? 0.012 : 0);
-      post.render(dt);
-    } else renderer.render(scene, camera);
+    const hideHead = firstPersonView() && !pilot.active;
+    const headVisible = mech.head.visible;
+    if (hideHead) mech.head.visible = false;
+    try {
+      if (immersive.active) { if (immersive.tracked) renderer.render(scene, immersive.viewCamera); }
+      else if (post.active) {
+        // A hit flashes red in from the edges and shakes the colors apart; low armor keeps a pulse of red
+        const hit = mode === 'play' ? Math.exp(-P.hurtT * 3.5) : 0, low = mode === 'play' && P.alive ? smoothstep(0.3, 0.1, P.ap / apMax()) : 0;
+        post.state.hurt = Math.min(1, hit * 0.8 + low * (0.3 + 0.12 * Math.sin(time * 5)));
+        post.state.ca = hit * 0.05 + (P.dashing ? 0.012 : 0);
+        post.render(dt);
+      } else renderer.render(scene, camera);
+    } finally { mech.head.visible = headVisible; }
   }
+  immersive.samplePerformance(now, mode);
   pace(now);
 }
 
@@ -1406,7 +1555,7 @@ function skipEmpty() {
  */
 function pace(now) {
   const A = autoGfx;
-  if (settings.graphics !== 'auto' || mode !== 'play' || A.tier === 'low') { A.t0 = 0; return; }
+  if (immersive.active || settings.graphics !== 'auto' || mode !== 'play' || A.tier === 'low') { A.t0 = 0; return; }
   if (!A.t0) { A.t0 = now; A.n = 0; return; }
   A.n++;
   if (now - A.t0 < 2000) return;
@@ -1430,5 +1579,5 @@ window.__mech = {
   openFrames, openLoadout, startDrop, setFrame, openSummon, closeSummon, dismissBrief,
   get summoner() { return summoner; }, get portals() { return portals; }, get summonMenu() { return summonMenu; }, get frame() { return spec; }, get allies() { return allies; },
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
-  renderer, post, settings, applySettings, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
+  renderer, post, settings, applySettings, toggleCamera, applyXRQuality, immersive, get fx() { return fx; }, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get destruct() { return world && world.destruct; }, get mech() { return mech; }, get mode() { return mode; },
 };

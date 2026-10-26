@@ -27,7 +27,7 @@ export const titleDone = new Promise((resolve) => { resolveDone = resolve; });
 let logo = null;
 let started = false;
 
-prompt.textContent = isTouch ? 'Tap to start' : 'Click or press any key';
+prompt.textContent = isTouch ? 'Tap to start' : 'Click, press a key or controller A';
 
 // The 3D logo loads separately so the screen still works (text logo) if WebGL or the CDN fails.
 import('./logo.js')

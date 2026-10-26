@@ -49,6 +49,23 @@ kbd {
 }
 button { font-family: inherit; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+body.gamepad button:focus, body.gamepad input:focus { outline: 3px solid var(--signal); outline-offset: 3px; }
+.platform-note { margin: 0; font-size: 13px; line-height: 1.6; color: var(--dim); }
+.platform-note b { color: var(--fg); }
+body.gamepad #touch, body.immersive #touch { display: none; }
+body.gamepad .controls { display: none; }
+.xr-only { display: none; }
+body.immersive .xr-only { display: block; }
+body.immersive .window-only, body.immersive .controls, body.immersive .touch-note, body.immersive kbd { display: none; }
+body.gamepad #help-hint, body.touch.gamepad #help-hint { display: block; }
+body.touch.gamepad { --hud-side: max(16px, env(safe-area-inset-left, 0px)); }
+body.gamepad #help-hint { font-size: 0; }
+body.gamepad #help-hint::after { content: 'LS move · RS aim · RT/LT fire · RB cannon · LB missile · A jump · B dash · X reload · Y salvo · RS click lock · Menu hangar · View summon'; font-size: 11px; }
+body.immersive #help-hint { font-size: 0; }
+body.immersive #help-hint::after { content: 'Look to aim · Pinch to fire · Xbox Menu ≡: show / hide panel · Xbox map: controller guide'; font-size: 11px; }
+body.touch.gamepad #btn-hangar, body.touch.gamepad #btn-summon { display: inline-block; }
+body.gamepad .hud-right { right: max(16px, env(safe-area-inset-right, 0px)); }
+body.gamepad .hud-left { left: max(16px, env(safe-area-inset-left, 0px)); }
 
 .stripe {
   height: 8px;

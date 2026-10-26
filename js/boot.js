@@ -4,6 +4,9 @@
 // autoplay the boot screen asks for one first. With the Music setting off, it skips straight on.
 
 import { music } from './music.js';
+import { startGamepadNavigation } from './input.js';
+
+startGamepadNavigation();
 
 const $ = (s) => document.querySelector(s);
 const boot = $('#boot');
@@ -13,7 +16,7 @@ const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in win
 function gate() {
   const btn = $('#boot-start');
   $('#boot-title').textContent = 'Title theme loaded';
-  $('#boot-prompt').textContent = isTouch ? 'Tap to power up' : 'Click or press any key to power up';
+  $('#boot-prompt').textContent = isTouch ? 'Tap to power up' : 'Click, press a key or controller A to power up';
   btn.hidden = false;
   if (!isTouch) btn.focus({ preventScroll: true });
   return new Promise((resolve) => {

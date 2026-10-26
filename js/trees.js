@@ -733,9 +733,10 @@ export class Trees {
   /** ctx: { player: V3 (feet), vel: V3 } */
   /** Fine clumps for the chunks whose trees come near the camera, coarse ones further out */
   lod(cam) {
-    const near = this.city.m(120), far = this.city.m(450);
+    const detail = this.detail ?? 1;
+    const near = this.city.m(120 * detail), far = this.city.m(450 * Math.max(0.65, detail));
     for (const ch of this.chunks) {
-      const d = ch.box ? ch.box.distanceToPoint(cam) : 0, hi = d < near, lo = d > far;
+      const d = ch.box ? ch.box.distanceToPoint(cam) : 0, hi = detail >= 0.8 && d < near, lo = d > far;
       ch.leafHi.visible = hi; ch.leaf.visible = !hi && !lo; ch.leafLo.visible = lo;
       ch.cone.visible = ch.trunk.visible = !lo; ch.coneLo.visible = ch.trunkLo.visible = lo;
     }

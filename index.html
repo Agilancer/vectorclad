@@ -133,12 +133,13 @@
   <button id="t-summon" class="chip-btn t-summon" type="button">Summon</button>
 </div>
 
-<section id="intro" hidden>
+<section id="intro" hidden data-xr-summary="Look + pinch to select · Xbox A selects · Menu shows / hides · Xbox map has all controls">
   <div class="intro-card">
     <div class="stripe"></div>
     <div class="eyebrow">PORT MERIDIAN · FIELD TRIAL</div>
     <h1>VECTOR<span>CLAD</span></h1>
-    <p class="lede">Pick a 40-foot frame, the FS-07A Vanguard or the HV-02 Obsidian heavy, and ride a Kestrel H lifter in from the harbor to a Financial District overrun by spider-frames: six-legged machines that crawl the towers, leap from roof to roof and come at you with plasma, lasers, webs, mortars and suicide pounces. Scorpion-frames dig up out of the streets to claw and sting, but none can climb more than 100 feet up a wall. Heavier frames bridge the gaps between roofs, and a black millipede hundreds of feet long can crawl out of a portal and drape itself over the city blocks. Kestrels set Bastion tanks down in the streets to hunt them with you. This is a tech demo: nothing attacks until you summon it, so press <kbd>`</kbd> in the fight to call in any monster, from a single spider to two hundred riftlings, through portals in the sky.</p>
+    <p class="lede window-only">Pick a 40-foot frame, the FS-07A Vanguard or the HV-02 Obsidian heavy, and ride a Kestrel H lifter in from the harbor to a Financial District overrun by spider-frames: six-legged machines that crawl the towers, leap from roof to roof and come at you with plasma, lasers, webs, mortars and suicide pounces. Scorpion-frames dig up out of the streets to claw and sting, but none can climb more than 100 feet up a wall. Heavier frames bridge the gaps between roofs, and a black millipede hundreds of feet long can crawl out of a portal and drape itself over the city blocks. Kestrels set Bastion tanks down in the streets to hunt them with you. This is a tech demo: nothing attacks until you summon it, so press <kbd>`</kbd> in the fight to call in any monster, from a single spider to two hundred riftlings, through portals in the sky.</p>
+    <p class="lede xr-only">Pilot a 40-foot mech through Port Meridian. Nothing attacks until you summon it. Look to aim, pinch buttons to act, and use the Xbox controller map for the full controller layout.</p>
     <div class="controls">
       <div class="ctl-group">
         <h3>Move</h3>
@@ -159,9 +160,15 @@
       </div>
     </div>
     <p class="touch-note">On a touchscreen: left thumb moves, drag the right side to aim, and use the buttons to lock on, fire, jump and dash.</p>
+    <p class="platform-note window-only"><b>Xbox controller</b> · Left stick move · Right stick aim · RT/LT hand weapons · RB cannons · Release LB for a missile · A jump · B dash · X reload · Y salvo · Right stick click lock · Menu hangar · View summon.</p>
+    <p class="platform-note xr-only">Look to aim. Pinch the world to fire, or use RT/LT. Xbox right stick turns in 30° steps. Pinch <b>Show menu</b> or press <b>Menu ≡</b> to toggle the panel. Choose <b>Xbox controller map</b> for every binding.</p>
+    <p class="platform-note">In menus: D-pad / left stick navigate · A select · B back · Left/right adjust sliders. In VR: look and pinch, or use your controller.</p>
+    <p id="platform-status" class="platform-note" role="status">Checking immersive headset support…</p>
     <div class="intro-actions">
       <button id="btn-launch" class="btn primary" type="button">Launch</button>
       <button id="btn-quick" class="btn" type="button">Quick deploy</button>
+      <button class="btn" type="button" data-enter-xr hidden>Enter VR · Vision Pro</button>
+      <button class="btn" type="button" data-xr-map hidden>Xbox controller map</button>
     </div>
   </div>
 </section>
@@ -207,13 +214,15 @@
   </div>
 </section>
 
-<section id="brief" hidden role="dialog" aria-modal="true" aria-labelledby="brief-title">
+<section id="brief" hidden role="dialog" aria-modal="true" aria-labelledby="brief-title" data-xr-summary="No enemies until you summon · Xbox View or the Summon button calls monsters into the city">
   <div class="brief-card">
     <div class="stripe"></div>
     <div class="eyebrow">TECH DEMO · BEFORE YOU DROP</div>
     <h2 id="brief-title">You call the monsters</h2>
-    <p class="brief-text">VECTORCLAD is still a tech demo, so nothing will attack on its own. Press <kbd>`</kbd> (the key left of <kbd>1</kbd>) at any time to open the summon menu: pick a monster, set how many, and hit Summon. Each one drops out of its own portal about 800 ft ahead of where you're looking.</p>
+    <p class="brief-text window-only">VECTORCLAD is still a tech demo, so nothing will attack on its own. Press <kbd>`</kbd> (the key left of <kbd>1</kbd>) at any time to open the summon menu: pick a monster, set how many, and hit Summon. Each one drops out of its own portal about 800 ft ahead of where you're looking.</p>
+    <p class="brief-text xr-only">Nothing attacks until you summon it. Choose <b>Summon</b> on the spatial panel or press Xbox <b>View ▧</b>, choose a monster and a count, then summon. Use <b>Menu ≡</b> or <b>Hide menu</b> to clear the view.</p>
     <p class="brief-text touch-note">On a touchscreen, tap <b>Summon</b> at the top right.</p>
+    <p class="brief-text platform-note">With an Xbox controller, press <b>View</b> to summon. In VR, choose <b>Summon</b> on the spatial panel.</p>
     <div class="intro-actions">
       <button id="btn-brief-ok" class="btn primary" type="button">Okay</button>
     </div>
@@ -248,6 +257,8 @@
         <button id="btn-hangar-debug" class="btn debug-btn" type="button">Debug</button>
         <button id="btn-hangar-back" class="btn" type="button" hidden>Frames</button>
         <button id="btn-close-hangar" class="btn primary" type="button">Launch</button>
+        <button class="btn" type="button" data-enter-xr hidden>Enter VR · Vision Pro</button>
+        <button class="btn" type="button" data-xr-map hidden>Xbox controller map</button>
       </div>
     </div>
   </header>

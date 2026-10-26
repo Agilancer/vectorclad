@@ -95,6 +95,11 @@ export class Particles {
 
   // Positional args keep the hot path allocation-free.
   emit(x, y, z, vx, vy, vz, life, s0, s1, r, g, b, a, r1, g1, b1, a1, drag = 0, grav = 0, spin = 0) {
+    if (this.detail < 1) {
+      this.emissionCredit = (this.emissionCredit || 0) + this.detail;
+      if (this.emissionCredit < 1) return;
+      this.emissionCredit--;
+    }
     if (this.count >= this.cap) return;
     const o = this.count++ * STRIDE, d = this.sim;
     d[o] = x; d[o + 1] = y; d[o + 2] = z;
@@ -216,6 +221,10 @@ export class FX {
     this.flashes = [];
 
     // Beams (sustained mega-beam and short rifle bolts are handled by weapons.js)
+  }
+
+  setDetail(detail = 1) {
+    for (const particles of [this.smoke, this.fire, this.sparks]) particles.detail = detail;
   }
 
   light(pos, color, intensity, life, range = 40) {

@@ -17,6 +17,12 @@ asset packs' sheets in `assets/` (facades, storefronts, roofs, bark and foliage,
 car skins) and its sixty billboard ads, the ceilings inside its buildings from five in `textures/ceiling-src/`,
 and the spiders and scorpions from ten in `textures/spider-src/`. There is no build step.
 
+**Xbox controllers and WebXR:** Standard-mapped Xbox controllers work from the boot screen
+through menus, loadout, combat and redeployment. Immersive WebXR adds head-tracked stereo
+play on Apple Vision Pro, with look-and-pinch controls, first-person and chase views,
+an interactive combat HUD and an in-headset Xbox controller map. See
+[Xbox controls](#xbox-controllers) and [Apple Vision Pro / WebXR](#apple-vision-pro).
+
 ## Run it
 
 Serve the repository root with any static server and open it in a browser:
@@ -101,6 +107,7 @@ The song list is at the top of `js/music.js`.
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
 | Summon menu (tech demo) | `` ` `` (or `~`), or the Summon button | Summon |
 | Camera zoom | Mouse wheel | |
+| First-person / chase view (mech or pilot) | V | Xbox D-pad up; VR View button |
 
 The aim reaches straight up and straight down, so the weapons fire in any direction.
 Looking steeply down, the view slides forward so the crosshair rests on the ground just
@@ -117,6 +124,121 @@ destroyed the lock moves to the next target in view.
 Missiles lock onto targets inside the dashed circle. A salvo spreads its missiles
 across every lock; with nothing locked they fly to the crosshair. Leg pods pop
 their missiles almost straight up so they arc over the ground in front of the feet.
+
+### Xbox controllers
+
+Connect an Xbox controller and press a button to let the browser detect it. Standard-mapped
+gamepads work through the [Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API).
+The controller works from the boot and title screens through frame selection, loadout,
+insertion, combat, summoning and redeployment. Controller use displays controller hints and
+hides the touch overlay. Keyboard, mouse and touch remain available when you switch back.
+
+| Action | Xbox controller |
+| --- | --- |
+| Move / aim | Left / right stick |
+| Right / left hand or shield | RT / LT |
+| Shoulder cannons | RB |
+| Single missile | Release LB |
+| Full salvo / reload | Y / X |
+| Jump and hold to jet / boost dash | A / B |
+| Lock on | Right stick click |
+| Hold to board or leave a frame / ride | Left stick click |
+| Camera / descend in a ride | D-pad up / hold down |
+| Zoom in / out | D-pad left / right |
+| Vehicle weapons 1 / 2 / 3 / 4 | Hold LB + D-pad up / right / down / left |
+| Hangar / summon menu | Menu / View |
+| Navigate menus | D-pad or left stick |
+| Select / back | A / B |
+| Adjust a focused slider | D-pad left / right |
+
+LB fires on release so the vehicle weapon chord does not also launch a missile. Sticks have
+a radial dead zone, and aiming scales with elapsed time. Disconnecting the active controller
+pauses combat. After losing focus, controls must return to neutral before they can act again.
+Browsers may require a real click or tap to enable audio even when controller navigation works.
+
+On an Xbox console, open the hosted game in Microsoft Edge and use the browser's game
+controls mode. Microsoft documents the controller/browser mode switch in its
+[Edge on Xbox guide](https://www.microsoft.com/en-us/edge/learning-center/how-to-use-microsoft-edge-on-xbox).
+Console browser behavior still needs verification on physical hardware.
+
+### Apple Vision Pro
+
+Open the HTTPS game in Safari. **Enter VR · Vision Pro** appears in the intro and hangar
+when the browser reports immersive VR support. Safari on visionOS 2 introduced
+[immersive WebXR](https://webkit.org/blog/15865/webkit-features-in-safari-18-0/).
+The ordinary browser window remains available when immersive mode is unavailable or declined.
+
+In VR, the game offers head-tracked first-person and chase views. Press **D-pad up**,
+choose **View: First / Chase** on the spatial panel, or use the hangar's **View** setting.
+The windowed game uses **V** for the same switch. First person places you at a stable
+mech eye point or the walking pilot's eyes, with no artificial shake in the mech view or
+head bob in VR. The mech's head is excluded from the first-person render so the armor
+does not obstruct the view; arms and weapons remain visible. Vehicle views remain chase views.
+
+Look and pinch a button on the spatial panel to activate it; hold the pinch for movement,
+firing, jump jets or dash.
+Pinching the world fires the corresponding hand weapon. Left and right hands can act
+independently. The panel includes movement, turn buttons, weapons, vehicle controls,
+summoning, the hangar, recentering and **Exit VR**. Pinch **Hide menu** or press Xbox
+**Menu ≡** to collapse it into a small dock. **Show menu** or **Menu ≡** brings it back.
+The panel collapses automatically when combat or insertion begins. The dock stays reachable
+with look and pinch, and its transparent area does not block firing into the world.
+
+The raised combat HUD shows live armor and boost bars, hand-weapon ammo, reload and charge
+progress, ordnance, lock count, target health and range, speed, altitude and combat notices.
+Pinch a gun card to reload, hold the shield card to raise it, or pinch ordnance to launch.
+The pilot's rifle and grapple and each vehicle's weapons have their own card labels and actions.
+Low armor and overheated boost show alerts. The quick row opens the menu, summons monsters,
+locks a target, switches view or recenters; during insertion it offers **Release now**.
+Only transparent space above the HUD passes pinches through to world firing.
+
+Choose **Xbox map** for an illustrated controller layout with every VR binding. Opening
+the guide during combat pauses in the hangar; **B** returns to the menu. Xbox **Menu ≡**
+toggles the panel in VR; use **Hangar / pause** on the panel to pause combat. The other
+controller bindings remain the same, except the right stick turns in 30-degree steps and
+head movement supplies the aiming direction. In-session VR buttons say **Exit VR** and
+end the current session.
+
+Normal HTML menus are also drawn into the spatial panel, including buttons and sliders,
+with paging for long loadouts. No DOM overlay or hand-tracking permission is required.
+Input comes from session-level select events and target-ray poses, including Vision Pro's
+[transient pointers](https://webkit.org/blog/15162/introducing-natural-input-for-webxr-in-apple-vision-pro/).
+Sources need neither a gamepad nor a grip pose and can appear after other hand inputs.
+
+The headset uses a meter-scaled camera rig, direct stereo rendering, reduced framebuffer
+resolution and disabled shadow maps. Exiting restores the window's graphics settings and
+pauses in the hangar. Tracking loss or an obscured session releases spatial controls and pauses.
+During sustained slow frames, XR automatically reduces fine tree clumps, ink outlines and
+particle density in two steps; sustained recovery restores detail. The dock identifies the
+current detail tier. Static guides and unchanged HUDs reuse their canvas texture.
+Hangar and briefing pauses freeze simulation while headset tracking and menu rendering continue.
+Re-entry creates a fresh headset origin. Immersive entry, rendering and the live HUD have
+been exercised on Vision Pro hardware; see the [hardware proof screenshot](docs/screenshots/vision-pro-hud.png).
+Long-session performance and system gesture interruptions still need hardware verification.
+
+### Platform regression checks
+
+```sh
+node --test tools/tests/input.js
+# XR adapter tests use the same three.js 0.170.0 module as the game:
+THREE_RUNTIME=/path/to/three.module.js node --test tools/tests/xr.js
+# With the repository served and Playwright installed:
+BASE_URL=http://127.0.0.1:8233 node tools/tests/platforms.js
+# Also emulate stereo XR with a separate callback clock:
+XR_RUNTIME_URL=https://unpkg.com/iwer@2.7.0/build/iwer.module.js BASE_URL=http://127.0.0.1:8233 node tools/tests/platforms.js
+```
+
+These checks cover controller navigation and sliders, button edges and holds, focus and
+disconnect recovery, camera scale, pinch ray selection, session rejection, tracking loss,
+snap turns, panel toggles, hidden-menu input blocking, the Xbox guide and re-entry. The first two scripts exercise the adapters without a browser or
+headset. The browser script checks the real game's controller flow, including interruptions
+during insertion and its briefing, combat, summoning, disconnects and redeployment.
+The optional IWER test resets the XR callback clock and verifies stereo frames, finite
+physics and audio values, and session exit. Simulation timing uses `performance.now()`
+throughout windowed and immersive play so switching callback clocks cannot reverse time.
+Before publishing, verify boot → frame select → loadout → insertion → combat → summon →
+pause → redeploy with a physical controller, then VR entry → menu selection → two-hand
+input → recenter → system interruption → exit → re-entry on Vision Pro.
 
 ### On foot
 
