@@ -1099,7 +1099,7 @@ export class Mech {
         // Ankle target: the foothold, raised by the swing arc and by the heel peeling up at toe-off
         _gf.set(f.cur.x, f.cur.y + (this.LEG.foot + f.lift + Math.max(0, Math.sin(f.pitch)) * 0.85) * (this.size || 1), f.cur.z);
         this.pelvis.worldToLocal(_gf);
-        _pole.set(s * 0.55, 0.05, 1).normalize();
+        _pole.set(s * this.constructor.KNEE_OUT, 0.05, 1).normalize();
         this.solveLegIK(L, _gf, _pole);
         kIK = L.knee.rotation.x;
       }
@@ -1203,3 +1203,5 @@ export class Mech {
 }
 Mech.LEG = LEG;
 Mech.GAIT = GAIT;
+// How far the walking knees point outward (the IK pole's sideways lean per unit forward); a frame can set its own
+Mech.KNEE_OUT = 0.55;

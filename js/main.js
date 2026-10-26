@@ -8,6 +8,7 @@ import { FRAMES } from './frames.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
 import { loadGuns } from './guns3d.js';
 import { loadPontifexDetail } from '../assets/pontifex-frame/pontifex-mech.js';
+import { loadAmethystDetail } from '../assets/amethyst-frame/amethyst-mech.js';
 import { Input } from './input.js';
 import { HUD, Hangar, FrameSelect, SummonMenu } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
@@ -233,7 +234,7 @@ async function init() {
   resize();
   const tex = await loadTextures(renderer, (p) => { $('#load-bar').style.width = `${Math.round(p * 100)}%`; });
   $('#load-msg').textContent = 'Arming…';
-  await Promise.all([loadGuns(), loadPontifexDetail()]);
+  await Promise.all([loadGuns(), loadPontifexDetail(), loadAmethystDetail()]);
   $('#load-msg').textContent = 'Assembling frame…';
   await new Promise((r) => setTimeout(r, 30));
 
