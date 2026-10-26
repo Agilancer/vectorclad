@@ -1,6 +1,7 @@
 import * as THREE from './three.js';
 import { PAINTS, SKINS } from './atlas.js';
 import { WEAPONS, SLOTS, PRESETS, allowedFor } from './weapons.js';
+import { gamepad } from './input.js';
 
 const $ = (s) => document.querySelector(s);
 const _v = new THREE.Vector3();
@@ -15,6 +16,7 @@ export class HUD {
       spd: $('#spd'), alt: $('#alt'), lockct: $('#lockct'), mslct: $('#mslct'),
       weapons: $('#weapons'), toast: $('#toast'), hit: $('#hitmark'), locks: $('#locks'), zone: $('#lock-zone'),
       hint: $('#help-hint'), hard: $('#hardlock'), hardInfo: $('#hardlock span'), hardHp: $('#hardlock .hp b'), arrow: $('#lock-arrow'),
+      menuKey: $('#btn-hangar kbd'), summonKey: $('#btn-summon kbd'),
     };
     this.last = {};
     this.lockEls = new Map();
@@ -35,6 +37,12 @@ export class HUD {
   }
 
   toast(msg, time = 1.4) {
+    if (gamepad.immersive || gamepad.active) {
+      const keys = gamepad.immersive && !gamepad.active
+        ? { LMB: 'R FIRE', RMB: 'L FIRE', 'Q/E': 'MISSILE / SALVO', Q: 'MISSILE', '1-4': 'WEAPON 1–4', 'W/S': 'FORWARD / BACK', 'A/D': 'LEFT / RIGHT' }
+        : { LMB: 'RT', RMB: 'LT', 'Q/E': 'LB / Y', Q: 'LB', '1-4': 'LB + D-PAD', 'W/S': 'LS', 'A/D': 'LS' };
+      msg = msg.replace(/LMB|RMB|Q\/E|\bQ\b|1-4|W\/S|A\/D/g, key => keys[key]);
+    }
     this.el.toast.textContent = msg;
     this.el.toast.classList.add('on');
     this.toastT = time;
@@ -94,6 +102,8 @@ export class HUD {
 
   update(dt, d) {
     const e = this.el;
+    this.set('menuKey', e.menuKey, d.gamepad ? 'Menu' : 'Tab');
+    this.set('summonKey', e.summonKey, d.gamepad ? 'View' : '`');
     // Boost
     const b = Math.round(d.boost);
     this.set('boost', e.boostTxt, String(b));
@@ -139,7 +149,7 @@ export class HUD {
       let cls = 'wrow';
       if (s.kind === 'missile') cls += ' missile';
       if (s.reload != null) cls += ' reloading';
-      let ammo = s.kind === 'shield' ? this.shieldHint : `${s.ammo}/${s.max}`;
+      let ammo = s.kind === 'shield' ? (d.gamepad ? 'LT' : gamepad.immersive ? 'L SHIELD' : this.shieldHint) : `${s.ammo}/${s.max}`;
       let frac = s.kind === 'shield' ? 1 : s.ammo / s.max;
       if (s.reload != null) { ammo = 'RELOAD'; frac = s.reload; }
       if (s.charge != null) { ammo = s.charge >= 1 ? 'FIRING' : 'CHARGE'; frac = Math.min(1, s.charge); }
@@ -379,12 +389,14 @@ export class FrameSelect {
 
 export class Hangar {
   /** frames, frame(), onFrame(id): the frame section (js/frames.js); the paint section follows the frame */
-  constructor({ loadout, settings, onChange, onSettings, sound, touch = false, frames = null, frame = null, onFrame = null }) {
+  constructor({ loadout, settings, onChange, onSettings, onView = null, currentView = null, sound, touch = false, frames = null, frame = null, onFrame = null }) {
     this.touch = touch;
     this.loadout = loadout;
     this.settings = settings;
     this.onChange = onChange;
     this.onSettings = onSettings;
+    this.onView = onView;
+    this.currentView = currentView;
     this.sound = sound;
     this.frames = frames;
     this.frame = frame;
@@ -459,7 +471,9 @@ export class Hangar {
       const [wid, skinId] = L.slots[slot.id] || [null, 'white'];
       const card = div(`slot-card${wid ? ' filled' : ''}`);
       const head = div('hsec-title');
-      head.innerHTML = `<h3>${slot.label}</h3><span class="hint">${this.touch ? slot.touch : slot.key}</span>`;
+      const padHint = { rightHand: 'RT', leftHand: 'LT', shoulderL: 'RB', shoulderR: 'RB', legL: 'LB / Y', legR: 'LB / Y' }[slot.id];
+      const spatialHint = { rightHand: 'R fire', leftHand: 'L fire / shield', shoulderL: 'Cannons', shoulderR: 'Cannons', legL: 'Missile / salvo', legR: 'Missile / salvo' }[slot.id];
+      head.innerHTML = `<h3>${slot.label}</h3><span class="hint">${gamepad.active ? padHint : gamepad.immersive ? spatialHint : this.touch ? slot.touch : slot.key}</span>`;
       card.appendChild(head);
       const chips = div('chips');
       chips.appendChild(chip('None', !wid, () => this.setSlot(slot.id, null, skinId)));
@@ -484,6 +498,9 @@ export class Hangar {
     // Settings
     const set = section('Settings', '');
     const S = this.settings;
+    set.appendChild(choiceRow('View', [['third', 'Chase'], ['first', 'First person']], this.currentView?.() || S.view || 'third', (v) => {
+      if (this.onView) this.onView(v); else { S.view = v; this.onSettings(); }
+    }));
     set.appendChild(toggleRow('Sound', S.sound, (v) => { S.sound = v; this.onSettings(); }));
     set.appendChild(toggleRow('Music', S.music, (v) => { S.music = v; this.onSettings(); }));
     set.appendChild(choiceRow('Graphics', GRAPHICS, S.graphics, (v) => { S.graphics = v; this.onSettings(); }));
