@@ -18,6 +18,10 @@ const mx = (pts, s) => pts.map(([x, y, z]) => [x * s, y, z]);
 export class PontifexMech extends Mech {
   static LEG = { hipDrop: 0.22, thigh: 2.46, shin: 2.92, foot: 1.0 };
   static GAIT = { ...Mech.GAIT, bodyH: 6.0, homeX: 1.14, dip: 0.24 };
+  // The whole frame, weapons and all, is drawn at this size (the rig scales footholds to match)
+  static SIZE = 0.88;
+  // The Blender-detailed armor (px09.glb, from tools/pontifex/detail_px09.py), set by loadPontifexDetail()
+  static detail = null;
 
   constructor(mats, glowTex) {
     super(mats, glowTex);
@@ -46,7 +50,39 @@ export class PontifexMech extends Mech {
     for (const L of this.legs) L.mount.position.set(L.s * 0.48, -1.3, -0.08);
     this.visuals = [];
     this.buildArmor();
+    if (PontifexMech.detail) this.applyDetail(PontifexMech.detail);
     for (const g of this.visuals) this.outlines.push(...addOutline(g, 0.009));
+    this.size = PontifexMech.SIZE;
+    this.root.scale.setScalar(this.size);
+  }
+
+  /**
+   * Swap the code-built armor meshes for the detailed ones, group by group ("PX09 <part>" in both).
+   * Joints, glow sprites, fingers, thrusters and pistons stay the code's, so the animation is unchanged.
+   */
+  applyDetail(src) {
+    const M = this.pontifexMaterials;
+    const extra = (this.pontifexDetailMats ||= {
+      seam: new THREE.MeshStandardMaterial({ color: 0x5c6068, roughness: 0.5, metalness: 0.35 }),
+    });
+    const byName = {};
+    src.traverse((o) => { if (/^PX09[ _]/.test(o.name)) byName[o.name.replace(/_/g, ' ')] = o; });
+    const quiet = /^(seam|bolt|light|ventSlat|ramRod|ramCollar)/;
+    for (const g of this.visuals) {
+      const from = byName[g.name];
+      if (!from) continue;
+      const old = [];
+      g.traverse((o) => { if (o.isMesh) old.push(o); });
+      for (const o of old) o.removeFromParent();
+      for (const c of from.children) g.add(c.clone(true));
+      g.traverse((o) => {
+        if (!o.isMesh) return;
+        const role = (o.material.name || '').split('.')[0];
+        o.material = M[role] || extra[role] || (role === 'decal' ? this.pontifexResources.decalMat : M.dark);
+        o.castShadow = o.receiveShadow = role !== 'cyan' && role !== 'decal';
+        if (quiet.test(o.name) || ['cyan', 'metal', 'red', 'seam', 'decal'].includes(role)) o.userData.noOutline = true;
+      });
+    }
   }
 
   buildArmor() {
@@ -543,3 +579,16 @@ export class PontifexMech extends Mech {
 }
 
 const _v = new V3();
+
+/** Load the detailed armor once, before the first PontifexMech is built; without it the code-built armor is used. */
+export async function loadPontifexDetail(url = new URL('./px09.glb', import.meta.url).href) {
+  if (PontifexMech.detail) return true;
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    PontifexMech.detail = (await new GLTFLoader().loadAsync(url)).scene;
+    return true;
+  } catch (e) {
+    console.warn('PX-09: using the code-built armor', e);
+    return false;
+  }
+}

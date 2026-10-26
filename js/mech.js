@@ -932,8 +932,10 @@ export class Mech {
     const heading = (st.bodyYaw || 0) + w.legYaw;
     const ch = Math.cos(heading), sh = Math.sin(heading);
     const rp = this.root.position, ground = st.ground ?? rp.y;
+    // size: a frame scaled at its root (PontifexMech.SIZE); footholds are world points, so they scale with it
+    const S = this.size || 1;
     const home = (i, idle, out) => {
-      const ox = idle ? IDLE_FEET[i].x : LEG_SIDE[i] * this.GAIT.homeX, oz = idle ? IDLE_FEET[i].z : 0;
+      const ox = (idle ? IDLE_FEET[i].x : LEG_SIDE[i] * this.GAIT.homeX) * S, oz = (idle ? IDLE_FEET[i].z : 0) * S;
       return out.set(rp.x + ox * ch + oz * sh, ground, rp.z - ox * sh + oz * ch);
     };
     for (let i = 0; i < 2; i++) if (!F[i].init) { home(i, true, F[i].pos); F[i].init = true; }
@@ -1095,7 +1097,7 @@ export class Mech {
       let kIK = 0;
       if (plant > 0.001) {
         // Ankle target: the foothold, raised by the swing arc and by the heel peeling up at toe-off
-        _gf.set(f.cur.x, f.cur.y + this.LEG.foot + f.lift + Math.max(0, Math.sin(f.pitch)) * 0.85, f.cur.z);
+        _gf.set(f.cur.x, f.cur.y + (this.LEG.foot + f.lift + Math.max(0, Math.sin(f.pitch)) * 0.85) * (this.size || 1), f.cur.z);
         this.pelvis.worldToLocal(_gf);
         _pole.set(s * 0.55, 0.05, 1).normalize();
         this.solveLegIK(L, _gf, _pole);
