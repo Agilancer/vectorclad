@@ -291,7 +291,8 @@ export class Allies {
    * a wide right over the plaza that brings it to a hover over `feet`, nose north. The line is
    * worked out from the city under it each time, and its pace from the turns along it.
    */
-  startDrop(feet) {
+  /** rise: how much higher the frame's shoulders sit than the Vanguard's (js/frames.js), so it hangs that much lower in the clamps */
+  startDrop(feet, { rise = 0 } = {}) {
     if (!this.lifter) {
       // Gunmetal, not the olive drab of the Kestrels that carry the tanks
       this.lifter = createDropship(THREE, { metersPerUnit: this.M / LIFTER_SCALE, lifter: true, palette: LIFTER_PAINT });
@@ -302,6 +303,7 @@ export class Allies {
     Lf.userData.setClamp(0);
     const u = LIFTER_SCALE / this.M;
     const hang = Lf.userData.hang.clone().multiplyScalar(u);
+    hang.y -= rise;
     const depth = -hang.y;
 
     // The route, counted from the plaza block (j, k): up the avenue four east of it to the second

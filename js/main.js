@@ -674,7 +674,7 @@ function startDrop() {
   mode = 'drop';
   showPanel('#drop');
   $('#drop-hint').textContent = isTouch ? 'TAP · RELEASE NOW' : 'SPACE · RELEASE NOW';
-  const D = allies.startDrop(world.spawn);
+  const D = allies.startDrop(world.spawn, { rise: spec.rise || 0 });
   P.yaw = P.bodyYaw = D.heading;
   P.pitch = 0.05;
   P.pos.copy(D.feet);
