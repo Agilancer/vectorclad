@@ -1,4 +1,5 @@
 import * as THREE from './three.js';
+import { gunModel } from './guns3d.js';
 import { W, WEAPON_SHEET, SKINS, chamferBox, frontPrism, cylZ, cylX, mesh, place, canvasTexture, addOutline, batchRigid } from './atlas.js';
 
 const V3 = THREE.Vector3;
@@ -232,7 +233,9 @@ function buildShield(m) {
 export function buildWeaponModel(id, skin, mats) {
   const def = WEAPONS[id];
   const m = mats.weaponFor(skin);
-  let model;
+  // The Blender-made model when it loaded, else the built-in one below
+  let model = gunModel(id, skin);
+  if (model) { model.def = def; return model; }
   switch (id) {
     case 'beamRifle': model = buildBeamRifle(m); break;
     case 'bazooka': model = buildBazooka(m); break;
@@ -361,7 +364,7 @@ export class WeaponSystem {
       const skin = SKINS.find((s) => s.id === skinId) || SKINS[0];
       const def = WEAPONS[wid];
       const mounted = slot.type === 'shoulder' && wid === 'beamCannon';
-      const model = mounted ? Object.assign(buildBeamCannon(this.mats.weaponFor(skin), true), { def }) : buildWeaponModel(wid, skin, this.mats);
+      const model = mounted ? Object.assign(gunModel(wid, skin, { mounted: true }) || buildBeamCannon(this.mats.weaponFor(skin), true), { def }) : buildWeaponModel(wid, skin, this.mats);
       let mount = slot.id;
       if (wid === 'shield') mount = 'leftShield';
       if (slot.type === 'leg') model.group.scale.setScalar(0.66);

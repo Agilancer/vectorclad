@@ -6,6 +6,7 @@ import { music } from './music.js';
 import { World, SUN_DIR, STEP } from './world.js';
 import { FRAMES } from './frames.js';
 import { WeaponSystem, PRESETS } from './weapons.js';
+import { loadGuns } from './guns3d.js';
 import { Input } from './input.js';
 import { HUD, Hangar, FrameSelect, SummonMenu } from './ui.js';
 import { SpiderSwarm } from './spiders.js';
@@ -230,6 +231,8 @@ function measureMech() {
 async function init() {
   resize();
   const tex = await loadTextures(renderer, (p) => { $('#load-bar').style.width = `${Math.round(p * 100)}%`; });
+  $('#load-msg').textContent = 'Arming…';
+  await loadGuns();
   $('#load-msg').textContent = 'Assembling frame…';
   await new Promise((r) => setTimeout(r, 30));
 
