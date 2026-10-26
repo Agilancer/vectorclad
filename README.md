@@ -212,8 +212,9 @@ During sustained slow frames, XR automatically reduces fine tree clumps, ink out
 particle density in two steps; sustained recovery restores detail. The dock identifies the
 current detail tier. Static guides and unchanged HUDs reuse their canvas texture.
 Hangar and briefing pauses freeze simulation while headset tracking and menu rendering continue.
-Re-entry creates a fresh headset origin. Physical Vision Pro rendering, performance and
-system gesture behavior still need hardware verification.
+Re-entry creates a fresh headset origin. Immersive entry, rendering and the live HUD have
+been exercised on Vision Pro hardware; see the [hardware proof screenshot](docs/screenshots/vision-pro-hud.png).
+Long-session performance and system gesture interruptions still need hardware verification.
 
 ### Platform regression checks
 
