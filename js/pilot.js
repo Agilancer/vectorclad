@@ -14,8 +14,9 @@ import { buildWeaponModel } from './weapons.js';
 //   - LMB fires the rifle. Q throws a sticky grenade that blows out the one
 //     tile of wall it sticks to.
 //   - RMB fires the grappling hook (about a city block's reach): it reels the
-//     pilot in fast on a rope that swings round corners. RMB again lets go and
-//     keeps the momentum.
+//     pilot in fast on a rope that swings round corners, and stops them dead at
+//     the hook: hanging off a wall or ceiling, standing on a floor. RMB again
+//     lets go and fires a new line at once; Space lets go and keeps the momentum.
 // Distances here are in meters; M turns them into game units.
 // ---------------------------------------------------------------------------
 
@@ -325,6 +326,13 @@ export class Pilot {
       if (ns > cap) { P.vel.x *= cap / ns; P.vel.z *= cap / ns; }
     }
 
+    // Space on the line lets go of it (keeping the momentum); that press neither jumps nor lights the jetpack
+    if (playing && c.jumpPressed && this.hook) {
+      this.release();
+      this.sound.click();
+      c = { ...c, jumpPressed: false };
+    }
+
     // Jump, then the jetpack on a second press in the air
     P.ascending = false;
     if (P.grounded) {
@@ -347,12 +355,10 @@ export class Pilot {
     }
     if (P.dashing) P.boost -= 26 * bd * dt;
 
-    // The grappling hook
+    // The grappling hook: each press lets go of the old line and fires a new one
     const pressR = playing && c.fireL && !this.prevR;
     this.prevR = playing && !!c.fireL;
-    if (pressR) {
-      if (this.hook) { this.release(); this.sound.click(); } else this.fireHook(P, aim, hud);
-    }
+    if (pressR) { this.release(); this.fireHook(P, aim, hud); }
     if (this.hook) this.swing(dt, P);
 
     // Move, then walls and floors
@@ -409,26 +415,58 @@ export class Pilot {
     const o = this.camPos;
     const hit = W.raycast(o, aim.dir, HOOK_REACH * M, { props: true });
     if (!hit) { this.sound.empty(); if (hud) hud.toast('OUT OF REACH', 0.6); return; }
-    this.hook = { anchor: hit.point.clone(), len: 0, target: hit.target || null, off: null };
+    // The surface's normal, facing back toward the pilot, decides where the pilot stops
+    const n = hit.normal ? hit.normal.clone().normalize() : aim.dir.clone().negate();
+    if (n.dot(aim.dir) > 0) n.negate();
+    this.hook = { anchor: hit.point.clone(), len: 0, target: hit.target || null, off: null, normal: n, stop: new V3(), hang: false };
     if (hit.target) this.hook.off = hit.point.clone().sub(hit.target.pos);
-    this.hook.len = this.hook.anchor.distanceTo(_a.set(P.pos.x, P.pos.y + HEIGHT * M * 0.6, P.pos.z));
+    this.stopPoint(this.hook);
+    this.hook.len = this.hook.stop.distanceTo(_a.set(P.pos.x, P.pos.y + HEIGHT * M * 0.6, P.pos.z));
     this.fx.sparksBurst(hit.point, hit.normal || UP, 8, 0x9fe6ff, 14);
     this.sound.thump(P.pos);
     P.grounded = false;
     P.vel.y = Math.max(P.vel.y, 3 * M);
   }
 
-  /** On the rope: reeled in fast, and held to its length so it swings round the anchor */
+  /**
+   * Where the pilot's chest comes to rest at the end of the line: clear of a wall or a ceiling
+   * by the body's size, or standing on a floor or a rooftop.
+   */
+  stopPoint(h) {
+    const M = this.M, n = h.normal;
+    const k = n.y > 0.6 ? HEIGHT * 0.6 : n.y < -0.6 ? HEIGHT * 0.4 + 0.15 : RADIUS + 0.15;
+    h.stop.copy(h.anchor).addScaledVector(n, k * M);
+  }
+
+  /**
+   * On the rope: reeled in fast, and held to its length so it swings round the anchor. It ends
+   * with the pilot stopped dead at the hook: hanging off a wall or ceiling until Space or a new
+   * shot lets go, or standing on a floor.
+   */
   swing(dt, P) {
     const M = this.M, h = this.hook;
     if (h.target) {
       if (!h.target.alive) { this.release(); return; }
-      h.anchor.copy(h.target.pos).add(h.off);
+      const nx = h.target.pos.x + h.off.x, ny = h.target.pos.y + h.off.y, nz = h.target.pos.z + h.off.z;
+      // A target moved across the map in one frame (a pedestrian or car recycled elsewhere) takes the hook with it
+      if (Math.hypot(nx - h.anchor.x, ny - h.anchor.y, nz - h.anchor.z) > 8 * M) { this.release(); return; }
+      h.anchor.set(nx, ny, nz);
     }
-    const chest = _a.set(P.pos.x, P.pos.y + HEIGHT * M * 0.6, P.pos.z);
-    const to = _b.subVectors(h.anchor, chest);
+    this.stopPoint(h);
+    const lift = HEIGHT * M * 0.6;
+    const chest = _a.set(P.pos.x, P.pos.y + lift, P.pos.z);
+    const to = _b.subVectors(h.stop, chest);
     const d = to.length();
-    if (d < 1.4 * M) { this.release(); return; }
+    // Arrived, or close enough that this frame's step would carry the pilot past it (and into the wall)
+    if (h.hang || d < 0.35 * M || d <= P.vel.length() * dt) {
+      P.pos.set(h.stop.x, h.stop.y - lift, h.stop.z);
+      P.vel.set(0, 0, 0);
+      if (h.normal.y > 0.6) { this.release(); P.grounded = true; return; }
+      if (!h.hang) { h.hang = true; this.sound.footstep(P.pos, 0.3); }
+      this.jet = false;
+      P.grounded = false;
+      return;
+    }
     to.divideScalar(d);
     // Pulled along the rope, and reeled in
     P.vel.addScaledVector(to, HOOK_PULL * M * dt);
@@ -439,8 +477,8 @@ export class Pilot {
       if (out > 0) P.vel.addScaledVector(to, out);
       P.pos.addScaledVector(to, Math.min(d - h.len, 20 * M * dt));
     }
-    const s = P.vel.length();
-    if (s > HOOK_MAX * M) P.vel.multiplyScalar((HOOK_MAX * M) / s);
+    const s = P.vel.length(), cap = Math.min(HOOK_MAX * M, d / dt);
+    if (s > cap) P.vel.multiplyScalar(cap / s);   // never overshoot the stop point in one frame
     P.grounded = false;
   }
 
