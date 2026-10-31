@@ -129,9 +129,9 @@ what it had.
 | Action | Keyboard / mouse |
 | --- | --- |
 | Fire the rifle | Left mouse |
-| Grappling hook: fire / let go (keeps the momentum) | Right mouse |
+| Grappling hook: fire (a new press lets go of the old line and fires again) | Right mouse |
 | Sticky grenade | `Q` (or `E`) |
-| Jump; press again in the air to light the jetpack | `Space` |
+| Jump; press again in the air to light the jetpack; on the hook, let go | `Space` |
 | Jetpack dash | `Shift` |
 | First person / over-the-shoulder third person | Mouse wheel |
 
@@ -139,7 +139,9 @@ The view starts in first person, the rifle held in the right hand. The wheel pul
 a close over-the-shoulder view of the little armored pilot. The jetpack and dash burn the
 mech's boost gauge at 1.5 times the frame's rate. The grappling hook reaches about a city
 block. It reels the pilot in fast on a rope that won't stretch, so it swings round corners
-like a pendulum. Let go mid-swing to keep the speed, then fire it again in a new direction.
+like a pendulum, and stops the pilot dead at the hook: hanging off a wall or ceiling, or
+standing on a floor or rooftop. Press Space to let go mid-swing and keep the speed, or fire
+it again in a new direction, which drops the old line and shoots the new one in one press.
 A sticky grenade sticks to whatever it hits and, after a short blinking fuse, blows out the
 one square tile of wall or floor it is stuck to.
 
